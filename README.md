@@ -33,6 +33,7 @@ The actual target repository is supplied with `--project-root`.
 3. Compose a request:
    - `dart run bin/rail.dart compose-request --goal "fix intermittent profile refresh loading issue" --task-type bug_fix --feature profile`
    - smoke-only validation이 필요하면 `--validation-profile smoke`를 추가
+   - standard validation을 좁히고 싶으면 `--validation-root`와 `--validation-target`으로 검증 범위를 직접 지정
 4. Validate it:
    - `dart run bin/rail.dart validate-request --request .harness/requests/<generated>.yaml`
 5. Bootstrap the workflow against a target repo:
@@ -64,6 +65,7 @@ The runtime supports:
 - evaluator-driven `revise` handling back to generator
 - validation profiles (`standard`, `smoke`) for executor planning
 - deterministic smoke fast-path execution for planner/context_builder/generator/executor/evaluator
+- request-level validation roots and targets for narrowing standard-profile executor scope
 
 The runtime does not yet provide:
 

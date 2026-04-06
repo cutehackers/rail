@@ -32,6 +32,14 @@ properties:
         type: array
         items:
           type: string
+      validation_roots:
+        type: array
+        items:
+          type: string
+      validation_targets:
+        type: array
+        items:
+          type: string
 
   constraints:
     type: array

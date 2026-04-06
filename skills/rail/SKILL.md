@@ -76,6 +76,8 @@ Map inferred fields to:
 - `--feature`
 - `--suspected-file`
 - `--related-file`
+- `--validation-root`
+- `--validation-target`
 - `--constraint`
 - `--dod`
 - `--risk-tolerance`
@@ -86,6 +88,7 @@ If the user did not give reliable file hints, omit them instead of inventing the
 
 Use `--validation-profile smoke` only for harness smoke or control-plane verification tasks where full target-repo lint/test would be disproportionate.
 In `smoke` mode, rail may satisfy actor execution through deterministic control-plane outputs instead of full nested actor generation.
+For `standard` mode, prefer passing `--validation-root` and `--validation-target` when you already know the affected package or test path so executor validation stays narrow.
 
 ## Output To User
 

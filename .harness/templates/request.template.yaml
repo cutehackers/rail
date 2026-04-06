@@ -6,6 +6,10 @@ context:
     - "lib/path/to/file.dart"
   related_files:
     - "packages/data/lib/path/to/file.dart"
+  validation_roots:
+    - "packages/app"
+  validation_targets:
+    - "packages/app/test/path/to/file_test.dart"
 constraints: []
 definition_of_done:
   - "Describe observable success criteria"

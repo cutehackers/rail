@@ -44,6 +44,14 @@ void main(List<String> args) async {
         args.skip(1).toList(),
         '--related-file',
       );
+      final validationRoots = _readMultiOption(
+        args.skip(1).toList(),
+        '--validation-root',
+      );
+      final validationTargets = _readMultiOption(
+        args.skip(1).toList(),
+        '--validation-target',
+      );
       final composedRequest = await runner.composeRequest(
         goal: goal,
         outputPath: outputPath,
@@ -56,6 +64,8 @@ void main(List<String> args) async {
         definitionOfDone: definitionOfDone,
         suspectedFiles: suspectedFiles,
         relatedFiles: relatedFiles,
+        validationRoots: validationRoots,
+        validationTargets: validationTargets,
       );
       stdout.writeln(
         'Request composed at ${p.relative(composedRequest.file.path, from: runner.root.path)}',
@@ -134,7 +144,7 @@ void _printUsage(IOSink sink) {
     '  dart run bin/rail.dart init-request [--output <path>]',
   );
   sink.writeln(
-    '  dart run bin/rail.dart compose-request --goal <text> --task-type <bug_fix|feature_addition|safe_refactor|test_repair> [--feature <name>] [--suspected-file <path>] [--related-file <path>] [--constraint <text>] [--dod <text>] [--risk-tolerance <low|medium|high>] [--priority <low|medium|high>] [--validation-profile <standard|smoke>] [--output <path>]',
+    '  dart run bin/rail.dart compose-request --goal <text> --task-type <bug_fix|feature_addition|safe_refactor|test_repair> [--feature <name>] [--suspected-file <path>] [--related-file <path>] [--validation-root <path>] [--validation-target <path>] [--constraint <text>] [--dod <text>] [--risk-tolerance <low|medium|high>] [--priority <low|medium|high>] [--validation-profile <standard|smoke>] [--output <path>]',
   );
   sink.writeln(
     '  dart run bin/rail.dart validate-request --request <path>',
@@ -233,6 +243,8 @@ class HarnessRunner {
     required List<String> definitionOfDone,
     required List<String> suspectedFiles,
     required List<String> relatedFiles,
+    required List<String> validationRoots,
+    required List<String> validationTargets,
   }) async {
     final effectiveOutputPath =
         outputPath ?? '.harness/requests/${_requestFileName(goal)}';
@@ -254,6 +266,9 @@ class HarnessRunner {
         if (feature != null && feature.isNotEmpty) 'feature': feature,
         if (suspectedFiles.isNotEmpty) 'suspected_files': suspectedFiles,
         if (relatedFiles.isNotEmpty) 'related_files': relatedFiles,
+        if (validationRoots.isNotEmpty) 'validation_roots': validationRoots,
+        if (validationTargets.isNotEmpty)
+          'validation_targets': validationTargets,
       },
       'constraints': normalizedConstraints,
       'definition_of_done': normalizedDefinitionOfDone,
@@ -389,12 +404,16 @@ class HarnessRunner {
     ].map(_normalizeRepoRelativePath).toSet().toList()
       ..sort();
 
-    final analyzePackages = _inferPackageRoots(fileHints);
-    final testTargets = testRules.inferTargets(
-      projectRoot: projectDirectory.path,
-      fileHints: fileHints,
-      featureName: userRequest.context.feature,
-    );
+    final analyzePackages = userRequest.context.validationRoots.isNotEmpty
+        ? userRequest.context.validationRoots
+        : _inferPackageRoots(fileHints);
+    final testTargets = userRequest.context.validationTargets.isNotEmpty
+        ? userRequest.context.validationTargets
+        : testRules.inferTargets(
+            projectRoot: projectDirectory.path,
+            fileHints: fileHints,
+            featureName: userRequest.context.feature,
+          );
     final executionPlan = ExecutionPlan(
       formatCommand: fileHints.isEmpty
           ? null
@@ -1957,6 +1976,8 @@ class RequestContext {
   RequestContext({
     required this.relatedFiles,
     required this.suspectedFiles,
+    required this.validationRoots,
+    required this.validationTargets,
     this.feature,
   });
 
@@ -1965,12 +1986,16 @@ class RequestContext {
       feature: map['feature']?.toString(),
       suspectedFiles: _readOptionalStringList(map, 'suspected_files'),
       relatedFiles: _readOptionalStringList(map, 'related_files'),
+      validationRoots: _readOptionalStringList(map, 'validation_roots'),
+      validationTargets: _readOptionalStringList(map, 'validation_targets'),
     );
   }
 
   final String? feature;
   final List<String> suspectedFiles;
   final List<String> relatedFiles;
+  final List<String> validationRoots;
+  final List<String> validationTargets;
 }
 
 class ComposedRequest {

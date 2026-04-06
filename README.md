@@ -66,6 +66,7 @@ The runtime supports:
 - validation profiles (`standard`, `smoke`) for executor planning
 - deterministic smoke fast-path execution for planner/context_builder/generator/executor/evaluator
 - request-level validation roots and targets for narrowing standard-profile executor scope
+- supervisor action loops that can route from evaluator back to generator, context_builder, or executor with bounded budgets
 
 The runtime does not yet provide:
 

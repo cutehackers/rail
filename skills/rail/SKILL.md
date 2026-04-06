@@ -101,6 +101,8 @@ After bootstrapping, report:
 - defaults that were applied
 - that bootstrap is complete and actor execution is a separate step unless you were asked to continue
 
+When execution continues, supervisor routing should be described in action terms, not just actor names. Examples: `revise_generator`, `rebuild_context`, `tighten_validation`, `split_task`.
+
 ## Guardrails
 
 - Do not claim the task is implemented just because the workflow bootstrapped.

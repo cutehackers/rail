@@ -404,9 +404,6 @@ class HarnessRunner {
     ].map(_normalizeRepoRelativePath).toSet().toList()
       ..sort();
 
-    final analyzePackages = userRequest.context.validationRoots.isNotEmpty
-        ? userRequest.context.validationRoots
-        : _inferPackageRoots(fileHints);
     final testTargets = userRequest.context.validationTargets.isNotEmpty
         ? userRequest.context.validationTargets
         : testRules.inferTargets(
@@ -414,41 +411,12 @@ class HarnessRunner {
             fileHints: fileHints,
             featureName: userRequest.context.feature,
           );
-    final executionPlan = ExecutionPlan(
-      formatCommand: fileHints.isEmpty
-          ? null
-          : executionPolicy.formatCommand.replaceAll(
-              '{files}',
-              fileHints.map(_shellQuote).join(' '),
-            ),
-      analyzeCommands: userRequest.validationProfile == 'smoke'
-          ? [
-              'cd ${_shellQuote(projectDirectory.path)} && ${executionPolicy.smokeAnalyzeCommand}',
-            ]
-          : analyzePackages.isEmpty
-          ? [
-              'cd ${_shellQuote(projectDirectory.path)} && ${executionPolicy.workspaceAnalyzeCommand}',
-            ]
-          : analyzePackages
-              .map(
-                (packageRoot) =>
-                    'cd ${_shellQuote(p.join(projectDirectory.path, packageRoot))} && ${executionPolicy.packageAnalyzeCommand}',
-              )
-              .toList(growable: false),
-      testCommands: userRequest.validationProfile == 'smoke'
-          ? [
-              'cd ${_shellQuote(projectDirectory.path)} && ${executionPolicy.smokeTestCommand}',
-            ]
-          : testTargets.isEmpty
-          ? [
-              'cd ${_shellQuote(projectDirectory.path)} && ${executionPolicy.workspaceTestCommand}',
-            ]
-          : _groupTargetsByPackage(testTargets).entries
-              .map(
-                (entry) =>
-                    'cd ${_shellQuote(p.join(projectDirectory.path, entry.key))} && ${executionPolicy.packageTestCommand.replaceAll('{targets}', entry.value.map(_shellQuote).join(' '))}',
-              )
-              .toList(growable: false),
+    final executionPlan = _buildExecutionPlan(
+      userRequest: userRequest,
+      projectRoot: projectDirectory.path,
+      executionPolicy: executionPolicy,
+      testRules: testRules,
+      fileHints: fileHints,
     );
 
     final resolvedWorkflow = ResolvedWorkflow(
@@ -462,6 +430,8 @@ class HarnessRunner {
         routeRetryBudget: route.retryBudgetFor(userRequest.riskTolerance),
         policyRetryBudget: policy.retryBudgetFor(userRequest.riskTolerance),
       ),
+      contextRebuildBudget: policy.contextRebuildBudget,
+      validationTightenBudget: policy.validationTightenBudget,
       changedFileHints: fileHints,
       inferredTestTargets: testTargets,
       requiredOutputs: taskConfig.requiredOutputs,
@@ -500,7 +470,12 @@ class HarnessRunner {
             'currentActor': taskConfig.actors.firstOrNull,
             'completedActors': <String>[],
             'generatorRetriesRemaining': resolvedWorkflow.generatorRetryBudget,
+            'contextRebuildsRemaining': resolvedWorkflow.contextRebuildBudget,
+            'validationTighteningsRemaining':
+                resolvedWorkflow.validationTightenBudget,
             'lastDecision': null,
+            'lastReasonCodes': <String>[],
+            'actionHistory': <String>[],
           },
         ),
       );
@@ -581,7 +556,16 @@ class HarnessRunner {
     final projectDirectory = _resolveProjectDirectory(
       projectRoot ?? workflow.projectRoot,
     );
-    final executionPlan = ExecutionPlan.fromJson(
+    final executionPolicy = ExecutionPolicy.fromMap(
+      _loadYamlMap('.harness/supervisor/execution_policy.yaml'),
+    );
+    final testRules = TestTargetRules.fromMap(
+      _loadYamlMap('.harness/supervisor/test_target_rules.yaml'),
+    );
+    final contextContract = ContextContract.fromMap(
+      _loadYamlMap('.harness/supervisor/context_contract.yaml'),
+    );
+    var executionPlan = ExecutionPlan.fromJson(
       _readJsonFile(p.join(artifactDirectory.path, 'execution_plan.json')),
     );
     final stateFile = File(p.join(artifactDirectory.path, 'state.json'));
@@ -625,6 +609,32 @@ class HarnessRunner {
               actorIndex: actorIndex,
               actorName: actorName,
             );
+
+      executionPlan = await _refreshStandardExecutionPlanIfNeeded(
+        actorName: actorName,
+        artifactDirectory: artifactDirectory,
+        workflow: workflow,
+        userRequest: userRequest,
+        executionPlan: executionPlan,
+        executionPolicy: executionPolicy,
+        testRules: testRules,
+        contextContract: contextContract,
+        actorIndex: actorIndex,
+        projectRoot: projectDirectory.path,
+      );
+      executionPlan = await _tightenExecutionPlanIfNeeded(
+        actorName: actorName,
+        artifactDirectory: artifactDirectory,
+        workflow: workflow,
+        userRequest: userRequest,
+        executionPlan: executionPlan,
+        executionPolicy: executionPolicy,
+        testRules: testRules,
+        contextContract: contextContract,
+        actorIndex: actorIndex,
+        projectRoot: projectDirectory.path,
+        state: currentState,
+      );
 
       if (userRequest.validationProfile == 'smoke') {
         final smokeResponse = await _runSmokeActor(
@@ -1076,7 +1086,11 @@ class HarnessRunner {
       ..writeln('- Target project root: `${workflow.projectRoot}`')
       ..writeln('- Actors: `${workflow.actors.join(' -> ')}`')
       ..writeln('- Rubric: `${workflow.rubricPath}`')
-      ..writeln('- Retry budget: `${workflow.generatorRetryBudget}`')
+      ..writeln('- Generator revise budget: `${workflow.generatorRetryBudget}`')
+      ..writeln('- Context rebuild budget: `${workflow.contextRebuildBudget}`')
+      ..writeln(
+        '- Validation tighten budget: `${workflow.validationTightenBudget}`',
+      )
       ..writeln();
 
     if (workflow.changedFileHints.isNotEmpty) {
@@ -1108,6 +1122,21 @@ class HarnessRunner {
     for (final condition in workflow.terminationConditions) {
       buffer.writeln('- terminate_if: `$condition`');
     }
+    buffer.writeln();
+
+    buffer.writeln('## Supervisor Actions');
+    buffer.writeln(
+      '- `revise_generator`: request another implementation attempt with the current context.',
+    );
+    buffer.writeln(
+      '- `rebuild_context`: refresh context artifacts before another implementation attempt.',
+    );
+    buffer.writeln(
+      '- `tighten_validation`: reduce executor scope to the smallest credible validation set.',
+    );
+    buffer.writeln(
+      '- `split_task`: stop orchestration and require a smaller follow-up task.',
+    );
     buffer.writeln();
 
     buffer.writeln('## Executor Commands');
@@ -1325,7 +1354,8 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
             'regression_risk': 0,
           },
           'findings': <String>['bootstrap placeholder'],
-          'next_action': <String>[],
+          'reason_codes': <String>['bootstrap_placeholder'],
+          'next_action': <String>['revise_generator'],
         };
       case 'integration_result':
         return {
@@ -1492,10 +1522,13 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     final completedActors = [...state.completedActors, actorName];
     if (actorName == 'evaluator') {
       final evaluationPath = p.join(artifactDirectory.path, 'evaluation_result.yaml');
-      final decision = _readString(
-        _asMap(_loadYamlValue(File(evaluationPath)), context: evaluationPath),
-        'decision',
+      final evaluationMap = _asMap(
+        _loadYamlValue(File(evaluationPath)),
+        context: evaluationPath,
       );
+      final decision = _readString(evaluationMap, 'decision');
+      final reasonCodes = _readOptionalStringList(evaluationMap, 'reason_codes');
+      final nextActions = _readOptionalStringList(evaluationMap, 'next_action');
       if (decision == 'pass') {
         final integratorIndex = workflow.actors.indexOf('integrator');
         if (integratorIndex != -1 && !completedActors.contains('integrator')) {
@@ -1504,6 +1537,8 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
             currentActor: 'integrator',
             completedActors: completedActors,
             lastDecision: decision,
+            lastReasonCodes: reasonCodes,
+            actionHistory: [...state.actionHistory, 'pass'],
           );
         }
           return state.copyWith(
@@ -1511,6 +1546,8 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
             clearCurrentActor: true,
             completedActors: completedActors,
             lastDecision: decision,
+            lastReasonCodes: reasonCodes,
+            actionHistory: [...state.actionHistory, 'pass'],
           );
       }
       if (decision == 'reject') {
@@ -1519,25 +1556,91 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           clearCurrentActor: true,
           completedActors: completedActors,
           lastDecision: decision,
+          lastReasonCodes: reasonCodes,
+          actionHistory: [...state.actionHistory, 'reject'],
         );
       }
-      final retriesRemaining = state.generatorRetriesRemaining - 1;
-      if (retriesRemaining < 0 || !workflow.actors.contains('generator')) {
-        return state.copyWith(
-          status: 'revise_exhausted',
-          clearCurrentActor: true,
-          completedActors: completedActors,
-          generatorRetriesRemaining: retriesRemaining,
-          lastDecision: decision,
-        );
+      final primaryAction = nextActions.isEmpty
+          ? 'revise_generator'
+          : nextActions.first;
+      switch (primaryAction) {
+        case 'rebuild_context':
+          final remaining = state.contextRebuildsRemaining - 1;
+          if (remaining < 0 || !workflow.actors.contains('context_builder')) {
+            return state.copyWith(
+              status: 'evolution_exhausted',
+              clearCurrentActor: true,
+              completedActors: completedActors,
+              contextRebuildsRemaining: remaining,
+              lastDecision: decision,
+              lastReasonCodes: reasonCodes,
+              actionHistory: [...state.actionHistory, primaryAction],
+            );
+          }
+          return state.copyWith(
+            status: 'rebuilding_context',
+            currentActor: 'context_builder',
+            completedActors: completedActors,
+            contextRebuildsRemaining: remaining,
+            lastDecision: decision,
+            lastReasonCodes: reasonCodes,
+            actionHistory: [...state.actionHistory, primaryAction],
+          );
+        case 'tighten_validation':
+          final remaining = state.validationTighteningsRemaining - 1;
+          if (remaining < 0 || !workflow.actors.contains('executor')) {
+            return state.copyWith(
+              status: 'evolution_exhausted',
+              clearCurrentActor: true,
+              completedActors: completedActors,
+              validationTighteningsRemaining: remaining,
+              lastDecision: decision,
+              lastReasonCodes: reasonCodes,
+              actionHistory: [...state.actionHistory, primaryAction],
+            );
+          }
+          return state.copyWith(
+            status: 'tightening_validation',
+            currentActor: 'executor',
+            completedActors: completedActors,
+            validationTighteningsRemaining: remaining,
+            lastDecision: decision,
+            lastReasonCodes: reasonCodes,
+            actionHistory: [...state.actionHistory, primaryAction],
+          );
+        case 'split_task':
+          return state.copyWith(
+            status: 'split_required',
+            clearCurrentActor: true,
+            completedActors: completedActors,
+            lastDecision: decision,
+            lastReasonCodes: reasonCodes,
+            actionHistory: [...state.actionHistory, primaryAction],
+          );
+        case 'revise_generator':
+        default:
+          final retriesRemaining = state.generatorRetriesRemaining - 1;
+          if (retriesRemaining < 0 || !workflow.actors.contains('generator')) {
+            return state.copyWith(
+              status: 'revise_exhausted',
+              clearCurrentActor: true,
+              completedActors: completedActors,
+              generatorRetriesRemaining: retriesRemaining,
+              lastDecision: decision,
+              lastReasonCodes: reasonCodes,
+              actionHistory: [...state.actionHistory, 'revise_generator'],
+            );
+          }
+          return state.copyWith(
+            status: 'revising',
+            currentActor: 'generator',
+            completedActors: completedActors,
+            generatorRetriesRemaining: retriesRemaining,
+            lastDecision: decision,
+            lastReasonCodes: reasonCodes,
+            actionHistory: [...state.actionHistory, 'revise_generator'],
+          );
       }
-      return state.copyWith(
-        status: 'revising',
-        currentActor: 'generator',
-        completedActors: completedActors,
-        generatorRetriesRemaining: retriesRemaining,
-        lastDecision: decision,
-      );
     }
 
     final actorIndex = workflow.actors.indexOf(actorName);
@@ -1555,7 +1658,306 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     return state.currentActor == null ||
         state.status == 'passed' ||
         state.status == 'rejected' ||
-        state.status == 'revise_exhausted';
+        state.status == 'revise_exhausted' ||
+        state.status == 'evolution_exhausted' ||
+        state.status == 'split_required';
+  }
+
+  ExecutionPlan _buildExecutionPlan({
+    required UserRequest userRequest,
+    required String projectRoot,
+    required ExecutionPolicy executionPolicy,
+    required TestTargetRules testRules,
+    required List<String> fileHints,
+  }) {
+    final analyzePackages = userRequest.context.validationRoots.isNotEmpty
+        ? userRequest.context.validationRoots
+        : _inferPackageRoots(fileHints);
+    final testTargets = userRequest.context.validationTargets.isNotEmpty
+        ? userRequest.context.validationTargets
+        : testRules.inferTargets(
+            projectRoot: projectRoot,
+            fileHints: fileHints,
+            featureName: userRequest.context.feature,
+          );
+
+    return ExecutionPlan(
+      formatCommand: fileHints.isEmpty
+          ? null
+          : executionPolicy.formatCommand.replaceAll(
+              '{files}',
+              fileHints.map(_shellQuote).join(' '),
+            ),
+      analyzeCommands: userRequest.validationProfile == 'smoke'
+          ? [
+              'cd ${_shellQuote(projectRoot)} && ${executionPolicy.smokeAnalyzeCommand}',
+            ]
+          : analyzePackages.isEmpty
+          ? [
+              'cd ${_shellQuote(projectRoot)} && ${executionPolicy.workspaceAnalyzeCommand}',
+            ]
+          : analyzePackages
+              .map(
+                (packageRoot) =>
+                    'cd ${_shellQuote(p.join(projectRoot, packageRoot))} && ${executionPolicy.packageAnalyzeCommand}',
+              )
+              .toList(growable: false),
+      testCommands: userRequest.validationProfile == 'smoke'
+          ? [
+              'cd ${_shellQuote(projectRoot)} && ${executionPolicy.smokeTestCommand}',
+            ]
+          : testTargets.isEmpty
+          ? [
+              'cd ${_shellQuote(projectRoot)} && ${executionPolicy.workspaceTestCommand}',
+            ]
+          : _groupTargetsByPackage(testTargets).entries
+              .map(
+                (entry) =>
+                    'cd ${_shellQuote(p.join(projectRoot, entry.key))} && ${executionPolicy.packageTestCommand.replaceAll('{targets}', entry.value.map(_shellQuote).join(' '))}',
+              )
+              .toList(growable: false),
+    );
+  }
+
+  Future<ExecutionPlan> _refreshStandardExecutionPlanIfNeeded({
+    required String actorName,
+    required Directory artifactDirectory,
+    required ResolvedWorkflow workflow,
+    required UserRequest userRequest,
+    required ExecutionPlan executionPlan,
+    required ExecutionPolicy executionPolicy,
+    required TestTargetRules testRules,
+    required ContextContract contextContract,
+    required int actorIndex,
+    required String projectRoot,
+  }) async {
+    if (actorName != 'executor' ||
+        userRequest.validationProfile != 'standard' ||
+        userRequest.context.validationRoots.isNotEmpty ||
+        userRequest.context.validationTargets.isNotEmpty) {
+      return executionPlan;
+    }
+
+    final planFileHints = _projectRelativePlanLikelyFiles(
+      artifactDirectory: artifactDirectory,
+      projectRoot: projectRoot,
+    );
+    if (planFileHints.isEmpty) {
+      return executionPlan;
+    }
+
+    final refreshedExecutionPlan = _buildExecutionPlan(
+      userRequest: userRequest,
+      projectRoot: projectRoot,
+      executionPolicy: executionPolicy,
+      testRules: testRules,
+      fileHints: planFileHints,
+    );
+    if (_sameExecutionPlan(executionPlan, refreshedExecutionPlan)) {
+      return executionPlan;
+    }
+
+    await _persistExecutionPlanRefresh(
+      actorName: actorName,
+      artifactDirectory: artifactDirectory,
+      workflow: workflow,
+      executionPlan: refreshedExecutionPlan,
+      contextContract: contextContract,
+      actorIndex: actorIndex,
+    );
+    return refreshedExecutionPlan;
+  }
+
+  Future<ExecutionPlan> _tightenExecutionPlanIfNeeded({
+    required String actorName,
+    required Directory artifactDirectory,
+    required ResolvedWorkflow workflow,
+    required UserRequest userRequest,
+    required ExecutionPlan executionPlan,
+    required ExecutionPolicy executionPolicy,
+    required TestTargetRules testRules,
+    required ContextContract contextContract,
+    required int actorIndex,
+    required String projectRoot,
+    required HarnessState state,
+  }) async {
+    if (actorName != 'executor' || state.status != 'tightening_validation') {
+      return executionPlan;
+    }
+
+    if (userRequest.validationProfile == 'smoke') {
+      final tightenedExecutionPlan = _tightenSmokeExecutionPlan(
+        executionPlan: executionPlan,
+        projectRoot: projectRoot,
+      );
+      if (_sameExecutionPlan(executionPlan, tightenedExecutionPlan)) {
+        return executionPlan;
+      }
+      await _persistExecutionPlanRefresh(
+        actorName: actorName,
+        artifactDirectory: artifactDirectory,
+        workflow: workflow,
+        executionPlan: tightenedExecutionPlan,
+        contextContract: contextContract,
+        actorIndex: actorIndex,
+      );
+      return tightenedExecutionPlan;
+    }
+
+    if (userRequest.validationProfile != 'standard' ||
+        userRequest.context.validationRoots.isNotEmpty ||
+        userRequest.context.validationTargets.isNotEmpty) {
+      return executionPlan;
+    }
+
+    final planFileHints = _projectRelativePlanLikelyFiles(
+      artifactDirectory: artifactDirectory,
+      projectRoot: projectRoot,
+    );
+    if (planFileHints.isEmpty) {
+      return executionPlan;
+    }
+
+    final tightenedExecutionPlan = _buildExecutionPlan(
+      userRequest: userRequest,
+      projectRoot: projectRoot,
+      executionPolicy: executionPolicy,
+      testRules: testRules,
+      fileHints: planFileHints,
+    );
+    if (_sameExecutionPlan(executionPlan, tightenedExecutionPlan)) {
+      return executionPlan;
+    }
+
+    await _persistExecutionPlanRefresh(
+      actorName: actorName,
+      artifactDirectory: artifactDirectory,
+      workflow: workflow,
+      executionPlan: tightenedExecutionPlan,
+      contextContract: contextContract,
+      actorIndex: actorIndex,
+    );
+    return tightenedExecutionPlan;
+  }
+
+  ExecutionPlan _tightenSmokeExecutionPlan({
+    required ExecutionPlan executionPlan,
+    required String projectRoot,
+  }) {
+    final hasSmokeAnalyzeRoot =
+        File(p.join(projectRoot, 'pubspec.yaml')).existsSync() ||
+        File(p.join(projectRoot, 'melos.yaml')).existsSync();
+    final hasSmokeTestRoot =
+        Directory(p.join(projectRoot, 'test')).existsSync() ||
+        Directory(p.join(projectRoot, 'integration_test')).existsSync() ||
+        File(p.join(projectRoot, 'melos.yaml')).existsSync();
+    return ExecutionPlan(
+      formatCommand: executionPlan.formatCommand,
+      analyzeCommands: hasSmokeAnalyzeRoot
+          ? executionPlan.analyzeCommands
+          : const [],
+      testCommands: hasSmokeTestRoot ? executionPlan.testCommands : const [],
+    );
+  }
+
+  Future<void> _persistExecutionPlanRefresh({
+    required String actorName,
+    required Directory artifactDirectory,
+    required ResolvedWorkflow workflow,
+    required ExecutionPlan executionPlan,
+    required ContextContract contextContract,
+    required int actorIndex,
+  }) async {
+    await File(
+      p.join(artifactDirectory.path, 'execution_plan.json'),
+    ).writeAsString(
+      const JsonEncoder.withIndent('  ').convert(executionPlan.toJson()),
+    );
+    await File(
+      p.join(artifactDirectory.path, 'workflow_steps.md'),
+    ).writeAsString(
+      _buildWorkflowSteps(
+        workflow: workflow,
+        executionPlan: executionPlan,
+      ),
+    );
+
+    final actorDoc = File(p.join(root.path, '.harness', 'actors', '$actorName.md'));
+    final actorInstructions = actorDoc.existsSync()
+        ? await actorDoc.readAsString()
+        : 'Actor instructions not found.';
+    final actorBriefPath = p.join(
+      artifactDirectory.path,
+      'actor_briefs',
+      '${(actorIndex + 1).toString().padLeft(2, '0')}_$actorName.md',
+    );
+    await File(actorBriefPath).writeAsString(
+      _buildActorBrief(
+        actorName: actorName,
+        actorInstructions: actorInstructions,
+        workflow: workflow,
+        executionPlan: executionPlan,
+        actorContract: contextContract.contractFor(actorName),
+        artifactDirectory: artifactDirectory,
+        materializedInputs: _materializedInputsForArtifact(),
+      ),
+    );
+  }
+
+  MaterializedInputs _materializedInputsForArtifact() {
+    return MaterializedInputs(
+      architectureRulesPath: p.join('inputs', 'architecture_rules.md'),
+      projectRulesPath: p.join('inputs', 'project_rules.md'),
+      forbiddenChangesPath: p.join('inputs', 'forbidden_changes.md'),
+      executionPolicyPath: p.join('inputs', 'execution_policy.yaml'),
+      rubricPath: p.join('inputs', 'rubric.yaml'),
+      requestPath: 'request.yaml',
+    );
+  }
+
+  List<String> _projectRelativePlanLikelyFiles({
+    required Directory artifactDirectory,
+    required String projectRoot,
+  }) {
+    final likelyFiles = _planLikelyFiles(artifactDirectory);
+    final projectFileHints = <String>{};
+    for (final path in likelyFiles) {
+      final projectRelative = _projectRelativeHint(path, projectRoot);
+      if (projectRelative != null) {
+        projectFileHints.add(projectRelative);
+      }
+    }
+    final sorted = projectFileHints.toList(growable: false)..sort();
+    return sorted;
+  }
+
+  String? _projectRelativeHint(String path, String projectRoot) {
+    final normalized = p.normalize(path);
+    if (p.isAbsolute(normalized)) {
+      if (_isPathWithinRoot(normalized, projectRoot)) {
+        return p.relative(normalized, from: projectRoot);
+      }
+      return null;
+    }
+    return _projectPathExists(projectRoot, normalized) ? normalized : null;
+  }
+
+  bool _sameExecutionPlan(ExecutionPlan left, ExecutionPlan right) {
+    return left.formatCommand == right.formatCommand &&
+        _sameStringList(left.analyzeCommands, right.analyzeCommands) &&
+        _sameStringList(left.testCommands, right.testCommands);
+  }
+
+  bool _sameStringList(List<String> left, List<String> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (var index = 0; index < left.length; index++) {
+      if (left[index] != right[index]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<Map<String, Object?>?> _runSmokeActor({
@@ -1779,11 +2181,12 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           : <String>[
               'Smoke-profile validation reported at least one failed command.',
             ],
+      'reason_codes': pass
+          ? <String>[]
+          : <String>['smoke_validation_failed'],
       'next_action': pass
           ? <String>[]
-          : <String>[
-              'Inspect execution_report logs and rerun the smoke after addressing the failed command.',
-            ],
+          : <String>['tighten_validation'],
     };
   }
 
@@ -2212,6 +2615,8 @@ class ActorContract {
 class Policy {
   Policy({
     required this.retryBudgets,
+    required this.contextRebuildBudget,
+    required this.validationTightenBudget,
     required this.passIf,
     required this.reviseIf,
     required this.rejectIf,
@@ -2219,6 +2624,7 @@ class Policy {
 
   factory Policy.fromMap(Map<String, dynamic> map) {
     final retryRules = _readMap(map, 'retry_rules');
+    final supervisorLoop = _readMap(map, 'supervisor_loop');
     final budgets = <String, int>{};
     for (final entry in retryRules.entries) {
       budgets[entry.key] = _readInt(
@@ -2228,6 +2634,11 @@ class Policy {
     }
     return Policy(
       retryBudgets: budgets,
+      contextRebuildBudget: _readInt(supervisorLoop, 'max_context_rebuild'),
+      validationTightenBudget: _readInt(
+        supervisorLoop,
+        'max_validation_tighten',
+      ),
       passIf: _readStringList(map, 'pass_if'),
       reviseIf: _readStringList(map, 'revise_if'),
       rejectIf: _readStringList(map, 'reject_if'),
@@ -2235,6 +2646,8 @@ class Policy {
   }
 
   final Map<String, int> retryBudgets;
+  final int contextRebuildBudget;
+  final int validationTightenBudget;
   final List<String> passIf;
   final List<String> reviseIf;
   final List<String> rejectIf;
@@ -2424,6 +2837,8 @@ class ResolvedWorkflow {
     required this.actors,
     required this.rubricPath,
     required this.generatorRetryBudget,
+    required this.contextRebuildBudget,
+    required this.validationTightenBudget,
     required this.changedFileHints,
     required this.inferredTestTargets,
     required this.requiredOutputs,
@@ -2440,6 +2855,8 @@ class ResolvedWorkflow {
   final List<String> actors;
   final String rubricPath;
   final int generatorRetryBudget;
+  final int contextRebuildBudget;
+  final int validationTightenBudget;
   final List<String> changedFileHints;
   final List<String> inferredTestTargets;
   final List<String> requiredOutputs;
@@ -2457,6 +2874,8 @@ class ResolvedWorkflow {
       'actors': actors,
       'rubricPath': rubricPath,
       'generatorRetryBudget': generatorRetryBudget,
+      'contextRebuildBudget': contextRebuildBudget,
+      'validationTightenBudget': validationTightenBudget,
       'changedFileHints': changedFileHints,
       'inferredTestTargets': inferredTestTargets,
       'requiredOutputs': requiredOutputs,
@@ -2476,6 +2895,8 @@ class ResolvedWorkflow {
       actors: _readStringList(map, 'actors'),
       rubricPath: _readString(map, 'rubricPath'),
       generatorRetryBudget: _readInt(map, 'generatorRetryBudget'),
+      contextRebuildBudget: _readInt(map, 'contextRebuildBudget'),
+      validationTightenBudget: _readInt(map, 'validationTightenBudget'),
       changedFileHints: _readStringList(map, 'changedFileHints'),
       inferredTestTargets: _readStringList(map, 'inferredTestTargets'),
       requiredOutputs: _readStringList(map, 'requiredOutputs'),
@@ -2523,7 +2944,11 @@ class HarnessState {
     required this.currentActor,
     required this.completedActors,
     required this.generatorRetriesRemaining,
+    required this.contextRebuildsRemaining,
+    required this.validationTighteningsRemaining,
     required this.lastDecision,
+    required this.lastReasonCodes,
+    required this.actionHistory,
   });
 
   factory HarnessState.fromJson(Map<String, dynamic> map) {
@@ -2537,7 +2962,13 @@ class HarnessState {
             'generatorRetriesRemaining',
           ) ??
           0,
+      contextRebuildsRemaining:
+          _readOptionalInt(map, 'contextRebuildsRemaining') ?? 0,
+      validationTighteningsRemaining:
+          _readOptionalInt(map, 'validationTighteningsRemaining') ?? 0,
       lastDecision: map['lastDecision']?.toString(),
+      lastReasonCodes: _readOptionalStringList(map, 'lastReasonCodes'),
+      actionHistory: _readOptionalStringList(map, 'actionHistory'),
     );
   }
 
@@ -2546,7 +2977,11 @@ class HarnessState {
   final String? currentActor;
   final List<String> completedActors;
   final int generatorRetriesRemaining;
+  final int contextRebuildsRemaining;
+  final int validationTighteningsRemaining;
   final String? lastDecision;
+  final List<String> lastReasonCodes;
+  final List<String> actionHistory;
 
   HarnessState copyWith({
     String? status,
@@ -2554,7 +2989,11 @@ class HarnessState {
     bool clearCurrentActor = false,
     List<String>? completedActors,
     int? generatorRetriesRemaining,
+    int? contextRebuildsRemaining,
+    int? validationTighteningsRemaining,
     String? lastDecision,
+    List<String>? lastReasonCodes,
+    List<String>? actionHistory,
   }) {
     return HarnessState(
       taskId: taskId,
@@ -2563,7 +3002,13 @@ class HarnessState {
       completedActors: completedActors ?? this.completedActors,
       generatorRetriesRemaining:
           generatorRetriesRemaining ?? this.generatorRetriesRemaining,
+      contextRebuildsRemaining:
+          contextRebuildsRemaining ?? this.contextRebuildsRemaining,
+      validationTighteningsRemaining:
+          validationTighteningsRemaining ?? this.validationTighteningsRemaining,
       lastDecision: lastDecision ?? this.lastDecision,
+      lastReasonCodes: lastReasonCodes ?? this.lastReasonCodes,
+      actionHistory: actionHistory ?? this.actionHistory,
     );
   }
 
@@ -2574,7 +3019,11 @@ class HarnessState {
       'currentActor': currentActor,
       'completedActors': completedActors,
       'generatorRetriesRemaining': generatorRetriesRemaining,
+      'contextRebuildsRemaining': contextRebuildsRemaining,
+      'validationTighteningsRemaining': validationTighteningsRemaining,
       'lastDecision': lastDecision,
+      'lastReasonCodes': lastReasonCodes,
+      'actionHistory': actionHistory,
     };
   }
 }

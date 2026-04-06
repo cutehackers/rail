@@ -2,6 +2,7 @@ type: object
 required:
   - decision
   - findings
+  - reason_codes
   - next_action
 
 properties:
@@ -33,10 +34,17 @@ properties:
     items:
       type: string
 
-  next_action:
-    oneOf:
-      - type: string
-      - type: array
-        items:
-          type: string
+  reason_codes:
+    type: array
+    items:
+      type: string
 
+  next_action:
+    type: array
+    items:
+      type: string
+      enum:
+        - revise_generator
+        - rebuild_context
+        - tighten_validation
+        - split_task

@@ -22,10 +22,18 @@ Return YAML matching `evaluation_result.schema.yaml`:
 - `decision`
 - `scores` (`requirements`, `architecture`, `regression_risk`)
 - `findings`
+- `reason_codes`
 - `next_action`
+
+## Supervisor action rules
+- Return `next_action: []` when `decision` is `pass` or `reject`.
+- For fixable implementation gaps, prefer `revise_generator`.
+- Use `rebuild_context` when the main issue is missing or low-quality repository context.
+- Use `tighten_validation` when the implementation looks acceptable but validation scope is too broad or mismatched.
+- Use `split_task` when the request should be decomposed before safe progress.
+- Keep `reason_codes` short, machine-readable, and directly tied to the chosen action.
 
 ## Decision policy
 - `pass`: all DoD items + required checks pass
 - `revise`: fixable gaps within allowed scope
 - `reject`: constraints violated or unacceptable blast radius
-

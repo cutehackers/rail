@@ -14,11 +14,12 @@
 - request-level `validation_profile` now supports `smoke`, allowing executor planning to avoid full target-repo lint/test for harness smoke tasks
 - smoke validation now uses a deterministic fast-path for planner/context_builder/generator/executor/evaluator, removing nested actor latency from harness smoke runs
 - standard validation can now take request-level `validation_roots` and `validation_targets` so executor planning can stay narrower than workspace-wide fallback
+- supervisor orchestration is moving from evaluator-only generator retry toward explicit action-driven loops with bounded budgets
 - global `~/.codex/skills/rail/SKILL.md` now points at the repo-owned skill via symlink
 
 ## Next work
 
-1. Exercise a real `standard` request that supplies `validation_roots` and `validation_targets`, then inspect the generated executor plan.
-2. Decide whether rail should infer standard validation roots automatically from likely files or keep them user-supplied only.
+1. Exercise a real `standard` request through the new supervisor action loop and inspect whether evaluator `next_action` values route to the intended next stage.
+2. Decide whether planner/context_builder also need a standard fast-path or cache to reduce nested actor latency.
 3. Run `dart pub get` and `dart analyze` in the new repo.
 4. Add project profiles beyond the default Flutter + Riverpod profile.

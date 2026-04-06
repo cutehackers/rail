@@ -11,6 +11,7 @@ input:
   optional_fields:
     - priority
     - related_tests_hint
+    - validation_profile
 
 actor_flow_schema:
   planner:
@@ -54,7 +55,7 @@ actor_flow_schema:
       - execution_report
       - rubric
     out:
-      - evaluation_result_yaml_matching_schema
+      - evaluation_result_yaml_matching_schema_with_reason_codes_and_next_action
 
   integrator:
     in:

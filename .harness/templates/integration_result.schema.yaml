@@ -1,0 +1,31 @@
+type: object
+required:
+  - summary
+  - files_changed
+  - validation
+  - risks
+  - follow_up
+
+properties:
+  summary:
+    type: string
+
+  files_changed:
+    type: array
+    items:
+      type: string
+
+  validation:
+    type: array
+    items:
+      type: string
+
+  risks:
+    type: array
+    items:
+      type: string
+
+  follow_up:
+    type: array
+    items:
+      type: string

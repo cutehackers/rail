@@ -1,0 +1,14 @@
+task_type: bug_fix
+goal: "Describe the requested outcome"
+context:
+  feature: "feature_name"
+  suspected_files:
+    - "lib/path/to/file.dart"
+  related_files:
+    - "packages/data/lib/path/to/file.dart"
+constraints: []
+definition_of_done:
+  - "Describe observable success criteria"
+  - "Describe validation expectation"
+priority: medium
+risk_tolerance: low

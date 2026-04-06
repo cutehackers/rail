@@ -1,0 +1,11 @@
+name: rail
+description: Control-plane harness project for Codex-driven Flutter and Riverpod work.
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  path: ^1.9.0
+  yaml: ^3.1.3
+

@@ -1,0 +1,71 @@
+version: 1
+
+input:
+  required_fields:
+    - task_type
+    - goal
+    - context
+    - constraints
+    - definition_of_done
+    - risk_tolerance
+  optional_fields:
+    - priority
+    - related_tests_hint
+
+actor_flow_schema:
+  planner:
+    in:
+      - user_request
+      - architecture_rules
+      - forbidden_changes
+    out:
+      - plan_yaml_matching_plan_schema
+
+  context_builder:
+    in:
+      - plan
+      - project_rules
+      - forbidden_changes
+    out:
+      - context_pack_yaml_matching_context_pack_schema
+
+  generator:
+    in:
+      - user_request
+      - plan
+      - context_pack
+      - constraints
+    out:
+      - implementation_result
+
+  executor:
+    in:
+      - implementation_result
+      - execution_policy
+    out:
+      - execution_report
+
+  evaluator:
+    in:
+      - user_request
+      - plan
+      - context_pack
+      - implementation_result
+      - execution_report
+      - rubric
+    out:
+      - evaluation_result_yaml_matching_schema
+
+  integrator:
+    in:
+      - user_request
+      - execution_report
+      - evaluation_result
+    out:
+      - integration_result
+
+termination:
+  conditions:
+    - evaluator_decision == pass
+    - evaluator_decision == reject
+    - retries_exhausted == true

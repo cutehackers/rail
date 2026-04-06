@@ -32,6 +32,7 @@ The actual target repository is supplied with `--project-root`.
 2. `dart pub get`
 3. Compose a request:
    - `dart run bin/rail.dart compose-request --goal "fix intermittent profile refresh loading issue" --task-type bug_fix --feature profile`
+   - smoke-only validation이 필요하면 `--validation-profile smoke`를 추가
 4. Validate it:
    - `dart run bin/rail.dart validate-request --request .harness/requests/<generated>.yaml`
 5. Bootstrap the workflow against a target repo:
@@ -61,10 +62,11 @@ The runtime supports:
 - actor brief generation
 - sequential actor execution with `codex exec`
 - evaluator-driven `revise` handling back to generator
+- validation profiles (`standard`, `smoke`) for executor planning
+- deterministic smoke fast-path execution for planner/context_builder/generator/executor/evaluator
 
 The runtime does not yet provide:
 
 - parallel actor orchestration
 - project-specific adapters beyond the default Flutter + Riverpod profile
 - hardened end-to-end validation across all task types
-

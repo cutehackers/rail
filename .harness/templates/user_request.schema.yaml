@@ -56,3 +56,9 @@ properties:
       - low
       - medium
       - high
+
+  validation_profile:
+    type: string
+    enum:
+      - standard
+      - smoke

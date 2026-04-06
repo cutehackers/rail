@@ -9,16 +9,15 @@
 - repo-local `skills/rail/SKILL.md` added
 - skill installation script added
 - root README and harness README rewritten for the new model
+- downstream smoke request fixture added at `.harness/requests/rail-downstream-actors-smoke.yaml`
+- actor runtime now selects a rail-repo working directory for non-target actors and for generator runs whose plan stays entirely inside the rail repo
+- request-level `validation_profile` now supports `smoke`, allowing executor planning to avoid full target-repo lint/test for harness smoke tasks
+- smoke validation now uses a deterministic fast-path for planner/context_builder/generator/executor/evaluator, removing nested actor latency from harness smoke runs
+- global `~/.codex/skills/rail/SKILL.md` now points at the repo-owned skill via symlink
 
 ## Next work
 
-1. Run `dart pub get` and `dart analyze` in the new repo.
-2. Smoke-test:
-   - `compose-request`
-   - `validate-request`
-   - `run --project-root /path/to/target-repo`
-   - `execute --through planner`
-3. Harden `generator`, `executor`, and `evaluator` behavior for non-trivial target repos.
+1. Let the downstream smoke finish once and confirm schema-valid outputs for `implementation_result`, `execution_report`, and `evaluation_result`.
+2. Decide whether executor validation for smoke should keep using full target-repo `melos` commands or switch to a narrower smoke-specific validation plan.
+3. Run `dart pub get` and `dart analyze` in the new repo.
 4. Add project profiles beyond the default Flutter + Riverpod profile.
-5. Decide whether the global `~/.codex/skills/rail` should become a thin wrapper or be replaced entirely by the repo-owned skill.
-

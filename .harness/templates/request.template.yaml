@@ -12,3 +12,4 @@ definition_of_done:
   - "Describe validation expectation"
 priority: medium
 risk_tolerance: low
+validation_profile: standard

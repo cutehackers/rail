@@ -79,9 +79,13 @@ Map inferred fields to:
 - `--constraint`
 - `--dod`
 - `--risk-tolerance`
+- `--validation-profile`
 - `--priority`
 
 If the user did not give reliable file hints, omit them instead of inventing them.
+
+Use `--validation-profile smoke` only for harness smoke or control-plane verification tasks where full target-repo lint/test would be disproportionate.
+In `smoke` mode, rail may satisfy actor execution through deterministic control-plane outputs instead of full nested actor generation.
 
 ## Output To User
 
@@ -104,4 +108,3 @@ After bootstrapping, report:
 For examples, see:
 
 - `references/examples.md`
-

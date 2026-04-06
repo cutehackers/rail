@@ -31,6 +31,9 @@ void main(List<String> args) async {
       final riskTolerance =
           _readOption(args.skip(1).toList(), '--risk-tolerance') ?? 'low';
       final priority = _readOption(args.skip(1).toList(), '--priority') ?? 'medium';
+      final validationProfile =
+          _readOption(args.skip(1).toList(), '--validation-profile') ??
+          'standard';
       final constraints = _readMultiOption(args.skip(1).toList(), '--constraint');
       final definitionOfDone = _readMultiOption(args.skip(1).toList(), '--dod');
       final suspectedFiles = _readMultiOption(
@@ -48,6 +51,7 @@ void main(List<String> args) async {
         feature: feature,
         riskTolerance: riskTolerance,
         priority: priority,
+        validationProfile: validationProfile,
         constraints: constraints,
         definitionOfDone: definitionOfDone,
         suspectedFiles: suspectedFiles,
@@ -130,7 +134,7 @@ void _printUsage(IOSink sink) {
     '  dart run bin/rail.dart init-request [--output <path>]',
   );
   sink.writeln(
-    '  dart run bin/rail.dart compose-request --goal <text> --task-type <bug_fix|feature_addition|safe_refactor|test_repair> [--feature <name>] [--suspected-file <path>] [--related-file <path>] [--constraint <text>] [--dod <text>] [--risk-tolerance <low|medium|high>] [--priority <low|medium|high>] [--output <path>]',
+    '  dart run bin/rail.dart compose-request --goal <text> --task-type <bug_fix|feature_addition|safe_refactor|test_repair> [--feature <name>] [--suspected-file <path>] [--related-file <path>] [--constraint <text>] [--dod <text>] [--risk-tolerance <low|medium|high>] [--priority <low|medium|high>] [--validation-profile <standard|smoke>] [--output <path>]',
   );
   sink.writeln(
     '  dart run bin/rail.dart validate-request --request <path>',
@@ -224,6 +228,7 @@ class HarnessRunner {
     required String? feature,
     required String riskTolerance,
     required String priority,
+    required String validationProfile,
     required List<String> constraints,
     required List<String> definitionOfDone,
     required List<String> suspectedFiles,
@@ -254,6 +259,7 @@ class HarnessRunner {
       'definition_of_done': normalizedDefinitionOfDone,
       'priority': priority,
       'risk_tolerance': riskTolerance,
+      'validation_profile': validationProfile,
     };
 
     final requestSchema = _loadSchema('request');
@@ -396,7 +402,11 @@ class HarnessRunner {
               '{files}',
               fileHints.map(_shellQuote).join(' '),
             ),
-      analyzeCommands: analyzePackages.isEmpty
+      analyzeCommands: userRequest.validationProfile == 'smoke'
+          ? [
+              'cd ${_shellQuote(projectDirectory.path)} && ${executionPolicy.smokeAnalyzeCommand}',
+            ]
+          : analyzePackages.isEmpty
           ? [
               'cd ${_shellQuote(projectDirectory.path)} && ${executionPolicy.workspaceAnalyzeCommand}',
             ]
@@ -406,7 +416,11 @@ class HarnessRunner {
                     'cd ${_shellQuote(p.join(projectDirectory.path, packageRoot))} && ${executionPolicy.packageAnalyzeCommand}',
               )
               .toList(growable: false),
-      testCommands: testTargets.isEmpty
+      testCommands: userRequest.validationProfile == 'smoke'
+          ? [
+              'cd ${_shellQuote(projectDirectory.path)} && ${executionPolicy.smokeTestCommand}',
+            ]
+          : testTargets.isEmpty
           ? [
               'cd ${_shellQuote(projectDirectory.path)} && ${executionPolicy.workspaceTestCommand}',
             ]
@@ -538,10 +552,17 @@ class HarnessRunner {
     final workflow = ResolvedWorkflow.fromJson(
       _readJsonFile(p.join(artifactDirectory.path, 'resolved_workflow.json')),
     );
+    final userRequest = UserRequest.fromMap(
+      _asMap(
+        _loadYamlValue(File(p.join(artifactDirectory.path, 'request.yaml'))),
+        context: p.join(artifactDirectory.path, 'request.yaml'),
+      ),
+      requestPath: workflow.requestPath,
+    );
     final projectDirectory = _resolveProjectDirectory(
       projectRoot ?? workflow.projectRoot,
     );
-    final _ = ExecutionPlan.fromJson(
+    final executionPlan = ExecutionPlan.fromJson(
       _readJsonFile(p.join(artifactDirectory.path, 'execution_plan.json')),
     );
     final stateFile = File(p.join(artifactDirectory.path, 'state.json'));
@@ -586,11 +607,58 @@ class HarnessRunner {
               actorName: actorName,
             );
 
+      if (userRequest.validationProfile == 'smoke') {
+        final smokeResponse = await _runSmokeActor(
+          actorName: actorName,
+          artifactDirectory: artifactDirectory,
+          workflow: workflow,
+          executionPlan: executionPlan,
+          userRequest: userRequest,
+          outputPath: outputPath,
+          logPath: logPath,
+          projectRoot: projectDirectory.path,
+        );
+        if (smokeResponse != null) {
+          if (schemaName != null && outputPath != null) {
+            await File(outputPath).writeAsString(_toYaml(smokeResponse));
+            await validateArtifact(
+              filePath: p.relative(outputPath, from: root.path),
+              schemaName: schemaName,
+            );
+          }
+
+          currentState = _advanceState(
+            state: currentState,
+            workflow: workflow,
+            actorName: actorName,
+            artifactDirectory: artifactDirectory,
+          );
+          await stateFile.writeAsString(
+            const JsonEncoder.withIndent('  ').convert(currentState.toJson()),
+          );
+
+          if (stopActor != null && actorName == stopActor) {
+            break;
+          }
+          if (_shouldTerminate(currentState)) {
+            break;
+          }
+          continue;
+        }
+      }
+
+      final actorWorkingDirectory = _actorWorkingDirectory(
+        actorName: actorName,
+        artifactDirectory: artifactDirectory,
+        projectRoot: projectDirectory.path,
+      );
+
       final prompt = _buildCodexExecutionPrompt(
         actorName: actorName,
         actorBriefPath: actorBriefPath,
         artifactDirectory: artifactDirectory.path,
         projectRoot: projectDirectory.path,
+        actorWorkingDirectory: actorWorkingDirectory,
         outputPath: outputPath,
         returnsStructuredOutput: schemaPath != null,
       );
@@ -618,7 +686,7 @@ class HarnessRunner {
           logPath,
           prompt,
         ],
-        workingDirectory: projectDirectory.path,
+        workingDirectory: actorWorkingDirectory,
         timeout: const Duration(minutes: 5),
       );
 
@@ -1471,11 +1539,311 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
         state.status == 'revise_exhausted';
   }
 
+  Future<Map<String, Object?>?> _runSmokeActor({
+    required String actorName,
+    required Directory artifactDirectory,
+    required ResolvedWorkflow workflow,
+    required ExecutionPlan executionPlan,
+    required UserRequest userRequest,
+    required String? outputPath,
+    required String logPath,
+    required String projectRoot,
+  }) async {
+    final response = switch (actorName) {
+      'planner' => _buildSmokePlan(
+          artifactDirectory: artifactDirectory,
+          userRequest: userRequest,
+        ),
+      'context_builder' => _buildSmokeContextPack(
+          artifactDirectory: artifactDirectory,
+        ),
+      'generator' => _buildSmokeImplementationResult(
+          artifactDirectory: artifactDirectory,
+        ),
+      'executor' => await _buildSmokeExecutionReport(
+          executionPlan: executionPlan,
+          projectRoot: projectRoot,
+        ),
+      'evaluator' => _buildSmokeEvaluationResult(
+          artifactDirectory: artifactDirectory,
+        ),
+      _ => null,
+    };
+
+    if (response == null) {
+      return null;
+    }
+
+    await File(logPath).writeAsString(
+      const JsonEncoder.withIndent('  ').convert(response),
+    );
+    if (outputPath != null) {
+      await File(outputPath).writeAsString(_toYaml(response));
+    }
+    return response;
+  }
+
+  Map<String, Object?> _buildSmokePlan({
+    required Directory artifactDirectory,
+    required UserRequest userRequest,
+  }) {
+    final requestFile = p.join(root.path, userRequest.requestPath);
+    return {
+      'summary':
+          'Smoke-profile plan for `${userRequest.goal}` focused on validating the separated rail control-plane actor chain without broad repository changes.',
+      'likely_files': <String>[
+        p.join(root.path, 'bin', 'rail.dart'),
+        p.join(root.path, '.harness', 'supervisor', 'execution_policy.yaml'),
+        requestFile,
+      ],
+      'assumptions': <String>[
+        'Smoke validation should stay inside the rail control-plane repo unless the execution plan explicitly calls the external target repo.',
+        'Schema-valid actor outputs are sufficient for this smoke profile.',
+      ],
+      'substeps': <String>[
+        'Produce minimal schema-valid plan/context/implementation artifacts.',
+        'Run smoke validation commands from the execution plan.',
+        'Decide pass or revise from the smoke execution report.',
+      ],
+      'risks': <String>[
+        'Smoke profile verifies control-plane flow, not full target-repo correctness.',
+      ],
+      'acceptance_criteria_refined': userRequest.definitionOfDone,
+    };
+  }
+
+  Map<String, Object?> _buildSmokeContextPack({
+    required Directory artifactDirectory,
+  }) {
+    final planFile = File(p.join(artifactDirectory.path, 'plan.yaml'));
+    final planMap = _asMap(_loadYamlValue(planFile), context: planFile.path);
+    final likelyFiles = _readOptionalStringList(planMap, 'likely_files');
+    final forbiddenChanges = _readBulletList(
+      File(p.join(artifactDirectory.path, 'inputs', 'forbidden_changes.md')),
+    );
+    return {
+      'relevant_files': likelyFiles
+          .map(
+            (path) => {
+              'path': path,
+              'why': 'Smoke-profile actor chain depends on this control-plane file.',
+            },
+          )
+          .toList(growable: false),
+      'repo_patterns': <String>[
+        'Smoke validation uses deterministic actor outputs to verify control-plane orchestration quickly.',
+        'Executor commands still come from the generated execution plan, even when actor outputs are synthesized.',
+      ],
+      'test_patterns': <String>[
+        'Smoke requests favor reachability and schema validation over full lint/test coverage.',
+      ],
+      'forbidden_changes': forbiddenChanges,
+      'implementation_hints': <String>[
+        'Keep smoke artifacts deterministic and scoped to the rail repo.',
+      ],
+    };
+  }
+
+  Map<String, Object?> _buildSmokeImplementationResult({
+    required Directory artifactDirectory,
+  }) {
+    final planFile = File(p.join(artifactDirectory.path, 'plan.yaml'));
+    final planMap = _asMap(_loadYamlValue(planFile), context: planFile.path);
+    final likelyFiles = _readOptionalStringList(planMap, 'likely_files');
+    return {
+      'changed_files': <String>[],
+      'patch_summary': <String>[
+        'Smoke profile skips repository edits and validates orchestration using synthesized actor outputs.',
+      ],
+      'tests_added_or_updated': <String>[],
+      'known_limits': likelyFiles.isEmpty
+          ? <String>[]
+          : <String>[
+              'Likely implementation scope for non-smoke execution: ${likelyFiles.join(', ')}',
+            ],
+    };
+  }
+
+  Future<Map<String, Object?>> _buildSmokeExecutionReport({
+    required ExecutionPlan executionPlan,
+    required String projectRoot,
+  }) async {
+    final logs = <String>[];
+    final failureDetails = <String>[];
+    var formatPass = executionPlan.formatCommand == null;
+    var analyzePass = true;
+    var passedTests = 0;
+    var failedTests = 0;
+
+    if (executionPlan.formatCommand != null) {
+      final result = await _runCommand(
+        'zsh',
+        ['-lc', executionPlan.formatCommand!],
+        workingDirectory: projectRoot,
+        timeout: const Duration(minutes: 1),
+      );
+      formatPass = result.exitCode == 0;
+      logs.add(_commandSummary(executionPlan.formatCommand!, result.exitCode));
+      if (!formatPass) {
+        failureDetails.add('Format command failed: ${executionPlan.formatCommand}');
+      }
+    }
+
+    for (final command in executionPlan.analyzeCommands) {
+      final result = await _runCommand(
+        'zsh',
+        ['-lc', command],
+        workingDirectory: projectRoot,
+        timeout: const Duration(minutes: 1),
+      );
+      logs.add(_commandSummary(command, result.exitCode));
+      if (result.exitCode != 0) {
+        analyzePass = false;
+        failureDetails.add('Analyze command failed: $command');
+      }
+    }
+
+    for (final command in executionPlan.testCommands) {
+      final result = await _runCommand(
+        'zsh',
+        ['-lc', command],
+        workingDirectory: projectRoot,
+        timeout: const Duration(minutes: 1),
+      );
+      logs.add(_commandSummary(command, result.exitCode));
+      if (result.exitCode == 0) {
+        passedTests += 1;
+      } else {
+        failedTests += 1;
+        failureDetails.add('Test command failed: $command');
+      }
+    }
+
+    return {
+      'format': formatPass ? 'pass' : 'fail',
+      'analyze': analyzePass ? 'pass' : 'fail',
+      'tests': {
+        'total': executionPlan.testCommands.length,
+        'passed': passedTests,
+        'failed': failedTests,
+      },
+      'failure_details': failureDetails,
+      'logs': logs,
+    };
+  }
+
+  Map<String, Object?> _buildSmokeEvaluationResult({
+    required Directory artifactDirectory,
+  }) {
+    final executionReportFile = File(
+      p.join(artifactDirectory.path, 'execution_report.yaml'),
+    );
+    final executionReport = _asMap(
+      _loadYamlValue(executionReportFile),
+      context: executionReportFile.path,
+    );
+    final analyzePass = _readString(executionReport, 'analyze') == 'pass';
+    final tests = _readMap(executionReport, 'tests');
+    final testFailures = _readInt(tests, 'failed');
+    final pass = analyzePass && testFailures == 0;
+    return {
+      'decision': pass ? 'pass' : 'revise',
+      'scores': {
+        'requirements': pass ? 1 : 0.5,
+        'architecture': 1,
+        'regression_risk': pass ? 1 : 0.5,
+      },
+      'findings': pass
+          ? <String>[
+              'Smoke-profile actor chain completed with schema-valid artifacts and passing smoke validation commands.',
+            ]
+          : <String>[
+              'Smoke-profile validation reported at least one failed command.',
+            ],
+      'next_action': pass
+          ? <String>[]
+          : <String>[
+              'Inspect execution_report logs and rerun the smoke after addressing the failed command.',
+            ],
+    };
+  }
+
+  List<String> _readBulletList(File file) {
+    if (!file.existsSync()) {
+      return const [];
+    }
+    return file
+        .readAsLinesSync()
+        .map((line) => line.trim())
+        .where((line) => line.startsWith('- '))
+        .map((line) => line.substring(2).trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  String _commandSummary(String command, int exitCode) {
+    return 'exit=$exitCode :: $command';
+  }
+
+  String _actorWorkingDirectory({
+    required String actorName,
+    required Directory artifactDirectory,
+    required String projectRoot,
+  }) {
+    switch (actorName) {
+      case 'planner':
+      case 'context_builder':
+      case 'evaluator':
+      case 'integrator':
+        return root.path;
+      case 'executor':
+        return projectRoot;
+      case 'generator':
+        final likelyFiles = _planLikelyFiles(artifactDirectory);
+        final touchesHarnessOnly =
+            likelyFiles.isNotEmpty &&
+            likelyFiles.every((path) => _isPathWithinRoot(path, root.path)) &&
+            likelyFiles.every((path) => !_isPathWithinRoot(path, projectRoot));
+        return touchesHarnessOnly ? root.path : projectRoot;
+      default:
+        return projectRoot;
+    }
+  }
+
+  List<String> _planLikelyFiles(Directory artifactDirectory) {
+    final planFile = File(p.join(artifactDirectory.path, 'plan.yaml'));
+    if (!planFile.existsSync()) {
+      return const [];
+    }
+
+    final planMap = _asMap(_loadYamlValue(planFile), context: planFile.path);
+    final rawLikelyFiles = planMap['likely_files'];
+    if (rawLikelyFiles is! List) {
+      return const [];
+    }
+
+    return rawLikelyFiles
+        .whereType<String>()
+        .map((path) => p.normalize(path))
+        .toList(growable: false);
+  }
+
+  bool _isPathWithinRoot(String path, String rootPath) {
+    if (!p.isAbsolute(path)) {
+      return false;
+    }
+    final normalizedPath = p.normalize(path);
+    final normalizedRoot = p.normalize(rootPath);
+    return normalizedPath == normalizedRoot ||
+        normalizedPath.startsWith('$normalizedRoot${p.separator}');
+  }
+
   String _buildCodexExecutionPrompt({
     required String actorName,
     required String actorBriefPath,
     required String artifactDirectory,
     required String projectRoot,
+    required String actorWorkingDirectory,
     required String? outputPath,
     required bool returnsStructuredOutput,
   }) {
@@ -1498,6 +1866,7 @@ You are executing the `$actorName` actor for a rail harness workflow.
 
 Target project root: `$projectRoot`
 Harness artifact root: `$artifactDirectory`
+Actor working directory: `$actorWorkingDirectory`
 
 Read and follow the actor brief at `$actorBriefPath`.
 $outputInstruction
@@ -1520,6 +1889,7 @@ class UserRequest {
     required this.constraints,
     required this.definitionOfDone,
     required this.riskTolerance,
+    required this.validationProfile,
     required this.requestPath,
     this.priority,
   });
@@ -1534,6 +1904,8 @@ class UserRequest {
     final constraints = _readStringList(map, 'constraints');
     final definitionOfDone = _readStringList(map, 'definition_of_done');
     final riskTolerance = _readString(map, 'risk_tolerance');
+    final validationProfile =
+        map['validation_profile']?.toString() ?? 'standard';
     final priority = map['priority']?.toString();
 
     const allowedTaskTypes = {
@@ -1543,12 +1915,18 @@ class UserRequest {
       'test_repair',
     };
     const allowedRiskTolerance = {'low', 'medium', 'high'};
+    const allowedValidationProfiles = {'standard', 'smoke'};
 
     if (!allowedTaskTypes.contains(taskType)) {
       throw ArgumentError('Unsupported task_type: $taskType');
     }
     if (!allowedRiskTolerance.contains(riskTolerance)) {
       throw ArgumentError('Unsupported risk_tolerance: $riskTolerance');
+    }
+    if (!allowedValidationProfiles.contains(validationProfile)) {
+      throw ArgumentError(
+        'Unsupported validation_profile: $validationProfile',
+      );
     }
 
     return UserRequest(
@@ -1558,6 +1936,7 @@ class UserRequest {
       constraints: constraints,
       definitionOfDone: definitionOfDone,
       riskTolerance: riskTolerance,
+      validationProfile: validationProfile,
       priority: priority,
       requestPath: requestPath,
     );
@@ -1569,6 +1948,7 @@ class UserRequest {
   final List<String> constraints;
   final List<String> definitionOfDone;
   final String riskTolerance;
+  final String validationProfile;
   final String? priority;
   final String requestPath;
 }
@@ -1845,8 +2225,10 @@ class ExecutionPolicy {
     required this.formatCommand,
     required this.packageAnalyzeCommand,
     required this.workspaceAnalyzeCommand,
+    required this.smokeAnalyzeCommand,
     required this.packageTestCommand,
     required this.workspaceTestCommand,
+    required this.smokeTestCommand,
     required this.createPlaceholders,
     required this.createActorBriefs,
     required this.persistJsonSnapshots,
@@ -1865,6 +2247,7 @@ class ExecutionPolicy {
         _readMap(map, 'analyze'),
         'workspace_fallback',
       ),
+      smokeAnalyzeCommand: _readString(_readMap(map, 'analyze'), 'smoke_command'),
       packageTestCommand: _readString(
         _readMap(map, 'tests'),
         'package_command',
@@ -1873,6 +2256,7 @@ class ExecutionPolicy {
         _readMap(map, 'tests'),
         'workspace_fallback',
       ),
+      smokeTestCommand: _readString(_readMap(map, 'tests'), 'smoke_command'),
       createPlaceholders: _readBool(runtime, 'create_placeholders'),
       createActorBriefs: _readBool(runtime, 'create_actor_briefs'),
       persistJsonSnapshots: _readBool(runtime, 'persist_json_snapshots'),
@@ -1883,8 +2267,10 @@ class ExecutionPolicy {
   final String formatCommand;
   final String packageAnalyzeCommand;
   final String workspaceAnalyzeCommand;
+  final String smokeAnalyzeCommand;
   final String packageTestCommand;
   final String workspaceTestCommand;
+  final String smokeTestCommand;
   final bool createPlaceholders;
   final bool createActorBriefs;
   final bool persistJsonSnapshots;

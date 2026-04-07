@@ -1198,6 +1198,9 @@ class HarnessRunner {
     buffer.writeln(
       '- `split_task`: stop orchestration and require a smaller follow-up task.',
     );
+    buffer.writeln(
+      '- `block_environment`: stop orchestration because tooling or environment setup prevents credible validation.',
+    );
     buffer.writeln();
 
     buffer.writeln('## Executor Commands');
@@ -1626,7 +1629,11 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           'evaluation_result.yaml must include `next_action` when decision is `$decision`.',
         );
       }
-      final primaryAction = nextAction ?? 'revise_generator';
+      final primaryAction = _resolveSupervisorAction(
+        decision: decision,
+        nextAction: nextAction,
+        reasonCodes: reasonCodes,
+      );
       switch (primaryAction) {
         case 'rebuild_context':
           final remaining = state.contextRebuildsRemaining - 1;
@@ -1681,6 +1688,15 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
             lastReasonCodes: reasonCodes,
             actionHistory: [...state.actionHistory, primaryAction],
           );
+        case 'block_environment':
+          return state.copyWith(
+            status: 'blocked_environment',
+            clearCurrentActor: true,
+            completedActors: completedActors,
+            lastDecision: decision,
+            lastReasonCodes: reasonCodes,
+            actionHistory: [...state.actionHistory, primaryAction],
+          );
         case 'revise_generator':
         default:
           final retriesRemaining = state.generatorRetriesRemaining - 1;
@@ -1724,7 +1740,29 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
         state.status == 'rejected' ||
         state.status == 'revise_exhausted' ||
         state.status == 'evolution_exhausted' ||
+        state.status == 'blocked_environment' ||
         state.status == 'split_required';
+  }
+
+  String _resolveSupervisorAction({
+    required String decision,
+    required String nextAction,
+    required List<String> reasonCodes,
+  }) {
+    if (decision == 'revise' && _hasEnvironmentFailure(reasonCodes)) {
+      return 'block_environment';
+    }
+    return nextAction;
+  }
+
+  bool _hasEnvironmentFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) {
+      return code.startsWith('environment_') ||
+          code.contains('permission_error') ||
+          code.contains('sandbox') ||
+          code.contains('tooling_unavailable') ||
+          code.contains('sdk_cache');
+    });
   }
 
   ExecutionPlan _buildExecutionPlan({

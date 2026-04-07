@@ -45,3 +45,4 @@ properties:
       - rebuild_context
       - tighten_validation
       - split_task
+      - block_environment

@@ -37,7 +37,7 @@
 - Modify: `/Users/junhyounglee/workspace/rail/bin/rail.dart`
 
 - [ ] Replace evaluator-only generator retry logic with action-based routing.
-- [ ] Support `revise_generator`, `rebuild_context`, `tighten_validation`, `split_task`, `pass`, and `reject`.
+- [ ] Support `revise_generator`, `rebuild_context`, `tighten_validation`, `split_task`, `block_environment`, `pass`, and `reject`.
 - [ ] Record `lastDecision`, `lastReasonCodes`, and `actionHistory` in state so artifacts show why iteration happened.
 
 ### Task 4: Keep Smoke Path Compatible

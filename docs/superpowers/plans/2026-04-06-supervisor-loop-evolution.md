@@ -17,7 +17,7 @@
 - Modify: `/Users/junhyounglee/workspace/rail/.harness/actors/evaluator.md`
 - Modify: `/Users/junhyounglee/workspace/rail/.harness/supervisor/context_contract.yaml`
 
-- [ ] Add structured `next_action` values for supervisor routing.
+- [ ] Add structured single-value `next_action` for supervisor routing.
 - [ ] Add `reason_codes` so evaluator rationale is machine-readable.
 - [ ] Update evaluator instructions to emit bounded orchestration actions instead of vague free text.
 
@@ -46,7 +46,7 @@
 - Modify: `/Users/junhyounglee/workspace/rail/bin/rail.dart`
 
 - [ ] Update deterministic smoke evaluator output to satisfy the new schema.
-- [ ] Ensure smoke still terminates with `pass` and empty `next_action`.
+- [ ] Ensure smoke still terminates with `pass` and omitted `next_action`.
 
 ### Task 5: Document Runtime Semantics
 

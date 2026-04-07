@@ -3,7 +3,6 @@ required:
   - decision
   - findings
   - reason_codes
-  - next_action
 
 properties:
   decision:
@@ -40,11 +39,9 @@ properties:
       type: string
 
   next_action:
-    type: array
-    items:
-      type: string
-      enum:
-        - revise_generator
-        - rebuild_context
-        - tighten_validation
-        - split_task
+    type: string
+    enum:
+      - revise_generator
+      - rebuild_context
+      - tighten_validation
+      - split_task

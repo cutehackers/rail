@@ -622,6 +622,7 @@ class HarnessRunner {
         actorIndex: actorIndex,
         projectRoot: projectDirectory.path,
       );
+      final priorExecutionPlan = executionPlan;
       executionPlan = await _tightenExecutionPlanIfNeeded(
         actorName: actorName,
         artifactDirectory: artifactDirectory,
@@ -635,6 +636,66 @@ class HarnessRunner {
         projectRoot: projectDirectory.path,
         state: currentState,
       );
+      if (actorName == 'executor' &&
+          currentState.status == 'tightening_validation' &&
+          _sameExecutionPlan(priorExecutionPlan, executionPlan)) {
+        currentState = currentState.copyWith(
+          status: 'evolution_exhausted',
+          clearCurrentActor: true,
+          lastReasonCodes: [
+            ...currentState.lastReasonCodes,
+            'tighten_validation_noop',
+          ],
+        );
+        await stateFile.writeAsString(
+          const JsonEncoder.withIndent('  ').convert(currentState.toJson()),
+        );
+        break;
+      }
+
+      final fastPathResponse = await _runFastPathActor(
+        actorName: actorName,
+        artifactDirectory: artifactDirectory,
+        workflow: workflow,
+        executionPlan: executionPlan,
+        userRequest: userRequest,
+        outputPath: outputPath,
+        logPath: logPath,
+        projectRoot: projectDirectory.path,
+      );
+      if (fastPathResponse != null) {
+        await _refreshActorBriefs(
+          artifactDirectory: artifactDirectory,
+          workflow: workflow,
+          executionPlan: executionPlan,
+          contextContract: contextContract,
+          startIndex: actorIndex + 1,
+        );
+        if (schemaName != null && outputPath != null) {
+          await validateArtifact(
+            filePath: p.relative(outputPath, from: root.path),
+            schemaName: schemaName,
+          );
+        }
+
+        currentState = _advanceState(
+          state: currentState,
+          workflow: workflow,
+          actorName: actorName,
+          artifactDirectory: artifactDirectory,
+        );
+        await stateFile.writeAsString(
+          const JsonEncoder.withIndent('  ').convert(currentState.toJson()),
+        );
+
+        if (stopActor != null && actorName == stopActor) {
+          break;
+        }
+        if (_shouldTerminate(currentState)) {
+          break;
+        }
+        continue;
+      }
 
       if (userRequest.validationProfile == 'smoke') {
         final smokeResponse = await _runSmokeActor(
@@ -1355,7 +1416,7 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           },
           'findings': <String>['bootstrap placeholder'],
           'reason_codes': <String>['bootstrap_placeholder'],
-          'next_action': <String>['revise_generator'],
+          'next_action': 'revise_generator',
         };
       case 'integration_result':
         return {
@@ -1528,7 +1589,7 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       );
       final decision = _readString(evaluationMap, 'decision');
       final reasonCodes = _readOptionalStringList(evaluationMap, 'reason_codes');
-      final nextActions = _readOptionalStringList(evaluationMap, 'next_action');
+      final nextAction = _readOptionalString(evaluationMap, 'next_action');
       if (decision == 'pass') {
         final integratorIndex = workflow.actors.indexOf('integrator');
         if (integratorIndex != -1 && !completedActors.contains('integrator')) {
@@ -1560,9 +1621,12 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           actionHistory: [...state.actionHistory, 'reject'],
         );
       }
-      final primaryAction = nextActions.isEmpty
-          ? 'revise_generator'
-          : nextActions.first;
+      if (nextAction == null) {
+        throw StateError(
+          'evaluation_result.yaml must include `next_action` when decision is `$decision`.',
+        );
+      }
+      final primaryAction = nextAction ?? 'revise_generator';
       switch (primaryAction) {
         case 'rebuild_context':
           final remaining = state.contextRebuildsRemaining - 1;
@@ -1669,17 +1733,21 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     required ExecutionPolicy executionPolicy,
     required TestTargetRules testRules,
     required List<String> fileHints,
+    List<String>? analyzePackagesOverride,
+    List<String>? testTargetsOverride,
   }) {
-    final analyzePackages = userRequest.context.validationRoots.isNotEmpty
-        ? userRequest.context.validationRoots
-        : _inferPackageRoots(fileHints);
-    final testTargets = userRequest.context.validationTargets.isNotEmpty
-        ? userRequest.context.validationTargets
-        : testRules.inferTargets(
+    final analyzePackages = analyzePackagesOverride ??
+        (userRequest.context.validationRoots.isNotEmpty
+            ? userRequest.context.validationRoots
+            : _inferPackageRoots(fileHints));
+    final testTargets = testTargetsOverride ??
+        (userRequest.context.validationTargets.isNotEmpty
+            ? userRequest.context.validationTargets
+            : testRules.inferTargets(
             projectRoot: projectRoot,
             fileHints: fileHints,
             featureName: userRequest.context.feature,
-          );
+          ));
 
     return ExecutionPlan(
       formatCommand: fileHints.isEmpty
@@ -1804,27 +1872,58 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       return tightenedExecutionPlan;
     }
 
-    if (userRequest.validationProfile != 'standard' ||
-        userRequest.context.validationRoots.isNotEmpty ||
-        userRequest.context.validationTargets.isNotEmpty) {
+    if (userRequest.validationProfile != 'standard') {
       return executionPlan;
+    }
+
+    final explicitValidationTargets = _tightenValidationTargets(
+      userRequest.context.validationTargets,
+    );
+    final explicitValidationRoots = _tightenValidationRoots(
+      roots: userRequest.context.validationRoots,
+      tightenedTargets: explicitValidationTargets,
+    );
+    final candidatePlans = <ExecutionPlan>[];
+    if (explicitValidationRoots.isNotEmpty || explicitValidationTargets.isNotEmpty) {
+      candidatePlans.add(
+        _buildExecutionPlan(
+          userRequest: userRequest,
+          projectRoot: projectRoot,
+          executionPolicy: executionPolicy,
+          testRules: testRules,
+          fileHints: const <String>[],
+          analyzePackagesOverride: explicitValidationRoots,
+          testTargetsOverride: explicitValidationTargets,
+        ),
+      );
     }
 
     final planFileHints = _projectRelativePlanLikelyFiles(
       artifactDirectory: artifactDirectory,
       projectRoot: projectRoot,
     );
-    if (planFileHints.isEmpty) {
+    if (planFileHints.isNotEmpty) {
+      candidatePlans.add(
+        _buildExecutionPlan(
+          userRequest: userRequest,
+          projectRoot: projectRoot,
+          executionPolicy: executionPolicy,
+          testRules: testRules,
+          fileHints: planFileHints,
+        ),
+      );
+    }
+    if (candidatePlans.isEmpty) {
       return executionPlan;
     }
 
-    final tightenedExecutionPlan = _buildExecutionPlan(
-      userRequest: userRequest,
-      projectRoot: projectRoot,
-      executionPolicy: executionPolicy,
-      testRules: testRules,
-      fileHints: planFileHints,
-    );
+    var tightenedExecutionPlan = candidatePlans.first;
+    for (final candidate in candidatePlans.skip(1)) {
+      tightenedExecutionPlan = _preferNarrowerExecutionPlan(
+        tightenedExecutionPlan,
+        candidate,
+      );
+    }
     if (_sameExecutionPlan(executionPlan, tightenedExecutionPlan)) {
       return executionPlan;
     }
@@ -1858,6 +1957,71 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           : const [],
       testCommands: hasSmokeTestRoot ? executionPlan.testCommands : const [],
     );
+  }
+
+  ExecutionPlan _preferNarrowerExecutionPlan(
+    ExecutionPlan current,
+    ExecutionPlan candidate,
+  ) {
+    final currentScore = _executionPlanNarrownessScore(current);
+    final candidateScore = _executionPlanNarrownessScore(candidate);
+    if (candidateScore < currentScore) {
+      return candidate;
+    }
+    return current;
+  }
+
+  int _executionPlanNarrownessScore(ExecutionPlan plan) {
+    return plan.analyzeCommands.length * 1000 +
+        plan.testCommands.length * 100 +
+        (plan.formatCommand == null ? 0 : 10) +
+        plan.analyzeCommands.join('').length +
+        plan.testCommands.join('').length;
+  }
+
+  List<String> _tightenValidationTargets(List<String> targets) {
+    final normalizedTargets = {
+      for (final target in targets) p.normalize(target),
+    }.toList()
+      ..sort((left, right) {
+        final depthCompare = p.split(right).length.compareTo(p.split(left).length);
+        if (depthCompare != 0) {
+          return depthCompare;
+        }
+        return right.length.compareTo(left.length);
+      });
+    if (normalizedTargets.length <= 1) {
+      return normalizedTargets;
+    }
+    return <String>[normalizedTargets.first];
+  }
+
+  List<String> _tightenValidationRoots({
+    required List<String> roots,
+    required List<String> tightenedTargets,
+  }) {
+    if (tightenedTargets.isNotEmpty) {
+      final inferredRoots = _groupTargetsByPackage(tightenedTargets).keys.toList()
+        ..sort();
+      if (inferredRoots.isNotEmpty) {
+        return inferredRoots;
+      }
+    }
+
+    final normalizedRoots = {
+      for (final root in roots) p.normalize(root),
+    }.toList()
+      ..sort((left, right) {
+        final depthCompare = p.split(right).length.compareTo(p.split(left).length);
+        if (depthCompare != 0) {
+          return depthCompare;
+        }
+        return right.length.compareTo(left.length);
+      });
+    if (normalizedRoots.length <= 1) {
+      return normalizedRoots;
+    }
+    return <String>[normalizedRoots.first];
   }
 
   Future<void> _persistExecutionPlanRefresh({
@@ -1902,6 +2066,46 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
         materializedInputs: _materializedInputsForArtifact(),
       ),
     );
+  }
+
+  Future<void> _refreshActorBriefs({
+    required Directory artifactDirectory,
+    required ResolvedWorkflow workflow,
+    required ExecutionPlan executionPlan,
+    required ContextContract contextContract,
+    int startIndex = 0,
+  }) async {
+    final actorBriefDirectory = Directory(
+      p.join(artifactDirectory.path, 'actor_briefs'),
+    );
+    if (!actorBriefDirectory.existsSync()) {
+      return;
+    }
+
+    final materializedInputs = _materializedInputsForArtifact();
+    for (var index = startIndex; index < workflow.actors.length; index++) {
+      final actorName = workflow.actors[index];
+      final actorDoc = File(p.join(root.path, '.harness', 'actors', '$actorName.md'));
+      final actorInstructions = actorDoc.existsSync()
+          ? await actorDoc.readAsString()
+          : 'Actor instructions not found.';
+      final actorBriefPath = p.join(
+        artifactDirectory.path,
+        'actor_briefs',
+        '${(index + 1).toString().padLeft(2, '0')}_$actorName.md',
+      );
+      await File(actorBriefPath).writeAsString(
+        _buildActorBrief(
+          actorName: actorName,
+          actorInstructions: actorInstructions,
+          workflow: workflow,
+          executionPlan: executionPlan,
+          actorContract: contextContract.contractFor(actorName),
+          artifactDirectory: artifactDirectory,
+          materializedInputs: materializedInputs,
+        ),
+      );
+    }
   }
 
   MaterializedInputs _materializedInputsForArtifact() {
@@ -2002,6 +2206,195 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       await File(outputPath).writeAsString(_toYaml(response));
     }
     return response;
+  }
+
+  Future<Map<String, Object?>?> _runFastPathActor({
+    required String actorName,
+    required Directory artifactDirectory,
+    required ResolvedWorkflow workflow,
+    required ExecutionPlan executionPlan,
+    required UserRequest userRequest,
+    required String? outputPath,
+    required String logPath,
+    required String projectRoot,
+  }) async {
+    final likelyFiles = _standardFastPathLikelyFiles(
+      userRequest: userRequest,
+      projectRoot: projectRoot,
+    );
+    final validationRoots = _standardFastPathValidationRoots(
+      userRequest: userRequest,
+      projectRoot: projectRoot,
+    );
+    final validationTargets = _standardFastPathValidationTargets(
+      userRequest: userRequest,
+      projectRoot: projectRoot,
+    );
+    if (userRequest.validationProfile != 'standard' ||
+        !_canUseStandardFastPath(
+          likelyFiles: likelyFiles,
+          validationRoots: validationRoots,
+          validationTargets: validationTargets,
+        )) {
+      return null;
+    }
+
+    final response = switch (actorName) {
+      'planner' => _buildStandardFastPathPlan(
+          userRequest: userRequest,
+          likelyFiles: likelyFiles,
+          validationRoots: validationRoots,
+          validationTargets: validationTargets,
+        ),
+      'context_builder' => _buildStandardFastPathContextPack(
+          artifactDirectory: artifactDirectory,
+          userRequest: userRequest,
+          likelyFiles: likelyFiles,
+        ),
+      _ => null,
+    };
+
+    if (response == null) {
+      return null;
+    }
+
+    await File(logPath).writeAsString(
+      const JsonEncoder.withIndent('  ').convert(response),
+    );
+    if (outputPath != null) {
+      await File(outputPath).writeAsString(_toYaml(response));
+    }
+    return response;
+  }
+
+  bool _canUseStandardFastPath({
+    required List<String> likelyFiles,
+    required List<String> validationRoots,
+    required List<String> validationTargets,
+  }) {
+    return likelyFiles.isNotEmpty ||
+        validationRoots.isNotEmpty ||
+        validationTargets.isNotEmpty;
+  }
+
+  List<String> _standardFastPathLikelyFiles({
+    required UserRequest userRequest,
+    required String projectRoot,
+  }) {
+    final candidates = <String>{
+      ...userRequest.context.suspectedFiles,
+      ...userRequest.context.relatedFiles,
+      ...userRequest.context.validationTargets,
+    };
+    final sanitized = <String>{};
+    for (final path in candidates) {
+      final normalized = _projectRelativeHint(path, projectRoot);
+      if (normalized != null) {
+        sanitized.add(p.normalize(normalized));
+      }
+    }
+    final sorted = sanitized.toList()..sort();
+    return sorted;
+  }
+
+  List<String> _standardFastPathValidationRoots({
+    required UserRequest userRequest,
+    required String projectRoot,
+  }) {
+    final sanitized = <String>{};
+    for (final rootPath in userRequest.context.validationRoots) {
+      final normalized = _projectRelativeHint(rootPath, projectRoot);
+      if (normalized != null) {
+        sanitized.add(p.normalize(normalized));
+      }
+    }
+    final sorted = sanitized.toList()..sort();
+    return sorted;
+  }
+
+  List<String> _standardFastPathValidationTargets({
+    required UserRequest userRequest,
+    required String projectRoot,
+  }) {
+    final sanitized = <String>{};
+    for (final targetPath in userRequest.context.validationTargets) {
+      final normalized = _projectRelativeHint(targetPath, projectRoot);
+      if (normalized != null) {
+        sanitized.add(p.normalize(normalized));
+      }
+    }
+    final sorted = sanitized.toList()..sort();
+    return sorted;
+  }
+
+  Map<String, Object?> _buildStandardFastPathPlan({
+    required UserRequest userRequest,
+    required List<String> likelyFiles,
+    required List<String> validationRoots,
+    required List<String> validationTargets,
+  }) {
+    final refinedAcceptance = <String>[
+      ...userRequest.definitionOfDone,
+      if (validationRoots.isNotEmpty)
+        '검증 범위는 ${validationRoots.join(', ')} 안으로 유지된다',
+      if (validationTargets.isNotEmpty)
+        '검증 대상은 ${validationTargets.join(', ')} 중심으로 유지된다',
+    ];
+
+    return {
+      'summary':
+          'Fast-path plan for `${userRequest.goal}` using request-provided file and validation hints to avoid broad supervisor bootstrap latency.',
+      'likely_files': likelyFiles,
+      'assumptions': <String>[
+        'Request context already contains enough file and validation detail to seed planner output.',
+        'Generator can refine implementation details after this fast-path bootstrap.',
+      ],
+      'substeps': <String>[
+        'Use request-provided file hints as the initial implementation focus.',
+        'Use request-provided validation hints as the initial executor scope.',
+        'Leave deeper implementation judgment to downstream actors.',
+      ],
+      'risks': <String>[
+        'Fast-path planning may miss secondary files not mentioned in the request.',
+      ],
+      'acceptance_criteria_refined': refinedAcceptance,
+    };
+  }
+
+  Map<String, Object?> _buildStandardFastPathContextPack({
+    required Directory artifactDirectory,
+    required UserRequest userRequest,
+    required List<String> likelyFiles,
+  }) {
+    final forbiddenChanges = _readBulletList(
+      File(p.join(artifactDirectory.path, 'inputs', 'forbidden_changes.md')),
+    );
+    return {
+      'relevant_files': likelyFiles
+          .map(
+            (path) => {
+              'path': path,
+              'why': userRequest.context.suspectedFiles.contains(path)
+                  ? 'Request identifies this as a likely implementation file.'
+                  : userRequest.context.validationTargets.contains(path)
+                  ? 'Request identifies this as a primary validation target.'
+                  : 'Request-related file carried into the fast-path context bootstrap.',
+            },
+          )
+          .toList(growable: false),
+      'repo_patterns': <String>[
+        'Prefer request-provided file hints as the initial scope before widening.',
+        'Keep supervisor orchestration narrow and explicit when validation roots or targets are already known.',
+      ],
+      'test_patterns': <String>[
+        if (userRequest.context.validationTargets.isNotEmpty)
+          'Start from explicit validation targets before considering broader package-level tests.',
+      ],
+      'forbidden_changes': forbiddenChanges,
+      'implementation_hints': <String>[
+        'Treat this context pack as a fast bootstrap; widen only if generator or evaluator finds a concrete gap.',
+      ],
+    };
   }
 
   Map<String, Object?> _buildSmokePlan({
@@ -2184,9 +2577,7 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       'reason_codes': pass
           ? <String>[]
           : <String>['smoke_validation_failed'],
-      'next_action': pass
-          ? <String>[]
-          : <String>['tighten_validation'],
+      if (!pass) 'next_action': 'tighten_validation',
     };
   }
 
@@ -3258,6 +3649,17 @@ List<String> _readOptionalStringList(Map<String, dynamic> source, String key) {
     return value.cast<String>();
   }
   throw ArgumentError('Expected `$key` to be a list of strings.');
+}
+
+String? _readOptionalString(Map<String, dynamic> source, String key) {
+  final value = source[key];
+  if (value == null) {
+    return null;
+  }
+  if (value is String) {
+    return value;
+  }
+  throw ArgumentError('Expected `$key` to be a string.');
 }
 
 dynamic _toNativeValue(dynamic value) {

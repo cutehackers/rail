@@ -26,10 +26,11 @@ Return YAML matching `evaluation_result.schema.yaml`:
 - `next_action`
 
 ## Supervisor action rules
-- Return `next_action: []` when `decision` is `pass` or `reject`.
+- Omit `next_action` when `decision` is `pass` or `reject`.
 - For fixable implementation gaps, prefer `revise_generator`.
 - Use `rebuild_context` when the main issue is missing or low-quality repository context.
-- Use `tighten_validation` when the implementation looks acceptable but validation scope is too broad or mismatched.
+- Use `tighten_validation` only when the current executor plan can be materially narrowed.
+- If validation is already at a single credible root and single credible target, do not use `tighten_validation`; prefer `revise_generator` or `rebuild_context`.
 - Use `split_task` when the request should be decomposed before safe progress.
 - Keep `reason_codes` short, machine-readable, and directly tied to the chosen action.
 

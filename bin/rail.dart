@@ -843,7 +843,10 @@ class HarnessRunner {
       }
     }
 
-    return 'Harness execution updated at ${p.relative(artifactDirectory.path, from: root.path)} (status=${currentState.status}, currentActor=${currentState.currentActor ?? 'none'})';
+    return _formatExecutionSummary(
+      artifactDirectory: artifactDirectory,
+      state: currentState,
+    );
   }
 
   Future<String> routeEvaluation({
@@ -865,7 +868,7 @@ class HarnessRunner {
     final stateFile = File(p.join(artifactDirectory.path, 'state.json'));
     final state = HarnessState.fromJson(_readJsonFile(stateFile.path));
     if (state.currentActor != 'evaluator' || _shouldTerminate(state)) {
-      return 'Harness evaluation routing skipped for ${p.relative(artifactDirectory.path, from: root.path)} (currentActor=${state.currentActor ?? 'none'})';
+      return 'Harness evaluation routing skipped for ${p.relative(artifactDirectory.path, from: root.path)} (currentActor=${state.currentActor ?? 'none'}, status=${state.status})';
     }
     final nextState = _advanceState(
       state: state,
@@ -880,7 +883,24 @@ class HarnessRunner {
       artifactDirectory: artifactDirectory,
       state: nextState,
     );
-    return 'Harness evaluation routed at ${p.relative(artifactDirectory.path, from: root.path)} (status=${nextState.status}, currentActor=${nextState.currentActor ?? 'none'})';
+    return _formatExecutionSummary(
+      artifactDirectory: artifactDirectory,
+      state: nextState,
+      prefix: 'Harness evaluation routed',
+    );
+  }
+
+  String _formatExecutionSummary({
+    required Directory artifactDirectory,
+    required HarnessState state,
+    String prefix = 'Harness execution updated',
+  }) {
+    final artifactLabel = p.relative(artifactDirectory.path, from: root.path);
+    final action = state.actionHistory.isEmpty ? 'none' : state.actionHistory.last;
+    final reasons = state.lastReasonCodes.isEmpty
+        ? 'none'
+        : state.lastReasonCodes.join(', ');
+    return '$prefix at $artifactLabel (status=${state.status}, currentActor=${state.currentActor ?? 'none'}, action=$action, reasons=$reasons)';
   }
 
   SchemaValidator _loadSchema(String schemaName) {
@@ -2897,7 +2917,7 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       'planner' || 'context_builder' || 'evaluator' || 'integrator' =>
         'Do not modify repository source files outside the artifact directory.',
       'executor' =>
-        'Run the planned commands if needed, then update only the execution report and any logs inside the artifact directory.',
+        'Run the planned commands if needed, then return the execution report only. Do not create extra log files inside the artifact directory; summarize evidence in `failure_details` and `logs`.',
       'generator' =>
         'You may modify repository source files if needed for the task, and you must also update the implementation result artifact.',
       _ => 'Stay within the repository and artifact scope described in the brief.',

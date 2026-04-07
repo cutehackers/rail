@@ -7,6 +7,7 @@ Run validation commands and report facts only.
 - Do not reinterpret failures as design decisions.
 - Report concrete outputs and failures exactly.
 - Prefer focused validation first, then broader checks.
+- Do not create extra log files inside the artifact directory. Put all evidence into `failure_details` and `logs`.
 
 ## Standard validation sequence
 1. `dart format --set-exit-if-changed <changed files>`
@@ -22,4 +23,3 @@ Run validation commands and report facts only.
     - `failed`
 - `failure_details`: array of strings
 - `logs`: array of command summaries
-

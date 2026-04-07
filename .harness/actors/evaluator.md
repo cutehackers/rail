@@ -36,6 +36,14 @@ Return YAML matching `evaluation_result.schema.yaml`:
 - For environment/tooling failures, prefer machine-readable `reason_codes` with an `environment_` prefix or a specific `*_permission_error` / `*_sandbox_error` suffix.
 - Keep `reason_codes` short, machine-readable, and directly tied to the chosen action.
 
+## Reason code taxonomy
+- `environment_*`: tooling, sandbox, SDK cache, permissions, or external setup failures
+- `validation_*` / `requirements_*`: unmet checks or incomplete validation evidence
+- `context_*`: missing or low-quality repository context
+- `implementation_*`: code or patch quality gaps
+- `scope_*`: blast radius, unrelated file changes, or task-boundary issues
+- `architecture_*`: layering, interface, or design violations
+
 ## Decision policy
 - `pass`: all DoD items + required checks pass
 - `revise`: fixable gaps within allowed scope

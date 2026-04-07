@@ -726,6 +726,12 @@ class HarnessRunner {
           await stateFile.writeAsString(
             const JsonEncoder.withIndent('  ').convert(currentState.toJson()),
           );
+          if (actorName == 'evaluator') {
+            await _appendSupervisorDecisionTrace(
+              artifactDirectory: artifactDirectory,
+              state: currentState,
+            );
+          }
 
           if (stopActor != null && actorName == stopActor) {
             break;
@@ -810,6 +816,12 @@ class HarnessRunner {
       await stateFile.writeAsString(
         const JsonEncoder.withIndent('  ').convert(currentState.toJson()),
       );
+      if (actorName == 'evaluator') {
+        await _appendSupervisorDecisionTrace(
+          artifactDirectory: artifactDirectory,
+          state: currentState,
+        );
+      }
 
       if (stopActor != null && actorName == stopActor) {
         break;
@@ -1763,6 +1775,81 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           code.contains('tooling_unavailable') ||
           code.contains('sdk_cache');
     });
+  }
+
+  Future<void> _appendSupervisorDecisionTrace({
+    required Directory artifactDirectory,
+    required HarnessState state,
+  }) async {
+    final traceFile = File(p.join(artifactDirectory.path, 'supervisor_trace.md'));
+    final evaluationFile = File(
+      p.join(artifactDirectory.path, 'evaluation_result.yaml'),
+    );
+    final evaluationMap = evaluationFile.existsSync()
+        ? _asMap(_loadYamlValue(evaluationFile), context: evaluationFile.path)
+        : const <String, dynamic>{};
+    final decision = evaluationMap['decision']?.toString() ?? state.lastDecision ?? '';
+    final action = state.actionHistory.isEmpty ? '' : state.actionHistory.last;
+    final iteration = state.completedActors.where((actor) => actor == 'evaluator').length;
+    final category = _primaryReasonCategory(state.lastReasonCodes);
+    final buffer = StringBuffer();
+    if (!traceFile.existsSync()) {
+      buffer
+        ..writeln('# Supervisor Decision Trace')
+        ..writeln()
+        ..writeln('Reason code taxonomy:')
+        ..writeln('- `environment_*`: tooling, sandbox, SDK cache, permissions, or external setup failures')
+        ..writeln('- `validation_*` / `requirements_*`: unmet checks or incomplete validation evidence')
+        ..writeln('- `context_*`: insufficient repository context or missing grounding')
+        ..writeln('- `implementation_*`: code or patch quality gaps')
+        ..writeln('- `scope_*`: blast radius or task-boundary findings')
+        ..writeln('- `architecture_*`: design or layering violations')
+        ..writeln();
+    }
+    buffer
+      ..writeln('## Iteration $iteration')
+      ..writeln()
+      ..writeln('- decision: `${decision.isEmpty ? 'unknown' : decision}`')
+      ..writeln('- selected_action: `${action.isEmpty ? 'unknown' : action}`')
+      ..writeln('- status_after_routing: `${state.status}`')
+      ..writeln('- primary_reason_category: `${category}`')
+      ..writeln('- reason_codes: `${state.lastReasonCodes.join(', ')}`')
+      ..writeln(
+        '- budgets_remaining: `generator=${state.generatorRetriesRemaining}, context=${state.contextRebuildsRemaining}, validation=${state.validationTighteningsRemaining}`',
+      )
+      ..writeln();
+    await traceFile.writeAsString(
+      buffer.toString(),
+      mode: FileMode.append,
+      flush: true,
+    );
+  }
+
+  String _primaryReasonCategory(List<String> reasonCodes) {
+    for (final code in reasonCodes) {
+      if (code.startsWith('environment_') ||
+          code.contains('permission_error') ||
+          code.contains('sandbox')) {
+        return 'environment';
+      }
+      if (code.startsWith('validation_') ||
+          code.startsWith('requirements_')) {
+        return 'validation';
+      }
+      if (code.startsWith('context_')) {
+        return 'context';
+      }
+      if (code.startsWith('implementation_')) {
+        return 'implementation';
+      }
+      if (code.startsWith('scope_')) {
+        return 'scope';
+      }
+      if (code.startsWith('architecture_')) {
+        return 'architecture';
+      }
+    }
+    return reasonCodes.isEmpty ? 'none' : 'mixed';
   }
 
   ExecutionPlan _buildExecutionPlan({

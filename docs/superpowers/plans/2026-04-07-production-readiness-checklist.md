@@ -19,6 +19,9 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
   - [x] `environment_* -> block_environment`
 - [x] Supervisor decision trace emitted into artifacts via `supervisor_trace.md`
 - [x] Standard end-to-end run reaches evaluator and records terminal routing state
+- [x] Runtime fills missing executor evidence with fallback `failure_details` / `logs` so terminal artifacts remain readable
+- [x] Terminal outcomes are materialized into `terminal_summary.md`
+- [x] Reason-code precedence over `next_action` is documented in both evaluator guidance and supervisor trace output
 
 ## Evidence
 
@@ -29,6 +32,8 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-env-routing/evaluation_result.yaml`
 - Standard supervisor trace:
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-trace-validation/supervisor_trace.md`
+- Terminal outcome summary:
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-terminal-summary/terminal_summary.md`
 - Deterministic standard route checks:
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-validation/state.json`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-context/state.json`
@@ -37,7 +42,5 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
 
 ## Next production-facing priorities
 
-- Make executor artifact logging robust when target-repo permissions or sandbox rules interfere
 - Tighten evaluator reason-code generation so generic `validation_*` failures are more specific by default
-- Add clearer terminal summaries for `blocked_environment`, `split_required`, and `evolution_exhausted`
 - Review and harden integrator semantics before enabling it in broader workflows

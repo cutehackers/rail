@@ -54,6 +54,10 @@ Return YAML matching `evaluation_result.schema.yaml`:
 - `architecture_*` -> `revise_generator`
 - `scope_*` -> `split_task`
 
+## Routing precedence
+- Keep `reason_codes` aligned with `next_action`.
+- Runtime treats `reason_codes` as authoritative and uses `next_action` only when taxonomy-based routing does not already determine the supervisor action.
+
 ## Decision policy
 - `pass`: all DoD items + required checks pass
 - `revise`: fixable gaps within allowed scope

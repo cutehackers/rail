@@ -662,6 +662,10 @@ class HarnessRunner {
         await stateFile.writeAsString(
           const JsonEncoder.withIndent('  ').convert(currentState.toJson()),
         );
+        await _writeTerminalOutcomeReport(
+          artifactDirectory: artifactDirectory,
+          state: currentState,
+        );
         break;
       }
 
@@ -808,10 +812,17 @@ class HarnessRunner {
       }
 
       if (schemaName != null && outputPath != null) {
-        final responseObject = _decodeStructuredResponse(
+        var responseObject = _decodeStructuredResponse(
           filePath: logPath,
           fallbackText: result.stdout,
         );
+        if (schemaName == 'execution_report') {
+          responseObject = _normalizeExecutionReport(
+            report: responseObject,
+            artifactDirectory: artifactDirectory,
+            actorName: actorName,
+          );
+        }
         await File(outputPath).writeAsString(_toYaml(responseObject));
         await validateArtifact(
           filePath: p.relative(outputPath, from: root.path),
@@ -839,6 +850,10 @@ class HarnessRunner {
         break;
       }
       if (_shouldTerminate(currentState)) {
+        await _writeTerminalOutcomeReport(
+          artifactDirectory: artifactDirectory,
+          state: currentState,
+        );
         break;
       }
     }
@@ -883,6 +898,12 @@ class HarnessRunner {
       artifactDirectory: artifactDirectory,
       state: nextState,
     );
+    if (_shouldTerminate(nextState)) {
+      await _writeTerminalOutcomeReport(
+        artifactDirectory: artifactDirectory,
+        state: nextState,
+      );
+    }
     return _formatExecutionSummary(
       artifactDirectory: artifactDirectory,
       state: nextState,
@@ -900,7 +921,16 @@ class HarnessRunner {
     final reasons = state.lastReasonCodes.isEmpty
         ? 'none'
         : state.lastReasonCodes.join(', ');
-    return '$prefix at $artifactLabel (status=${state.status}, currentActor=${state.currentActor ?? 'none'}, action=$action, reasons=$reasons)';
+    final outcome = switch (state.status) {
+      'passed' => 'passed cleanly',
+      'blocked_environment' => 'blocked by environment',
+      'split_required' => 'requires task split',
+      'evolution_exhausted' => 'stopped after exhausted evolution budget',
+      'revise_exhausted' => 'stopped after exhausted revision budget',
+      'rejected' => 'rejected by evaluator',
+      _ => 'updated',
+    };
+    return '$prefix at $artifactLabel ($outcome, status=${state.status}, currentActor=${state.currentActor ?? 'none'}, action=$action, reasons=$reasons)';
   }
 
   SchemaValidator _loadSchema(String schemaName) {
@@ -1925,6 +1955,9 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
         ..writeln('- `implementation_*`: code or patch quality gaps')
         ..writeln('- `scope_*`: blast radius or task-boundary findings')
         ..writeln('- `architecture_*`: design or layering violations')
+        ..writeln()
+        ..writeln('Routing rule:')
+        ..writeln('- runtime treats `reason_codes` as authoritative; `next_action` is used only when the reason-code taxonomy does not resolve a supervisor action')
         ..writeln();
     }
     buffer
@@ -1944,6 +1977,112 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       mode: FileMode.append,
       flush: true,
     );
+  }
+
+  Future<void> _writeTerminalOutcomeReport({
+    required Directory artifactDirectory,
+    required HarnessState state,
+  }) async {
+    final summaryFile = File(p.join(artifactDirectory.path, 'terminal_summary.md'));
+    final evaluationFile = File(
+      p.join(artifactDirectory.path, 'evaluation_result.yaml'),
+    );
+    final executionFile = File(
+      p.join(artifactDirectory.path, 'execution_report.yaml'),
+    );
+    final evaluationMap = evaluationFile.existsSync()
+        ? _asMap(_loadYamlValue(evaluationFile), context: evaluationFile.path)
+        : const <String, dynamic>{};
+    final executionMap = executionFile.existsSync()
+        ? _asMap(_loadYamlValue(executionFile), context: executionFile.path)
+        : const <String, dynamic>{};
+    final findings = _readOptionalStringList(evaluationMap, 'findings');
+    final failureDetails = _readOptionalStringList(executionMap, 'failure_details');
+    final logs = _readOptionalStringList(executionMap, 'logs');
+    final action = state.actionHistory.isEmpty ? 'none' : state.actionHistory.last;
+    final decision = state.lastDecision ?? _readOptionalString(evaluationMap, 'decision');
+    final buffer = StringBuffer()
+      ..writeln('# Terminal Outcome')
+      ..writeln()
+      ..writeln('- status: `${state.status}`')
+      ..writeln('- action: `$action`')
+      ..writeln('- decision: `${decision ?? 'unknown'}`')
+      ..writeln('- reason_category: `${_primaryReasonCategory(state.lastReasonCodes)}`')
+      ..writeln('- reason_codes: `${state.lastReasonCodes.isEmpty ? 'none' : state.lastReasonCodes.join(', ')}`')
+      ..writeln();
+
+    if (findings.isNotEmpty) {
+      buffer.writeln('## Evaluator Findings');
+      for (final finding in findings) {
+        buffer.writeln('- $finding');
+      }
+      buffer.writeln();
+    }
+
+    if (failureDetails.isNotEmpty) {
+      buffer.writeln('## Failure Details');
+      for (final detail in failureDetails) {
+        buffer.writeln('- $detail');
+      }
+      buffer.writeln();
+    }
+
+    if (logs.isNotEmpty) {
+      buffer.writeln('## Command Logs');
+      for (final log in logs.take(10)) {
+        buffer.writeln('- $log');
+      }
+      if (logs.length > 10) {
+        buffer.writeln('- ... (${logs.length - 10} more)');
+      }
+      buffer.writeln();
+    }
+
+    await summaryFile.writeAsString(buffer.toString(), flush: true);
+  }
+
+  Map<String, dynamic> _normalizeExecutionReport({
+    required Map<String, dynamic> report,
+    required Directory artifactDirectory,
+    required String actorName,
+  }) {
+    if (actorName != 'executor') {
+      return report;
+    }
+    final normalized = Map<String, dynamic>.from(report);
+    final failureDetails = _readOptionalStringList(normalized, 'failure_details').toList();
+    final logs = _readOptionalStringList(normalized, 'logs').toList();
+    final format = normalized['format']?.toString() ?? 'fail';
+    final analyze = normalized['analyze']?.toString() ?? 'fail';
+    final tests = normalized['tests'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(normalized['tests'] as Map<String, dynamic>)
+        : normalized['tests'] is Map
+            ? Map<String, dynamic>.from(normalized['tests'] as Map)
+            : <String, dynamic>{};
+    final totalTests = _readInt(tests, 'total');
+    final failedTests = _readInt(tests, 'failed');
+    final artifactLabel = p.relative(artifactDirectory.path, from: root.path);
+
+    if (logs.isEmpty) {
+      logs.add(
+        'executor_report_missing_logs :: artifact=$artifactLabel :: runtime inserted fallback summary',
+      );
+    }
+    if (failureDetails.isEmpty && (format != 'pass' || analyze != 'pass' || failedTests > 0)) {
+      failureDetails.add(
+        'Executor reported a failed validation status without concrete failure details; runtime preserved the failure and inserted this fallback note.',
+      );
+    }
+    if (failureDetails.isEmpty && totalTests == 0 && format == 'pass' && analyze == 'pass') {
+      failureDetails.add(
+        'No test commands were executed. This can be acceptable for tightly scoped validation, but should be reviewed against the task rubric.',
+      );
+    }
+
+    normalized['tests'] = tests;
+    normalized['failure_details'] = failureDetails;
+    normalized['logs'] = logs;
+    return normalized;
   }
 
   String _primaryReasonCategory(List<String> reasonCodes) {

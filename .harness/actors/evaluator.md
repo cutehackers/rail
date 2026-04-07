@@ -38,11 +38,21 @@ Return YAML matching `evaluation_result.schema.yaml`:
 
 ## Reason code taxonomy
 - `environment_*`: tooling, sandbox, SDK cache, permissions, or external setup failures
-- `validation_*` / `requirements_*`: unmet checks or incomplete validation evidence
+- `validation_scope_*` / `validation_target_*` / `validation_mismatch_*`: validation scope is too broad, too loose, or aimed at the wrong target
+- `validation_*` / `requirements_*`: unmet checks or incomplete validation evidence that still require implementation revision
 - `context_*`: missing or low-quality repository context
 - `implementation_*`: code or patch quality gaps
 - `scope_*`: blast radius, unrelated file changes, or task-boundary issues
 - `architecture_*`: layering, interface, or design violations
+
+## Preferred action mapping
+- `environment_*` -> `block_environment`
+- `validation_scope_*` / `validation_target_*` / `validation_mismatch_*` -> `tighten_validation`
+- generic `validation_*` / `requirements_*` -> `revise_generator`
+- `context_*` -> `rebuild_context`
+- `implementation_*` -> `revise_generator`
+- `architecture_*` -> `revise_generator`
+- `scope_*` -> `split_task`
 
 ## Decision policy
 - `pass`: all DoD items + required checks pass

@@ -133,6 +133,15 @@ void main(List<String> args) async {
       );
       stdout.writeln(result);
       return;
+    case 'route-evaluation':
+      final artifactPath = _readRequiredOption(
+        args.skip(1).toList(),
+        '--artifact',
+        usageSink: stderr,
+      );
+      final result = await runner.routeEvaluation(artifactPath: artifactPath);
+      stdout.writeln(result);
+      return;
     default:
       _printUsage(stdout);
   }
@@ -157,6 +166,9 @@ void _printUsage(IOSink sink) {
   );
   sink.writeln(
     '  dart run bin/rail.dart execute --artifact <path> [--project-root <path>] [--through <actor>]',
+  );
+  sink.writeln(
+    '  dart run bin/rail.dart route-evaluation --artifact <path>',
   );
 }
 
@@ -832,6 +844,43 @@ class HarnessRunner {
     }
 
     return 'Harness execution updated at ${p.relative(artifactDirectory.path, from: root.path)} (status=${currentState.status}, currentActor=${currentState.currentActor ?? 'none'})';
+  }
+
+  Future<String> routeEvaluation({
+    required String artifactPath,
+  }) async {
+    final artifactDirectory = Directory(
+      p.isAbsolute(artifactPath)
+          ? p.normalize(artifactPath)
+          : p.normalize(p.join(root.path, artifactPath)),
+    );
+    _assertPathWithinRoot(artifactDirectory.path, isDirectory: true);
+    if (!artifactDirectory.existsSync()) {
+      throw ArgumentError('Artifact directory not found: $artifactPath');
+    }
+
+    final workflow = ResolvedWorkflow.fromJson(
+      _readJsonFile(p.join(artifactDirectory.path, 'resolved_workflow.json')),
+    );
+    final stateFile = File(p.join(artifactDirectory.path, 'state.json'));
+    final state = HarnessState.fromJson(_readJsonFile(stateFile.path));
+    if (state.currentActor != 'evaluator' || _shouldTerminate(state)) {
+      return 'Harness evaluation routing skipped for ${p.relative(artifactDirectory.path, from: root.path)} (currentActor=${state.currentActor ?? 'none'})';
+    }
+    final nextState = _advanceState(
+      state: state,
+      workflow: workflow,
+      actorName: 'evaluator',
+      artifactDirectory: artifactDirectory,
+    );
+    await stateFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(nextState.toJson()),
+    );
+    await _appendSupervisorDecisionTrace(
+      artifactDirectory: artifactDirectory,
+      state: nextState,
+    );
+    return 'Harness evaluation routed at ${p.relative(artifactDirectory.path, from: root.path)} (status=${nextState.status}, currentActor=${nextState.currentActor ?? 'none'})';
   }
 
   SchemaValidator _loadSchema(String schemaName) {
@@ -1636,16 +1685,15 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           actionHistory: [...state.actionHistory, 'reject'],
         );
       }
-      if (nextAction == null) {
-        throw StateError(
-          'evaluation_result.yaml must include `next_action` when decision is `$decision`.',
-        );
-      }
       final primaryAction = _resolveSupervisorAction(
-        decision: decision,
         nextAction: nextAction,
         reasonCodes: reasonCodes,
       );
+      if (primaryAction == null) {
+        throw StateError(
+          'evaluation_result.yaml revise decision requires either a supported `next_action` or routeable `reason_codes`.',
+        );
+      }
       switch (primaryAction) {
         case 'rebuild_context':
           final remaining = state.contextRebuildsRemaining - 1;
@@ -1756,15 +1804,36 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
         state.status == 'split_required';
   }
 
-  String _resolveSupervisorAction({
-    required String decision,
-    required String nextAction,
+  String? _resolveSupervisorAction({
+    required String? nextAction,
     required List<String> reasonCodes,
   }) {
-    if (decision == 'revise' && _hasEnvironmentFailure(reasonCodes)) {
+    return _preferredSupervisorAction(reasonCodes) ?? nextAction;
+  }
+
+  String? _preferredSupervisorAction(List<String> reasonCodes) {
+    if (_hasEnvironmentFailure(reasonCodes)) {
       return 'block_environment';
     }
-    return nextAction;
+    if (_hasScopeFailure(reasonCodes)) {
+      return 'split_task';
+    }
+    if (_hasContextFailure(reasonCodes)) {
+      return 'rebuild_context';
+    }
+    if (_hasValidationScopeFailure(reasonCodes)) {
+      return 'tighten_validation';
+    }
+    if (_hasValidationFailure(reasonCodes) || _hasRequirementsFailure(reasonCodes)) {
+      return 'revise_generator';
+    }
+    if (_hasImplementationFailure(reasonCodes)) {
+      return 'revise_generator';
+    }
+    if (_hasArchitectureFailure(reasonCodes)) {
+      return 'revise_generator';
+    }
+    return null;
   }
 
   bool _hasEnvironmentFailure(List<String> reasonCodes) {
@@ -1775,6 +1844,38 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           code.contains('tooling_unavailable') ||
           code.contains('sdk_cache');
     });
+  }
+
+  bool _hasScopeFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('scope_'));
+  }
+
+  bool _hasContextFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('context_'));
+  }
+
+  bool _hasValidationScopeFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) {
+      return code.startsWith('validation_scope_') ||
+          code.startsWith('validation_target_') ||
+          code.startsWith('validation_mismatch_');
+    });
+  }
+
+  bool _hasValidationFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('validation_'));
+  }
+
+  bool _hasRequirementsFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('requirements_'));
+  }
+
+  bool _hasImplementationFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('implementation_'));
+  }
+
+  bool _hasArchitectureFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('architecture_'));
   }
 
   Future<void> _appendSupervisorDecisionTrace({
@@ -1829,7 +1930,9 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     for (final code in reasonCodes) {
       if (code.startsWith('environment_') ||
           code.contains('permission_error') ||
-          code.contains('sandbox')) {
+          code.contains('sandbox') ||
+          code.contains('tooling_unavailable') ||
+          code.contains('sdk_cache')) {
         return 'environment';
       }
       if (code.startsWith('validation_') ||

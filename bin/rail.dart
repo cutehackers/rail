@@ -1874,7 +1874,12 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     if (_hasValidationScopeFailure(reasonCodes)) {
       return 'tighten_validation';
     }
-    if (_hasValidationFailure(reasonCodes) || _hasRequirementsFailure(reasonCodes)) {
+    if (_hasValidationEvidenceFailure(reasonCodes) ||
+        _hasValidationRequirementFailure(reasonCodes) ||
+        _hasRequirementsCoverageFailure(reasonCodes) ||
+        _hasRequirementsBehaviorFailure(reasonCodes) ||
+        _hasValidationFailure(reasonCodes) ||
+        _hasRequirementsFailure(reasonCodes)) {
       return 'revise_generator';
     }
     if (_hasImplementationFailure(reasonCodes)) {
@@ -1916,8 +1921,24 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     return reasonCodes.any((code) => code.startsWith('validation_'));
   }
 
+  bool _hasValidationEvidenceFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('validation_evidence_'));
+  }
+
+  bool _hasValidationRequirementFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('validation_requirement_'));
+  }
+
   bool _hasRequirementsFailure(List<String> reasonCodes) {
     return reasonCodes.any((code) => code.startsWith('requirements_'));
+  }
+
+  bool _hasRequirementsCoverageFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('requirements_coverage_'));
+  }
+
+  bool _hasRequirementsBehaviorFailure(List<String> reasonCodes) {
+    return reasonCodes.any((code) => code.startsWith('requirements_behavior_'));
   }
 
   bool _hasImplementationFailure(List<String> reasonCodes) {
@@ -1950,7 +1971,10 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
         ..writeln()
         ..writeln('Reason code taxonomy:')
         ..writeln('- `environment_*`: tooling, sandbox, SDK cache, permissions, or external setup failures')
-        ..writeln('- `validation_*` / `requirements_*`: unmet checks or incomplete validation evidence')
+        ..writeln('- `validation_scope_*` / `validation_target_*` / `validation_mismatch_*`: validation scope or target selection problems')
+        ..writeln('- `validation_evidence_*`: validation evidence is missing, incomplete, or weak')
+        ..writeln('- `validation_requirement_*`: validation exposed a concrete unmet requirement')
+        ..writeln('- `requirements_coverage_*` / `requirements_behavior_*`: required coverage or behavior is still missing')
         ..writeln('- `context_*`: insufficient repository context or missing grounding')
         ..writeln('- `implementation_*`: code or patch quality gaps')
         ..writeln('- `scope_*`: blast radius or task-boundary findings')

@@ -39,7 +39,10 @@ Return YAML matching `evaluation_result.schema.yaml`:
 ## Reason code taxonomy
 - `environment_*`: tooling, sandbox, SDK cache, permissions, or external setup failures
 - `validation_scope_*` / `validation_target_*` / `validation_mismatch_*`: validation scope is too broad, too loose, or aimed at the wrong target
-- `validation_*` / `requirements_*`: unmet checks or incomplete validation evidence that still require implementation revision
+- `validation_evidence_*`: validation ran, but required evidence is missing, incomplete, or too weak
+- `validation_requirement_*`: validation exposed a concrete unmet task or product requirement
+- `requirements_coverage_*`: required cases, scenarios, or acceptance coverage are still missing
+- `requirements_behavior_*`: implemented behavior still does not match the requested behavior
 - `context_*`: missing or low-quality repository context
 - `implementation_*`: code or patch quality gaps
 - `scope_*`: blast radius, unrelated file changes, or task-boundary issues
@@ -48,7 +51,8 @@ Return YAML matching `evaluation_result.schema.yaml`:
 ## Preferred action mapping
 - `environment_*` -> `block_environment`
 - `validation_scope_*` / `validation_target_*` / `validation_mismatch_*` -> `tighten_validation`
-- generic `validation_*` / `requirements_*` -> `revise_generator`
+- `validation_evidence_*` / `validation_requirement_*` -> `revise_generator`
+- `requirements_coverage_*` / `requirements_behavior_*` -> `revise_generator`
 - `context_*` -> `rebuild_context`
 - `implementation_*` -> `revise_generator`
 - `architecture_*` -> `revise_generator`

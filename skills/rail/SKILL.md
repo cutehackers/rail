@@ -1,13 +1,11 @@
 ---
-name: rail
-description: Bootstrap and execute the rail harness workflow against a target Flutter/Riverpod repository from a natural-language task request.
+name: Rail
+description: Bootstrap and execute the Rail harness workflow against a target Flutter/Riverpod repository from a natural-language task request.
 ---
 
 # Rail
 
-Use this skill from the `rail` control repository:
-
-- `/Users/junhyounglee/workspace/rail`
+Use this skill from the `Rail` control repository root.
 
 The target application repository is not this repo. It is passed as `--project-root`.
 

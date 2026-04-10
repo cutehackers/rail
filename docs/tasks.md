@@ -34,6 +34,8 @@ The product is launch-ready only when all of the following are true:
 
 ## Task 1: Tighten `validation_*` and `requirements_*` reason codes
 
+Status: complete on 2026-04-10
+
 Why this is first:
 
 - supervisor quality still depends too much on broad `validation_*` and `requirements_*` categories
@@ -62,12 +64,16 @@ Done when:
 
 Evidence to record:
 
-- at least one artifact per refined category
-- updated checklist entry linking those artifacts
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-evidence/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-requirement/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-coverage/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-behavior/state.json`
 
 ---
 
 ## Task 2: Verify the remaining `standard` action loops end-to-end
+
+Status: complete for routing evidence on 2026-04-10
 
 Why this is second:
 
@@ -95,12 +101,21 @@ Done when:
 
 Evidence to record:
 
-- one artifact directory per `standard` action path
-- checklist links for each verified path
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-validation/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-context/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-implementation/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-scope/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-env-routing/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-evidence/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-requirement/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-coverage/state.json`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-behavior/state.json`
 
 ---
 
 ## Task 3: Make terminal outcomes obvious to a skill user
+
+Status: complete for core launch states on 2026-04-10
 
 Why this matters:
 
@@ -126,7 +141,9 @@ Done when:
 
 Evidence to record:
 
-- example `terminal_summary.md` files for at least three different terminal states
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-passed/terminal_summary.md`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-blocked/terminal_summary.md`
+- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-split/terminal_summary.md`
 
 ---
 

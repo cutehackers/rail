@@ -2025,6 +2025,8 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     final logs = _readOptionalStringList(executionMap, 'logs');
     final action = state.actionHistory.isEmpty ? 'none' : state.actionHistory.last;
     final decision = state.lastDecision ?? _readOptionalString(evaluationMap, 'decision');
+    final outcomeSummary = _terminalOutcomeSummary(state.status);
+    final nextStep = _terminalOutcomeNextStep(state.status);
     final buffer = StringBuffer()
       ..writeln('# Terminal Outcome')
       ..writeln()
@@ -2033,6 +2035,16 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       ..writeln('- decision: `${decision ?? 'unknown'}`')
       ..writeln('- reason_category: `${_primaryReasonCategory(state.lastReasonCodes)}`')
       ..writeln('- reason_codes: `${state.lastReasonCodes.isEmpty ? 'none' : state.lastReasonCodes.join(', ')}`')
+      ..writeln();
+
+    buffer
+      ..writeln('## Summary')
+      ..writeln()
+      ..writeln(outcomeSummary)
+      ..writeln()
+      ..writeln('## Recommended Next Step')
+      ..writeln()
+      ..writeln('- $nextStep')
       ..writeln();
 
     if (findings.isNotEmpty) {
@@ -2063,6 +2075,41 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     }
 
     await summaryFile.writeAsString(buffer.toString(), flush: true);
+  }
+
+  String _terminalOutcomeSummary(String status) {
+    return switch (status) {
+      'passed' =>
+        'The supervisor accepted the run and no further evolution step is required.',
+      'blocked_environment' =>
+        'The supervisor stopped because the environment or tooling prevented credible validation. More code changes would not have fixed this run.',
+      'split_required' =>
+        'The supervisor stopped because the request is too broad or crosses task boundaries and should be decomposed before continuing.',
+      'evolution_exhausted' =>
+        'The supervisor stopped because it ran out of bounded evolution actions without finding a credible path forward.',
+      'revise_exhausted' =>
+        'The supervisor stopped because implementation retries were exhausted without closing the gap.',
+      'rejected' =>
+        'The evaluator rejected the run because the result violated constraints or carried unacceptable risk.',
+      _ => 'The harness recorded a terminal state, but this outcome needs manual review.',
+    };
+  }
+
+  String _terminalOutcomeNextStep(String status) {
+    return switch (status) {
+      'passed' => 'Proceed to integration or handoff using the completed artifacts.',
+      'blocked_environment' =>
+        'Fix the environment or tooling issue first, then rerun the same request rather than revising the generator output.',
+      'split_required' =>
+        'Rewrite the request into smaller follow-up tasks with tighter scope and rerun them separately.',
+      'evolution_exhausted' =>
+        'Inspect the supervisor trace, refine the request or context, and restart with a clearer validation strategy.',
+      'revise_exhausted' =>
+        'Review the implementation findings, update the plan or context, and restart with a more credible generator target.',
+      'rejected' =>
+        'Address the rejection reason before rerunning. Do not continue with the same artifact chain.',
+      _ => 'Inspect the evaluator result and supervisor trace before deciding the next action.',
+    };
   }
 
   Map<String, dynamic> _normalizeExecutionReport({

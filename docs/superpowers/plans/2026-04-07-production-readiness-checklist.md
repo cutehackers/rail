@@ -22,6 +22,10 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
 - [x] Runtime fills missing executor evidence with fallback `failure_details` / `logs` so terminal artifacts remain readable
 - [x] Terminal outcomes are materialized into `terminal_summary.md`
 - [x] Reason-code precedence over `next_action` is documented in both evaluator guidance and supervisor trace output
+- [x] Generic `validation_*` / `requirements_*` routing was tightened into `validation_evidence_*`, `validation_requirement_*`, `requirements_coverage_*`, and `requirements_behavior_*`
+- [x] Refined validation and requirements routing categories were verified with `standard` route artifacts
+- [x] Terminal summaries now include outcome explanation and recommended next step
+- [x] Terminal summary evidence exists for `passed`, `blocked_environment`, and `split_required`
 
 ## Evidence
 
@@ -34,13 +38,22 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-trace-validation/supervisor_trace.md`
 - Terminal outcome summary:
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-terminal-summary/terminal_summary.md`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-passed/terminal_summary.md`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-blocked/terminal_summary.md`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-split/terminal_summary.md`
 - Deterministic standard route checks:
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-validation/state.json`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-context/state.json`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-implementation/state.json`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-scope/state.json`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-evidence/state.json`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-requirement/state.json`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-coverage/state.json`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-behavior/state.json`
 
 ## Next production-facing priorities
 
-- Tighten evaluator reason-code generation so generic `validation_*` failures are more specific by default
+- Harden executor evidence collection under real failure modes
+- Align rubric failures with supervisor routing
+- Bound self-evolution loops more clearly
 - Review and harden integrator semantics before enabling it in broader workflows

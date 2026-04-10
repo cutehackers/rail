@@ -2133,11 +2133,22 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     final totalTests = _readInt(tests, 'total');
     final failedTests = _readInt(tests, 'failed');
     final artifactLabel = p.relative(artifactDirectory.path, from: root.path);
+    final failureClass = _classifyExecutionFailure(
+      failureDetails: failureDetails,
+      logs: logs,
+      format: format,
+      analyze: analyze,
+      failedTests: failedTests,
+    );
 
     if (logs.isEmpty) {
       logs.add(
-        'executor_report_missing_logs :: artifact=$artifactLabel :: runtime inserted fallback summary',
+        'class=report_missing_logs :: artifact=$artifactLabel :: runtime inserted fallback summary',
       );
+    }
+    if (failureClass != null &&
+        !failureDetails.any((detail) => detail.startsWith('class='))) {
+      failureDetails.insert(0, 'class=$failureClass');
     }
     if (failureDetails.isEmpty && (format != 'pass' || analyze != 'pass' || failedTests > 0)) {
       failureDetails.add(
@@ -2154,6 +2165,38 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     normalized['failure_details'] = failureDetails;
     normalized['logs'] = logs;
     return normalized;
+  }
+
+  String? _classifyExecutionFailure({
+    required List<String> failureDetails,
+    required List<String> logs,
+    required String format,
+    required String analyze,
+    required int failedTests,
+  }) {
+    final haystack = [...failureDetails, ...logs].join(' ').toLowerCase();
+    if (haystack.contains('permission denied') ||
+        haystack.contains('permission_error')) {
+      return 'environment_permission';
+    }
+    if (haystack.contains('sandbox')) {
+      return 'environment_sandbox';
+    }
+    if (haystack.contains('not found') ||
+        haystack.contains('command not found') ||
+        haystack.contains('tooling_unavailable')) {
+      return 'tooling_unavailable';
+    }
+    if (haystack.contains('timed out') || haystack.contains('timeout')) {
+      return 'command_timeout';
+    }
+    if (haystack.contains('empty output') || haystack.contains('missing logs')) {
+      return 'empty_output';
+    }
+    if (format != 'pass' || analyze != 'pass' || failedTests > 0) {
+      return 'validation_failure';
+    }
+    return null;
   }
 
   String _primaryReasonCategory(List<String> reasonCodes) {

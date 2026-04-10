@@ -488,6 +488,15 @@ class HarnessRunner {
             'lastDecision': null,
             'lastReasonCodes': <String>[],
             'actionHistory': <String>[],
+            'generatorRevisionsUsed': 0,
+            'contextRefreshCount': 0,
+            'lastContextRefreshTrigger': null,
+            'lastContextRefreshReasonFamily': null,
+            'lastInterventionTriggerReasonCodes': <String>[],
+            'lastInterventionTriggerCategory': null,
+            'pendingContextRefreshTrigger': null,
+            'pendingContextRefreshReasonFamily': null,
+            'validationTighteningsUsed': 0,
           },
         ),
       );
@@ -1644,7 +1653,6 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
                 ? _strictJsonSchema(entry.value)
                 : entry.value,
         };
-        strict['required'] = properties.keys.toList(growable: false);
       } else if (properties is Map) {
         final normalizedProperties = {
           for (final entry in properties.entries)
@@ -1653,7 +1661,12 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
                 : entry.value,
         };
         strict['properties'] = normalizedProperties;
-        strict['required'] = normalizedProperties.keys.toList(growable: false);
+      }
+      final requiredFields = strict['required'];
+      if (requiredFields is List) {
+        strict['required'] = requiredFields
+            .whereType<String>()
+            .toList(growable: false);
       }
     }
 
@@ -1704,6 +1717,7 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       final decision = _readString(evaluationMap, 'decision');
       final reasonCodes = _readOptionalStringList(evaluationMap, 'reason_codes');
       final nextAction = _readOptionalString(evaluationMap, 'next_action');
+      final primaryReasonFamily = _primaryReasonCategory(reasonCodes);
       if (decision == 'pass') {
         final integratorIndex = workflow.actors.indexOf('integrator');
         if (integratorIndex != -1 && !completedActors.contains('integrator')) {
@@ -1747,6 +1761,10 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       switch (primaryAction) {
         case 'rebuild_context':
           final remaining = state.contextRebuildsRemaining - 1;
+          final refreshTrigger = _contextRefreshTrigger(
+            nextAction: nextAction,
+            reasonCodes: reasonCodes,
+          );
           if (remaining < 0 || !workflow.actors.contains('context_builder')) {
             return state.copyWith(
               status: 'evolution_exhausted',
@@ -1755,7 +1773,6 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
               contextRebuildsRemaining: remaining,
               lastDecision: decision,
               lastReasonCodes: reasonCodes,
-              actionHistory: [...state.actionHistory, primaryAction],
             );
           }
           return state.copyWith(
@@ -1766,6 +1783,10 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
             lastDecision: decision,
             lastReasonCodes: reasonCodes,
             actionHistory: [...state.actionHistory, primaryAction],
+            lastInterventionTriggerReasonCodes: reasonCodes,
+            lastInterventionTriggerCategory: primaryReasonFamily,
+            pendingContextRefreshTrigger: refreshTrigger,
+            pendingContextRefreshReasonFamily: primaryReasonFamily,
           );
         case 'tighten_validation':
           final remaining = state.validationTighteningsRemaining - 1;
@@ -1777,7 +1798,6 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
               validationTighteningsRemaining: remaining,
               lastDecision: decision,
               lastReasonCodes: reasonCodes,
-              actionHistory: [...state.actionHistory, primaryAction],
             );
           }
           return state.copyWith(
@@ -1788,6 +1808,8 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
             lastDecision: decision,
             lastReasonCodes: reasonCodes,
             actionHistory: [...state.actionHistory, primaryAction],
+            lastInterventionTriggerReasonCodes: reasonCodes,
+            lastInterventionTriggerCategory: primaryReasonFamily,
           );
         case 'split_task':
           return state.copyWith(
@@ -1797,6 +1819,8 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
             lastDecision: decision,
             lastReasonCodes: reasonCodes,
             actionHistory: [...state.actionHistory, primaryAction],
+            lastInterventionTriggerReasonCodes: reasonCodes,
+            lastInterventionTriggerCategory: primaryReasonFamily,
           );
         case 'block_environment':
           return state.copyWith(
@@ -1806,6 +1830,8 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
             lastDecision: decision,
             lastReasonCodes: reasonCodes,
             actionHistory: [...state.actionHistory, primaryAction],
+            lastInterventionTriggerReasonCodes: reasonCodes,
+            lastInterventionTriggerCategory: primaryReasonFamily,
           );
         case 'revise_generator':
         default:
@@ -1818,7 +1844,6 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
               generatorRetriesRemaining: retriesRemaining,
               lastDecision: decision,
               lastReasonCodes: reasonCodes,
-              actionHistory: [...state.actionHistory, 'revise_generator'],
             );
           }
           return state.copyWith(
@@ -1829,10 +1854,13 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
             lastDecision: decision,
             lastReasonCodes: reasonCodes,
             actionHistory: [...state.actionHistory, 'revise_generator'],
+            lastInterventionTriggerReasonCodes: reasonCodes,
+            lastInterventionTriggerCategory: primaryReasonFamily,
           );
       }
     }
 
+    state = _recordExecutedCorrectiveWork(state, actorName);
     final actorIndex = workflow.actors.indexOf(actorName);
     final nextActor = actorIndex == -1 || actorIndex + 1 >= workflow.actors.length
         ? null
@@ -1842,6 +1870,43 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       currentActor: nextActor,
       completedActors: completedActors,
     );
+  }
+
+  String _contextRefreshTrigger({
+    required String? nextAction,
+    required List<String> reasonCodes,
+  }) {
+    return _preferredSupervisorAction(reasonCodes) == 'rebuild_context'
+        ? 'reason_codes'
+        : (nextAction == 'rebuild_context' ? 'next_action' : 'unknown');
+  }
+
+  HarnessState _recordExecutedCorrectiveWork(
+    HarnessState state,
+    String actorName,
+  ) {
+    if (actorName == 'generator' && state.status == 'revising') {
+      return state.copyWith(
+        generatorRevisionsUsed: state.generatorRevisionsUsed + 1,
+      );
+    }
+    if (actorName == 'context_builder' && state.status == 'rebuilding_context') {
+      return state.copyWith(
+        contextRefreshCount: state.contextRefreshCount + 1,
+        lastContextRefreshTrigger:
+            state.pendingContextRefreshTrigger ?? state.lastContextRefreshTrigger,
+        lastContextRefreshReasonFamily:
+            state.pendingContextRefreshReasonFamily ??
+            state.lastContextRefreshReasonFamily,
+        clearPendingContextRefresh: true,
+      );
+    }
+    if (actorName == 'executor' && state.status == 'tightening_validation') {
+      return state.copyWith(
+        validationTighteningsUsed: state.validationTighteningsUsed + 1,
+      );
+    }
+    return state;
   }
 
   bool _shouldTerminate(HarnessState state) {
@@ -1961,9 +2026,18 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
         ? _asMap(_loadYamlValue(evaluationFile), context: evaluationFile.path)
         : const <String, dynamic>{};
     final decision = evaluationMap['decision']?.toString() ?? state.lastDecision ?? '';
+    final qualityConfidence = _readOptionalString(
+      evaluationMap,
+      'quality_confidence',
+    );
     final action = state.actionHistory.isEmpty ? '' : state.actionHistory.last;
     final iteration = state.completedActors.where((actor) => actor == 'evaluator').length;
     final category = _primaryReasonCategory(state.lastReasonCodes);
+    final triggerCategory = state.lastInterventionTriggerCategory ?? category;
+    final triggerReasonCodes = state.lastInterventionTriggerReasonCodes.isEmpty
+        ? state.lastReasonCodes
+        : state.lastInterventionTriggerReasonCodes;
+    final executedInterventionCount = _executedInterventionCount(state);
     final buffer = StringBuffer();
     if (!traceFile.existsSync()) {
       buffer
@@ -1989,9 +2063,27 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       ..writeln()
       ..writeln('- decision: `${decision.isEmpty ? 'unknown' : decision}`')
       ..writeln('- selected_action: `${action.isEmpty ? 'unknown' : action}`')
-      ..writeln('- status_after_routing: `${state.status}`')
+      ..writeln('- routing_status_after_iteration: `${state.status}`')
       ..writeln('- primary_reason_category: `${category}`')
-      ..writeln('- reason_codes: `${state.lastReasonCodes.join(', ')}`')
+      ..writeln(
+        '- reason_codes: `${state.lastReasonCodes.isEmpty ? 'none' : state.lastReasonCodes.join(', ')}`',
+      )
+      ..writeln('- quality_confidence: `${qualityConfidence ?? 'unknown'}`')
+      ..writeln(
+        '- context_refresh: `count=${state.contextRefreshCount}, last_trigger=${state.lastContextRefreshTrigger ?? 'none'}, last_reason_family=${state.lastContextRefreshReasonFamily ?? 'none'}`',
+      )
+      ..writeln('- executed_intervention_count: `$executedInterventionCount`')
+      ..writeln(
+        '- guardrail_cost: `generator_revisions_used=${state.generatorRevisionsUsed}, context_rebuilds_used=${state.contextRefreshCount}, validation_tightenings_used=${state.validationTighteningsUsed}`',
+      )
+      ..writeln(
+        '- guardrail_value: `trigger=${_terminalRiskTriggerLabel(triggerReasonCodes, triggerCategory)}, outcome=${_guardrailValueOutcome(status: state.status, qualityConfidence: qualityConfidence, executedInterventionCount: executedInterventionCount)}`',
+      )
+      ..writeln(
+        _shouldTerminate(state)
+            ? '- terminal_status: `${state.status}`'
+            : '- non_terminal_routing_state: `${state.status}`',
+      )
       ..writeln(
         '- budgets_remaining: `generator=${state.generatorRetriesRemaining}, context=${state.contextRebuildsRemaining}, validation=${state.validationTighteningsRemaining}`',
       )
@@ -2023,18 +2115,32 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     final findings = _readOptionalStringList(evaluationMap, 'findings');
     final failureDetails = _readOptionalStringList(executionMap, 'failure_details');
     final logs = _readOptionalStringList(executionMap, 'logs');
+    final qualityConfidence = _readOptionalString(
+      evaluationMap,
+      'quality_confidence',
+    );
     final action = state.actionHistory.isEmpty ? 'none' : state.actionHistory.last;
     final decision = state.lastDecision ?? _readOptionalString(evaluationMap, 'decision');
     final outcomeSummary = _terminalOutcomeSummary(state.status);
     final nextStep = _terminalOutcomeNextStep(state.status);
+    final reasonCategory = _primaryReasonCategory(state.lastReasonCodes);
+    final triggerCategory = state.lastInterventionTriggerCategory ?? reasonCategory;
+    final triggerReasonCodes = state.lastInterventionTriggerReasonCodes.isEmpty
+        ? state.lastReasonCodes
+        : state.lastInterventionTriggerReasonCodes;
+    final executedInterventionCount = _executedInterventionCount(state);
     final buffer = StringBuffer()
       ..writeln('# Terminal Outcome')
       ..writeln()
       ..writeln('- status: `${state.status}`')
       ..writeln('- action: `$action`')
       ..writeln('- decision: `${decision ?? 'unknown'}`')
-      ..writeln('- reason_category: `${_primaryReasonCategory(state.lastReasonCodes)}`')
+      ..writeln('- reason_category: `${reasonCategory}`')
       ..writeln('- reason_codes: `${state.lastReasonCodes.isEmpty ? 'none' : state.lastReasonCodes.join(', ')}`')
+      ..writeln('- quality_confidence: `${qualityConfidence ?? 'unknown'}`')
+      ..writeln(
+        '- context_refresh: `count=${state.contextRefreshCount}, last_trigger=${state.lastContextRefreshTrigger ?? 'none'}, last_reason_family=${state.lastContextRefreshReasonFamily ?? 'none'}`',
+      )
       ..writeln();
 
     buffer
@@ -2045,6 +2151,31 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       ..writeln('## Recommended Next Step')
       ..writeln()
       ..writeln('- $nextStep')
+      ..writeln();
+
+    buffer
+      ..writeln('## Guardrail Cost')
+      ..writeln()
+      ..writeln('- executed_intervention_count: `$executedInterventionCount`')
+      ..writeln('- generator_revisions_used: `${state.generatorRevisionsUsed}`')
+      ..writeln('- context_rebuilds_used: `${state.contextRefreshCount}`')
+      ..writeln('- validation_tightenings_used: `${state.validationTighteningsUsed}`')
+      ..writeln('- terminal_status: `${state.status}`')
+      ..writeln();
+
+    buffer
+      ..writeln('## Guardrail Value')
+      ..writeln()
+      ..writeln(
+        '- trigger_failure_or_risk: `${_terminalRiskTriggerLabel(triggerReasonCodes, triggerCategory)}`',
+      )
+      ..writeln(
+        '- last_intervention: `${_lastGuardrailIntervention(state.actionHistory)}`',
+      )
+      ..writeln('- final_quality_confidence: `${qualityConfidence ?? 'unknown'}`')
+      ..writeln(
+        '- outcome: `${_guardrailValueOutcome(status: state.status, qualityConfidence: qualityConfidence, executedInterventionCount: executedInterventionCount)}`',
+      )
       ..writeln();
 
     if (findings.isNotEmpty) {
@@ -2074,7 +2205,104 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       buffer.writeln();
     }
 
+    if (executionFile.existsSync()) {
+      final enrichedExecutionMap = Map<String, dynamic>.from(executionMap)
+        ..['executed_intervention_count'] = executedInterventionCount
+        ..['context_refresh'] = {
+          'count': state.contextRefreshCount,
+          'last_trigger': state.lastContextRefreshTrigger,
+          'last_reason_family': state.lastContextRefreshReasonFamily,
+        }
+        ..['guardrail_cost'] = {
+          'generator_revisions_used': state.generatorRevisionsUsed,
+          'context_rebuilds_used': state.contextRefreshCount,
+          'validation_tightenings_used': state.validationTighteningsUsed,
+        }
+        ..['guardrail_value'] = {
+          'trigger_failure_or_risk': _terminalRiskTriggerLabel(
+            triggerReasonCodes,
+            triggerCategory,
+          ),
+          'trigger_reason_codes': triggerReasonCodes,
+          'trigger_reason_category': triggerCategory,
+          'last_intervention': _lastGuardrailIntervention(state.actionHistory),
+          'quality_confidence': qualityConfidence,
+          'outcome': _guardrailValueOutcome(
+            status: state.status,
+            qualityConfidence: qualityConfidence,
+            executedInterventionCount: executedInterventionCount,
+          ),
+        }
+        ..['terminal_status'] = state.status;
+      await executionFile.writeAsString(
+        _toYaml(enrichedExecutionMap),
+        flush: true,
+      );
+      await validateArtifact(
+        filePath: p.relative(executionFile.path, from: root.path),
+        schemaName: 'execution_report',
+      );
+    }
+
     await summaryFile.writeAsString(buffer.toString(), flush: true);
+  }
+
+  int _executedInterventionCount(HarnessState state) {
+    return state.generatorRevisionsUsed +
+        state.contextRefreshCount +
+        state.validationTighteningsUsed;
+  }
+
+  String _terminalRiskTriggerLabel(
+    List<String> reasonCodes,
+    String reasonCategory,
+  ) {
+    if (reasonCodes.isEmpty) {
+      return reasonCategory == 'none'
+          ? 'none_active'
+          : '$reasonCategory :: resolved_before_terminal';
+    }
+    return '$reasonCategory :: ${reasonCodes.join(', ')}';
+  }
+
+  String _lastGuardrailIntervention(List<String> actionHistory) {
+    for (final action in actionHistory.reversed) {
+      if (action == 'revise_generator' ||
+          action == 'rebuild_context' ||
+          action == 'tighten_validation' ||
+          action == 'split_task' ||
+          action == 'block_environment') {
+        return action;
+      }
+    }
+    return 'none';
+  }
+
+  String _guardrailValueOutcome({
+    required String status,
+    required String? qualityConfidence,
+    int executedInterventionCount = 0,
+  }) {
+    final hadExecutedIntervention = executedInterventionCount > 0;
+    if (status == 'passed') {
+      if (!hadExecutedIntervention) {
+        return 'pass_without_guardrail_intervention';
+      }
+      return switch (qualityConfidence) {
+        'high' => 'improved_confidence',
+        'medium' => 'accepted_after_intervention',
+        'low' => 'accepted_with_low_confidence',
+        _ => 'accepted_after_intervention',
+      };
+    }
+    if (status == 'blocked_environment' ||
+        status == 'split_required' ||
+        status == 'evolution_exhausted' ||
+        status == 'revise_exhausted' ||
+        status == 'rejected') {
+      return 'bounded_refusal';
+    }
+    return 'needs_review';
   }
 
   String _terminalOutcomeSummary(String status) {
@@ -2208,9 +2436,11 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           code.contains('sdk_cache')) {
         return 'environment';
       }
-      if (code.startsWith('validation_') ||
-          code.startsWith('requirements_')) {
+      if (code.startsWith('validation_')) {
         return 'validation';
+      }
+      if (code.startsWith('requirements_')) {
+        return 'requirements';
       }
       if (code.startsWith('context_')) {
         return 'context';
@@ -3841,6 +4071,15 @@ class HarnessState {
     required this.lastDecision,
     required this.lastReasonCodes,
     required this.actionHistory,
+    required this.generatorRevisionsUsed,
+    required this.contextRefreshCount,
+    required this.lastContextRefreshTrigger,
+    required this.lastContextRefreshReasonFamily,
+    required this.lastInterventionTriggerReasonCodes,
+    required this.lastInterventionTriggerCategory,
+    required this.pendingContextRefreshTrigger,
+    required this.pendingContextRefreshReasonFamily,
+    required this.validationTighteningsUsed,
   });
 
   factory HarnessState.fromJson(Map<String, dynamic> map) {
@@ -3861,6 +4100,21 @@ class HarnessState {
       lastDecision: map['lastDecision']?.toString(),
       lastReasonCodes: _readOptionalStringList(map, 'lastReasonCodes'),
       actionHistory: _readOptionalStringList(map, 'actionHistory'),
+      generatorRevisionsUsed: _readOptionalInt(map, 'generatorRevisionsUsed') ?? 0,
+      contextRefreshCount: _readOptionalInt(map, 'contextRefreshCount') ?? 0,
+      lastContextRefreshTrigger: map['lastContextRefreshTrigger']?.toString(),
+      lastContextRefreshReasonFamily:
+          map['lastContextRefreshReasonFamily']?.toString(),
+      lastInterventionTriggerReasonCodes:
+          _readOptionalStringList(map, 'lastInterventionTriggerReasonCodes'),
+      lastInterventionTriggerCategory:
+          map['lastInterventionTriggerCategory']?.toString(),
+      pendingContextRefreshTrigger:
+          map['pendingContextRefreshTrigger']?.toString(),
+      pendingContextRefreshReasonFamily:
+          map['pendingContextRefreshReasonFamily']?.toString(),
+      validationTighteningsUsed:
+          _readOptionalInt(map, 'validationTighteningsUsed') ?? 0,
     );
   }
 
@@ -3874,6 +4128,15 @@ class HarnessState {
   final String? lastDecision;
   final List<String> lastReasonCodes;
   final List<String> actionHistory;
+  final int generatorRevisionsUsed;
+  final int contextRefreshCount;
+  final String? lastContextRefreshTrigger;
+  final String? lastContextRefreshReasonFamily;
+  final List<String> lastInterventionTriggerReasonCodes;
+  final String? lastInterventionTriggerCategory;
+  final String? pendingContextRefreshTrigger;
+  final String? pendingContextRefreshReasonFamily;
+  final int validationTighteningsUsed;
 
   HarnessState copyWith({
     String? status,
@@ -3886,6 +4149,16 @@ class HarnessState {
     String? lastDecision,
     List<String>? lastReasonCodes,
     List<String>? actionHistory,
+    int? generatorRevisionsUsed,
+    int? contextRefreshCount,
+    String? lastContextRefreshTrigger,
+    String? lastContextRefreshReasonFamily,
+    List<String>? lastInterventionTriggerReasonCodes,
+    String? lastInterventionTriggerCategory,
+    String? pendingContextRefreshTrigger,
+    String? pendingContextRefreshReasonFamily,
+    int? validationTighteningsUsed,
+    bool clearPendingContextRefresh = false,
   }) {
     return HarnessState(
       taskId: taskId,
@@ -3901,6 +4174,27 @@ class HarnessState {
       lastDecision: lastDecision ?? this.lastDecision,
       lastReasonCodes: lastReasonCodes ?? this.lastReasonCodes,
       actionHistory: actionHistory ?? this.actionHistory,
+      generatorRevisionsUsed:
+          generatorRevisionsUsed ?? this.generatorRevisionsUsed,
+      contextRefreshCount: contextRefreshCount ?? this.contextRefreshCount,
+      lastContextRefreshTrigger:
+          lastContextRefreshTrigger ?? this.lastContextRefreshTrigger,
+      lastContextRefreshReasonFamily:
+          lastContextRefreshReasonFamily ?? this.lastContextRefreshReasonFamily,
+      lastInterventionTriggerReasonCodes:
+          lastInterventionTriggerReasonCodes ??
+          this.lastInterventionTriggerReasonCodes,
+      lastInterventionTriggerCategory:
+          lastInterventionTriggerCategory ?? this.lastInterventionTriggerCategory,
+      pendingContextRefreshTrigger: clearPendingContextRefresh
+          ? null
+          : (pendingContextRefreshTrigger ?? this.pendingContextRefreshTrigger),
+      pendingContextRefreshReasonFamily: clearPendingContextRefresh
+          ? null
+          : (pendingContextRefreshReasonFamily ??
+              this.pendingContextRefreshReasonFamily),
+      validationTighteningsUsed:
+          validationTighteningsUsed ?? this.validationTighteningsUsed,
     );
   }
 
@@ -3916,6 +4210,15 @@ class HarnessState {
       'lastDecision': lastDecision,
       'lastReasonCodes': lastReasonCodes,
       'actionHistory': actionHistory,
+      'generatorRevisionsUsed': generatorRevisionsUsed,
+      'contextRefreshCount': contextRefreshCount,
+      'lastContextRefreshTrigger': lastContextRefreshTrigger,
+      'lastContextRefreshReasonFamily': lastContextRefreshReasonFamily,
+      'lastInterventionTriggerReasonCodes': lastInterventionTriggerReasonCodes,
+      'lastInterventionTriggerCategory': lastInterventionTriggerCategory,
+      'pendingContextRefreshTrigger': pendingContextRefreshTrigger,
+      'pendingContextRefreshReasonFamily': pendingContextRefreshReasonFamily,
+      'validationTighteningsUsed': validationTighteningsUsed,
     };
   }
 }

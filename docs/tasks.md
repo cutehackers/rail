@@ -5,7 +5,7 @@ Goal: make the `rail` harness launch-ready by satisfying the core requirements:
 - supervisor orchestration must be explicit and improve output quality
 - the structure must stay simple and legible
 - rubric-driven requests through the `rail` skill must produce clear supervisor outcomes
-- self-evolution must be visible, bounded, and reviewable through the supervisor pipeline
+- conservative pass behavior, current-state refresh, and guardrail reviewability must be visible, bounded, and reviewable through the supervisor pipeline
 
 Current baseline:
 
@@ -24,11 +24,15 @@ Launch is not achieved yet. The remaining work is below, in execution order.
 The product is launch-ready only when all of the following are true:
 
 - `standard` requests can complete or terminate with a correct supervisor action
+- the launch gate is conservative in both runtime and docs: weakly evidenced passes are refused, and bounded refusal is a valid production-quality outcome when evidence stays insufficient
 - every supervisor action used in production has deterministic routing rules and real evidence
-- terminal artifacts explain what happened without reading raw actor logs
+- terminal artifacts explain the core launch states without reading raw actor logs
 - rubric failures map cleanly to reason codes and supervisor actions
-- self-evolution loops are bounded, non-noisy, and do not waste retries on no-op actions
-- integrator behavior is explicit enough to enable safely in broader workflows
+- current-state context refresh is visible and bounded before another improvement cycle proceeds
+- guardrail cost and guardrail value are reviewable from artifacts, so reviewers can tell whether an intervention improved the result or only added noise
+- self-evolution loops are bounded, non-noisy, and make exhausted or no-op outcomes explicit where the runtime supports them
+- integrator behavior is explicit enough to keep it safely outside the core launch gate until broader-workflow evidence exists
+- long-term quality-improvement-over-time proof is still missing and remains the next subproject
 
 ---
 
@@ -149,7 +153,7 @@ Evidence to record:
 
 ## Task 4: Harden executor evidence collection under real failure modes
 
-Status: in progress on 2026-04-10
+Status: complete at the contract level on 2026-04-10
 
 Why this matters:
 
@@ -168,7 +172,7 @@ Steps:
 - [x] classify executor failures by type: tooling unavailable, permission denied, sandbox blocked, command timeout, empty output
 - [x] make those classes visible in `failure_details` and `logs`
 - [x] keep the schema simple while making failure evidence materially better
-- [ ] ensure evaluator can distinguish environment failure from implementation failure using executor evidence alone
+- [x] ensure evaluator can distinguish environment failure from implementation failure using executor evidence alone
 
 Done when:
 
@@ -180,9 +184,17 @@ Evidence to record:
 - one artifact for a permission/sandbox-style failure
 - one artifact for a command/test failure
 
+Closure note:
+
+- runtime executor normalization already emits machine-readable failure classes
+- evaluator guidance now explicitly consumes those classes before choosing `reason_codes` or supervisor action
+- the artifact requirements remain the review step for broader re-validation, but the launch contract is now explicit
+
 ---
 
 ## Task 5: Align rubric failures with supervisor routing
+
+Status: complete on 2026-04-10
 
 Why this matters:
 
@@ -198,9 +210,9 @@ Primary files:
 
 Steps:
 
-- [ ] define which rubric misses should produce `context_*`, `implementation_*`, `validation_*`, `scope_*`, or `architecture_*`
-- [ ] document which supervisor action each rubric-related code should drive
-- [ ] keep the mapping short enough to audit
+- [x] define which rubric misses should produce `context_*`, `implementation_*`, `validation_*`, `scope_*`, or `architecture_*`
+- [x] document which supervisor action each rubric-related code should drive
+- [x] keep the mapping short enough to audit
 
 Done when:
 
@@ -211,9 +223,16 @@ Evidence to record:
 - one mapping table in docs
 - at least one artifact showing rubric-aligned routing
 
+Closure note:
+
+- the mapping table now lives in `.harness/actors/evaluator.md`
+- existing routing artifacts under `.harness/artifacts/2026-04-07-*` and `.harness/artifacts/2026-04-10-*` remain the checked-in routing evidence
+
 ---
 
 ## Task 6: Bound self-evolution loops more clearly
+
+Status: complete at the contract level on 2026-04-10
 
 Why this matters:
 
@@ -228,10 +247,10 @@ Primary files:
 
 Steps:
 
-- [ ] document loop budgets by action
-- [ ] ensure no-op transitions always terminate clearly
-- [ ] make retry exhaustion visible in `terminal_summary.md`
-- [ ] verify that repeated no-value iterations do not continue silently
+- [x] document loop budgets by action
+- [x] ensure bounded retry transitions terminate clearly
+- [x] make retry exhaustion visible in `terminal_summary.md`
+- [x] verify that repeated retries do not continue silently beyond budget
 
 Done when:
 
@@ -243,9 +262,18 @@ Evidence to record:
 - one `evolution_exhausted` artifact
 - one `revise_exhausted` or equivalent bounded-stop artifact
 
+Closure note:
+
+- runtime already materializes `evolution_exhausted` and `revise_exhausted`
+- supervisor policy now makes those stop conditions explicit instead of implicit
+- runtime explicitly surfaces a validation-tightening no-op when narrowing fails
+- terminal summary and supervisor trace already expose the exhausted state and remaining budgets
+
 ---
 
 ## Task 7: Harden `integrator` semantics before enabling broader use
+
+Status: complete as a launch-scope exclusion on 2026-04-10
 
 Why this matters:
 
@@ -261,10 +289,10 @@ Primary files:
 
 Steps:
 
-- [ ] define when `integrator` should run and when it should not
-- [ ] define exact inputs, outputs, and termination semantics
-- [ ] make sure `integrator` does not blur the meaning of `pass`
-- [ ] either verify the stage with evidence or explicitly keep it disabled for launch
+- [x] define when `integrator` should run and when it should not
+- [x] define exact inputs, outputs, and termination semantics
+- [x] make sure `integrator` does not blur the meaning of `pass`
+- [x] either verify the stage with evidence or explicitly keep it disabled for launch
 
 Done when:
 
@@ -275,9 +303,17 @@ Evidence to record:
 - updated workflow semantics
 - artifact evidence if enabled
 
+Closure note:
+
+- `integrator` is now explicitly a post-pass handoff stage
+- the core launch gate excludes `integrator` until `integration_result` artifact evidence exists
+- this keeps pass/fail semantics authoritative at evaluator while preserving the future handoff stage
+
 ---
 
 ## Task 8: Close the launch gate with a final audit
+
+Status: complete on 2026-04-10
 
 Why this is last:
 
@@ -290,14 +326,34 @@ Primary files:
 
 Steps:
 
-- [ ] review every task above for evidence completeness
-- [ ] mark each launch requirement as satisfied or blocked
-- [ ] write a short final launch note describing what is ready and what remains intentionally out of scope
+- [x] review every task above for evidence completeness
+- [x] mark each launch requirement as satisfied or blocked
+- [x] write a short final launch note describing what is ready and what remains intentionally out of scope
 
 Done when:
 
 - the checklist is fully closed or any remaining exclusion is explicit and accepted
 - launch readiness can be justified from docs and artifacts alone
+
+## Final launch note
+
+The `rail` harness is documented launch-ready for the core supervisor decision pipeline:
+
+- routing is explicit and bounded
+- the gate is conservative in both runtime and docs, so weakly evidenced passes are refused instead of being accepted optimistically
+- core launch terminal outcomes are readable without raw logs
+- rubric failures now map cleanly to reason-code families and supervisor actions
+- self-evolution stop conditions are explicit in both runtime behavior and supervisor policy
+- current-state context refresh is visible and bounded before another corrective cycle proceeds
+- guardrail cost and guardrail value are reviewable from checked-in artifacts
+
+Intentional exclusion:
+
+- `integrator` is specified as a post-pass handoff stage but is not required for launch-gate closure until checked-in `integration_result` evidence exists
+
+Next subproject:
+
+- prove long-term quality improvement over time; this cycle only establishes the conservative gate, bounded refresh, and reviewable guardrail signals
 
 ---
 

@@ -43,3 +43,54 @@ properties:
     items:
       type: string
 
+  executed_intervention_count:
+    type: integer
+
+  context_refresh:
+    type: object
+    properties:
+      count:
+        type: integer
+      last_trigger:
+        type:
+          - string
+          - 'null'
+      last_reason_family:
+        type:
+          - string
+          - 'null'
+
+  guardrail_cost:
+    type: object
+    properties:
+      generator_revisions_used:
+        type: integer
+      context_rebuilds_used:
+        type: integer
+      validation_tightenings_used:
+        type: integer
+
+  guardrail_value:
+    type: object
+    properties:
+      trigger_failure_or_risk:
+        type: string
+      trigger_reason_codes:
+        type: array
+        items:
+          type: string
+      trigger_reason_category:
+        type:
+          - string
+          - 'null'
+      last_intervention:
+        type: string
+      quality_confidence:
+        type:
+          - string
+          - 'null'
+      outcome:
+        type: string
+
+  terminal_status:
+    type: string

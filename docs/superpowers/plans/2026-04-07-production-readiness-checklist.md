@@ -26,6 +26,8 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
 - [x] Refined validation and requirements routing categories were verified with `standard` route artifacts
 - [x] Terminal summaries now include outcome explanation and recommended next step
 - [x] Terminal summary evidence exists for `passed`, `blocked_environment`, and `split_required`
+- [x] Fresh hardening evidence recorded for conservative-pass weak proof, current-state context refresh, and exhausted refusal behavior
+- [x] Launch gate wording now distinguishes a conservative pass policy, bounded context refresh, reviewable guardrail cost/value, and bounded refusal as a production-quality outcome
 
 ## Evidence
 
@@ -41,6 +43,16 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-passed/terminal_summary.md`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-blocked/terminal_summary.md`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-split/terminal_summary.md`
+- Conservative-pass hardening evidence:
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/state.json`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/evaluation_result.yaml`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/supervisor_trace.md`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-context-refresh/state.json`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-context-refresh/evaluation_result.yaml`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-context-refresh/supervisor_trace.md`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-exhausted/state.json`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-exhausted/evaluation_result.yaml`
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-exhausted/terminal_summary.md`
 - Deterministic standard route checks:
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-validation/state.json`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-context/state.json`
@@ -53,7 +65,22 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
 
 ## Next production-facing priorities
 
-- Harden executor evidence collection under real failure modes
-- Align rubric failures with supervisor routing
-- Bound self-evolution loops more clearly
-- Review and harden integrator semantics before enabling it in broader workflows
+## Launch closure audit on 2026-04-10
+
+- [x] `standard` requests can complete or terminate with a correct supervisor action
+- [x] every supervisor action used in the core launch path has deterministic routing rules and checked-in evidence
+- [x] terminal artifacts explain the core launch states without reading raw actor logs
+- [x] rubric failures now map explicitly to reason-code families and supervisor actions in evaluator guidance
+- [x] self-evolution loops have explicit budgets and explicit exhausted terminal states
+- [x] `integrator` semantics are explicit as a post-pass handoff stage
+- [x] `integrator` is intentionally excluded from the core launch gate until `integration_result` artifact evidence exists for broader use
+
+## Current launch stance
+
+- The core launch-ready supervisor gate is: `planner -> context_builder -> generator -> executor -> evaluator`
+- The gate is conservative in both runtime and docs: weakly evidenced passes are refused, and bounded refusal is a valid production-quality result when evidence stays insufficient
+- `context_refresh` is visible in runtime traces and bounded by retry budgets, so reviewers can see when the system re-grounded itself before another correction
+- guardrail cost and guardrail value are reviewable from `supervisor_trace.md` and `terminal_summary.md` artifacts
+- `integrator` remains outside the core gate unless fresh `integration_result` evidence is added
+- post-`integrator` completion is outside the core terminal-summary claim for this launch pass
+- the next follow-on subproject is long-term quality-improvement-over-time proof; this cycle only establishes the conservative gate, bounded refresh, and reviewable guardrail signals

@@ -3,6 +3,7 @@ required:
   - decision
   - findings
   - reason_codes
+  - quality_confidence
 
 properties:
   decision:
@@ -37,6 +38,13 @@ properties:
     type: array
     items:
       type: string
+
+  quality_confidence:
+    type: string
+    enum:
+      - high
+      - medium
+      - low
 
   next_action:
     type: string

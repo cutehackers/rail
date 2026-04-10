@@ -43,18 +43,18 @@ Why this is first:
 
 Primary files:
 
-- `/Users/junhyounglee/workspace/rail/.harness/actors/evaluator.md`
-- `/Users/junhyounglee/workspace/rail/.harness/templates/evaluation_result.schema.yaml`
-- `/Users/junhyounglee/workspace/rail/bin/rail.dart`
-- `/Users/junhyounglee/workspace/rail/docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
+- `.harness/actors/evaluator.md`
+- `.harness/templates/evaluation_result.schema.yaml`
+- `bin/rail.dart`
+- `docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
 
 Steps:
 
-- [ ] define a narrower taxonomy for generic validation failures
-- [ ] separate validation-target problems from missing-validation-evidence problems
-- [ ] separate unmet-requirement problems from patch-quality problems
-- [ ] update runtime routing so each refined code still maps deterministically
-- [ ] document the taxonomy and precedence rules in evaluator guidance
+- [x] define a narrower taxonomy for generic validation failures
+- [x] separate validation-target problems from missing-validation-evidence problems
+- [x] separate unmet-requirement problems from patch-quality problems
+- [x] update runtime routing so each refined code still maps deterministically
+- [x] document the taxonomy and precedence rules in evaluator guidance
 
 Done when:
 
@@ -64,10 +64,10 @@ Done when:
 
 Evidence to record:
 
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-evidence/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-requirement/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-coverage/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-behavior/state.json`
+- `.harness/artifacts/2026-04-10-standard-route-validation-evidence/state.json`
+- `.harness/artifacts/2026-04-10-standard-route-validation-requirement/state.json`
+- `.harness/artifacts/2026-04-10-standard-route-requirements-coverage/state.json`
+- `.harness/artifacts/2026-04-10-standard-route-requirements-behavior/state.json`
 
 ---
 
@@ -82,17 +82,17 @@ Why this is second:
 
 Primary files:
 
-- `/Users/junhyounglee/workspace/rail/bin/rail.dart`
-- `/Users/junhyounglee/workspace/rail/.harness/requests/`
-- `/Users/junhyounglee/workspace/rail/docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
+- `bin/rail.dart`
+- `.harness/requests/`
+- `docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
 
 Steps:
 
-- [ ] create or update `standard` fixtures that force `rebuild_context`
-- [ ] create or update `standard` fixtures that force `revise_generator`
-- [ ] create or update `standard` fixtures that force `split_task`
-- [ ] run each path through `evaluator` and capture final state
-- [ ] confirm `supervisor_trace.md` and `terminal_summary.md` remain readable for each path
+- [x] create or update `standard` fixtures that force `rebuild_context`
+- [x] create or update `standard` fixtures that force `revise_generator`
+- [x] create or update `standard` fixtures that force `split_task`
+- [x] run each path through `evaluator` and capture final state
+- [x] confirm `supervisor_trace.md` and `terminal_summary.md` remain readable for each path
 
 Done when:
 
@@ -101,15 +101,15 @@ Done when:
 
 Evidence to record:
 
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-validation/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-context/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-implementation/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-scope/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-env-routing/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-evidence/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-requirement/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-coverage/state.json`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-behavior/state.json`
+- `.harness/artifacts/2026-04-07-standard-route-validation/state.json`
+- `.harness/artifacts/2026-04-07-standard-route-context/state.json`
+- `.harness/artifacts/2026-04-07-standard-route-implementation/state.json`
+- `.harness/artifacts/2026-04-07-standard-route-scope/state.json`
+- `.harness/artifacts/2026-04-07-standard-env-routing/state.json`
+- `.harness/artifacts/2026-04-10-standard-route-validation-evidence/state.json`
+- `.harness/artifacts/2026-04-10-standard-route-validation-requirement/state.json`
+- `.harness/artifacts/2026-04-10-standard-route-requirements-coverage/state.json`
+- `.harness/artifacts/2026-04-10-standard-route-requirements-behavior/state.json`
 
 ---
 
@@ -124,15 +124,15 @@ Why this matters:
 
 Primary files:
 
-- `/Users/junhyounglee/workspace/rail/bin/rail.dart`
-- `/Users/junhyounglee/workspace/rail/.harness/actors/evaluator.md`
-- `/Users/junhyounglee/workspace/rail/docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
+- `bin/rail.dart`
+- `.harness/actors/evaluator.md`
+- `docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
 
 Steps:
 
-- [ ] standardize `terminal_summary.md` sections for `passed`, `blocked_environment`, `split_required`, `evolution_exhausted`, and `rejected`
-- [ ] ensure the summary explains the action chosen, why it was chosen, and what should happen next
-- [ ] ensure the summary stays useful even when executor output is sparse
+- [x] standardize `terminal_summary.md` sections for `passed`, `blocked_environment`, `split_required`, `evolution_exhausted`, and `rejected`
+- [x] ensure the summary explains the action chosen, why it was chosen, and what should happen next
+- [x] ensure the summary stays useful even when executor output is sparse
 
 Done when:
 
@@ -141,13 +141,15 @@ Done when:
 
 Evidence to record:
 
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-passed/terminal_summary.md`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-blocked/terminal_summary.md`
-- `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-split/terminal_summary.md`
+- `.harness/artifacts/2026-04-10-standard-terminal-summary-passed/terminal_summary.md`
+- `.harness/artifacts/2026-04-10-standard-terminal-summary-blocked/terminal_summary.md`
+- `.harness/artifacts/2026-04-10-standard-terminal-summary-split/terminal_summary.md`
 
 ---
 
 ## Task 4: Harden executor evidence collection under real failure modes
+
+Status: in progress on 2026-04-10
 
 Why this matters:
 
@@ -156,16 +158,16 @@ Why this matters:
 
 Primary files:
 
-- `/Users/junhyounglee/workspace/rail/bin/rail.dart`
-- `/Users/junhyounglee/workspace/rail/.harness/actors/executor.md`
-- `/Users/junhyounglee/workspace/rail/.harness/templates/execution_report.schema.yaml`
-- `/Users/junhyounglee/workspace/rail/docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
+- `bin/rail.dart`
+- `.harness/actors/executor.md`
+- `.harness/templates/execution_report.schema.yaml`
+- `docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
 
 Steps:
 
-- [ ] classify executor failures by type: tooling unavailable, permission denied, sandbox blocked, command timeout, empty output
-- [ ] make those classes visible in `failure_details` and `logs`
-- [ ] keep the schema simple while making failure evidence materially better
+- [x] classify executor failures by type: tooling unavailable, permission denied, sandbox blocked, command timeout, empty output
+- [x] make those classes visible in `failure_details` and `logs`
+- [x] keep the schema simple while making failure evidence materially better
 - [ ] ensure evaluator can distinguish environment failure from implementation failure using executor evidence alone
 
 Done when:
@@ -189,10 +191,10 @@ Why this matters:
 
 Primary files:
 
-- `/Users/junhyounglee/workspace/rail/.harness/actors/evaluator.md`
-- `/Users/junhyounglee/workspace/rail/.harness/supervisor/context_contract.yaml`
-- `/Users/junhyounglee/workspace/rail/.harness/supervisor/policy.yaml`
-- `/Users/junhyounglee/workspace/rail/docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
+- `.harness/actors/evaluator.md`
+- `.harness/supervisor/context_contract.yaml`
+- `.harness/supervisor/policy.yaml`
+- `docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
 
 Steps:
 
@@ -220,9 +222,9 @@ Why this matters:
 
 Primary files:
 
-- `/Users/junhyounglee/workspace/rail/bin/rail.dart`
-- `/Users/junhyounglee/workspace/rail/.harness/supervisor/policy.yaml`
-- `/Users/junhyounglee/workspace/rail/docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
+- `bin/rail.dart`
+- `.harness/supervisor/policy.yaml`
+- `docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
 
 Steps:
 
@@ -252,10 +254,10 @@ Why this matters:
 
 Primary files:
 
-- `/Users/junhyounglee/workspace/rail/bin/rail.dart`
-- `/Users/junhyounglee/workspace/rail/.harness/actors/integrator.md`
-- `/Users/junhyounglee/workspace/rail/.harness/supervisor/registry.yaml`
-- `/Users/junhyounglee/workspace/rail/docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
+- `bin/rail.dart`
+- `.harness/actors/integrator.md`
+- `.harness/supervisor/registry.yaml`
+- `docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
 
 Steps:
 
@@ -283,8 +285,8 @@ Why this is last:
 
 Primary files:
 
-- `/Users/junhyounglee/workspace/rail/docs/tasks.md`
-- `/Users/junhyounglee/workspace/rail/docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
+- `docs/tasks.md`
+- `docs/superpowers/plans/2026-04-07-production-readiness-checklist.md`
 
 Steps:
 

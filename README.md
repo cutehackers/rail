@@ -1,96 +1,136 @@
 # rail
 
-`rail` is a standalone harness control-plane repository.
+`rail` is the standalone control-plane for the `v1 core supervisor gate`. It turns a user request into a bounded supervisor run against an external target repository, while keeping the runtime, schemas, prompts, and artifacts versioned in one place.
 
-## Supported in V1
+The application under change does not live in this repository. `rail` operates on a target repo passed through `--project-root`.
 
-`v1` is the production release for the core supervisor gate. It supports:
+See [docs/releases/v1-core-supervisor-gate.md](docs/releases/v1-core-supervisor-gate.md) for the release contract and [docs/backlog/v2-integrator-and-learning.md](docs/backlog/v2-integrator-and-learning.md) for the deferred `v2` backlog.
 
-- request composition and validation
-- workflow bootstrap against external `--project-root`
-- sequential execution of:
-  - `planner`
-  - `context_builder`
-  - `generator`
-  - `executor`
-  - `evaluator`
-- a bounded corrective loop driven by evaluator actions
-- deterministic routing for:
-  - `rebuild_context`
-  - `revise_generator`
-  - `tighten_validation`
-  - `split_task`
-  - `block_environment`
-  - `pass`
-- terminal artifacts:
-  - `state.json`
-  - `supervisor_trace.md`
-  - `terminal_summary.md`
+## Install
 
-## Deferred to V2
+Requirements:
 
-The following are explicitly out of the `v1` production release:
+- Dart SDK `^3.9.0`
 
-- `integrator`
-- `apply-user-outcome-feedback`
-- `apply-learning-review`
-- `apply-hardening-review`
-- approved-memory, review-queue, and hardening-queue operations
-- quality-improvement-over-time workflows
+Setup:
 
-See [docs/releases/v1-core-supervisor-gate.md](/Users/junhyounglee/workspace/rail/.worktrees/v1-core-supervisor-gate/docs/releases/v1-core-supervisor-gate.md) for the release contract and [docs/backlog/v2-integrator-and-learning.md](/Users/junhyounglee/workspace/rail/.worktrees/v1-core-supervisor-gate/docs/backlog/v2-integrator-and-learning.md) for deferred work.
+```bash
+git clone <repo-url> rail
+cd rail
+dart pub get
+dart run bin/rail.dart help
+```
 
-It owns:
+## What You Can Do With `rail`
 
-- the harness runtime CLI
-- the supervisor/actor/rubric/rule/schema bundle under `.harness/`
-- the repo-local `rail` skill definition
+From a user perspective, `rail` lets you:
 
-It does not contain the application under change.
-The actual target repository is supplied with `--project-root`.
+- compose a structured request from a plain-language goal
+- validate the request before running the supervisor
+- bootstrap a task artifact set for a target repository
+- execute the `planner -> context_builder -> generator -> executor -> evaluator` gate
+- apply bounded evaluator feedback through deterministic routing
+- keep requests, traces, and terminal artifacts in one dedicated control repository
 
-## What this solves
+Today, the default target profile is the built-in Flutter + Riverpod workflow.
 
-- removes harness logic from an app repository
-- makes `rail` versioned as one product
-- decouples the user-facing skill from a single hardcoded repo
-- keeps requests and artifacts in one dedicated control repository
+## Project Structure
 
-## Project layout
+- `bin/rail.dart`: CLI entrypoint
+- `lib/src/cli/`: command parsing and usage surface
+- `lib/src/runtime/`: harness runtime and supervisor execution flow
+- `.harness/`: actor briefs, supervisor rules, rubrics, schemas, and templates
+- `skills/rail/SKILL.md`: repo-owned skill entrypoint
+- `docs/`: release contracts, backlog, and design records
+- `examples/`: example target-repo conventions and usage material
 
-- `bin/rail.dart`: runtime entrypoint
-- `.harness/`: supervisor config, actor docs, rubrics, rules, templates
-- `skills/rail/SKILL.md`: repo-owned user entrypoint
-- `docs/`: design and migration documents
-- `examples/`: example usage and target repo conventions
+## Using The Codex Skill
 
-## Quick start
+If you use Codex, the repo-owned `Rail` skill is the highest-leverage entrypoint. Its main benefit is that it converts a natural-language task request into a structured harness request automatically, instead of making the user hand-author YAML or remember every CLI flag.
 
-1. `cd /Users/junhyounglee/workspace/rail`
-2. `dart pub get`
-3. Compose a request:
-   - `dart run bin/rail.dart compose-request --goal "fix intermittent profile refresh loading issue" --task-type bug_fix --feature profile`
-   - smoke-only validation이 필요하면 `--validation-profile smoke`를 추가
-   - standard validation을 좁히고 싶으면 `--validation-root`와 `--validation-target`으로 검증 범위를 직접 지정
-4. Validate it:
-   - `dart run bin/rail.dart validate-request --request .harness/requests/<generated>.yaml`
-5. Bootstrap the workflow against a target repo:
-   - `dart run bin/rail.dart run --request .harness/requests/<generated>.yaml --project-root /absolute/path/to/target-repo`
-6. Execute actors:
-   - `dart run bin/rail.dart execute --artifact .harness/artifacts/<task-id>`
+In practice, the skill will:
 
-`run` records the target repo path in the workflow, so `execute` can usually omit `--project-root`.
+- infer request fields such as `task_type`, `goal`, `constraints`, `definition_of_done`, and `risk_tolerance`
+- ask for at most one clarification only when the request is unsafe without it
+- compose the request file with `compose-request`
+- validate it
+- bootstrap the supervisor workflow against `--project-root`
 
-## Skill installation
+Example Codex prompt:
+
+```text
+Use the Rail skill from /Users/junhyounglee/workspace/rail.
+Target repo: /absolute/path/to/target-repo
+Task: Fix the intermittent profile refresh loading issue.
+Constraint: Do not change the API contract.
+Definition of done: pull-to-refresh no longer gets stuck, related tests pass, analyze stays clean.
+```
+
+This is the key user benefit of `rail`: the operator can stay at the level of intent, while the skill writes the structured request and kicks off the correct `v1` supervisor gate workflow.
+
+## Example Workflow
+
+Compose a request from a goal:
+
+```bash
+dart run bin/rail.dart compose-request \
+  --goal "Fix intermittent profile refresh loading issue" \
+  --task-type bug_fix \
+  --feature profile
+```
+
+Validate the generated request:
+
+```bash
+dart run bin/rail.dart validate-request \
+  --request .harness/requests/<generated>.yaml
+```
+
+Bootstrap the supervisor gate for a target repository:
+
+```bash
+dart run bin/rail.dart run \
+  --request .harness/requests/<generated>.yaml \
+  --project-root /absolute/path/to/target-repo \
+  --task-id profile-refresh-fix
+```
+
+Execute the gate:
+
+```bash
+dart run bin/rail.dart execute \
+  --artifact .harness/artifacts/profile-refresh-fix
+```
+
+Useful variations:
+
+- start from a template with `dart run bin/rail.dart init-request`
+- narrow standard validation with `--validation-root` and `--validation-target`
+- use `--validation-profile smoke` for smoke-only executor validation
+- inspect the next bounded action with `dart run bin/rail.dart route-evaluation --artifact <path>`
+
+`run` records the target repo path in the artifact workflow, so `execute` can usually omit `--project-root`.
+
+## Skill Installation
 
 This repo includes a repo-owned skill at `skills/rail/SKILL.md`.
 
-If you want to expose it through Codex global skills, install a symlink:
+If you want to expose it through Codex global skills, use the installer script:
 
-- `mkdir -p ~/.codex/skills/rail`
-- `ln -sfn /Users/junhyounglee/workspace/rail/skills/rail/SKILL.md ~/.codex/skills/rail/SKILL.md`
+```bash
+./scripts/install_skill.sh
+```
 
-You can replace the symlink with your own installer later. The important point is that the source of truth stays in this repo.
+That script creates `~/.codex/skills/rail` and installs a symlink to the repo-owned skill.
+
+If you prefer to do the same step manually:
+
+```bash
+mkdir -p ~/.codex/skills/rail
+ln -sfn "$(pwd)/skills/rail/SKILL.md" ~/.codex/skills/rail/SKILL.md
+```
+
+The important point is that the source of truth stays in this repository.
 
 ## Current scope
 

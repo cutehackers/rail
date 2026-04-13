@@ -22,7 +22,7 @@ String _terminalOutcomeSummary(String status) {
     'passed' =>
       'The supervisor accepted the run and no further evolution step is required.',
     'blocked_environment' =>
-      'The supervisor stopped because the environment or tooling prevented credible validation. More code changes would not have fixed this run.',
+      'The supervisor was blocked by environment or tooling issues that prevented credible validation. More code changes would not have fixed this run.',
     'split_required' =>
       'The supervisor stopped because the request is too broad or crosses task boundaries and should be decomposed before continuing.',
     'evolution_exhausted' =>

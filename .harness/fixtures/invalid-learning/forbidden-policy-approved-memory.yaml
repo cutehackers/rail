@@ -1,0 +1,26 @@
+task_family: learning-review-boundary
+task_family_source: task_type
+approved_observation: The approved guidance applies only inside the documented guardrails.
+applicability_conditions:
+  - repository_state matches the reviewed baseline
+evidence_basis:
+  - run-001
+guardrail_note: Guidance only, never a policy override.
+freshness_marker:
+  contract_version: 1
+  policy_version: 1
+  memory_schema_version: 1
+  repository_assumptions_ref: assumptions-001
+  repository_state_ref: state-001
+disposition_history:
+  - disposition: approved
+    decided_at: '2026-04-13T09:00:00Z'
+    decision_ref: review-001
+    reviewer_identity: reviewer-001
+    reason: Approved for reuse under current assumptions.
+originating_candidate_refs:
+  - candidate-001
+next_action: promote
+routing_override: approved-memory
+pass_bar_override: true
+evaluator_policy_override: allow

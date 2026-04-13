@@ -1,4 +1,5 @@
 version: 1
+policy_version: 1
 
 global:
   max_files_per_task: 6
@@ -6,6 +7,22 @@ global:
   require_related_tests: true
   require_analyze_pass: true
   prefer_minimal_diff: true
+
+review_boundary:
+  run_end_candidate_emission_allowed: true
+  candidate_promotion_requires_human_authored_learning_review_decision: true
+  hardening_candidates_excluded_from_reusable_family_memory: true
+  policy_changes_are_separate_hardening_work: true
+
+approved_memory_guardrails:
+  approved_memory_is_guidance_only: true
+  approved_memory_must_never_override_current_request: true
+  approved_memory_must_never_override_repository_state: true
+  approved_memory_must_never_override_evaluator_policy: true
+
+freshness_checks:
+  policy_version_required_for_reuse: true
+  approved_memory_reuse_requires_reviewed_memory: true
 
 split_task_if:
   - likely_files_count > 6

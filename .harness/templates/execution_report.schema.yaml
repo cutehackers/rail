@@ -5,6 +5,7 @@ required:
   - tests
   - failure_details
   - logs
+  - approved_memory_consideration
 
 properties:
   format:
@@ -86,11 +87,61 @@ properties:
       last_intervention:
         type: string
       quality_confidence:
-        type:
-          - string
-          - 'null'
+        type: number
+        minimum: 0
+        maximum: 1
       outcome:
         type: string
 
   terminal_status:
     type: string
+
+  quality_learning_candidate_refs:
+    type: array
+    items:
+      type: string
+
+  hardening_candidate_refs:
+    type: array
+    items:
+      type: string
+
+  approved_memory_consideration:
+    type: object
+    required:
+      - considered_ref
+      - lookup_key
+      - task_family_source
+      - disposition
+      - reasons
+      - originating_candidate_refs
+      - current_state_refresh_ref
+    properties:
+      considered_ref:
+        type: string
+      lookup_key:
+        type: string
+      task_family_source:
+        type: string
+      disposition:
+        type: string
+        enum:
+          - reuse
+          - quarantine
+          - drop
+      reasons:
+        type: array
+        items:
+          type: string
+      originating_candidate_refs:
+        type: array
+        items:
+          type: string
+      current_state_refresh_ref:
+        type: string
+      current_state_refresh_generated_at:
+        type:
+          - string
+          - 'null'
+
+additionalProperties: false

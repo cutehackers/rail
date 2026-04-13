@@ -1,0 +1,15 @@
+candidate_ref: '.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml'
+candidate_user_outcome_status_at_review: 'confirmed'
+reviewer_decision: 'hold'
+reviewer_identity: 'reviewer-quality-learning'
+decision_timestamp: '2026-04-13T02:22:00Z'
+decision_reason: 'Earlier hold fixture for the same feature_addition candidate while intervention cost was still being reviewed.'
+considered_user_outcome_feedback_refs:
+  - '.harness/learning/feedback/feature-addition-confirmed.yaml'
+guardrail_cost_predicate:
+  assessment: 'intervention_cost_explains_apparent_improvement'
+  rationale: 'This earlier hold fixture models a stricter reading before the final approved-memory promotion decision.'
+  excessive_intervention_cost_refs:
+    - 'state.generatorRevisionsUsed'
+    - 'state.contextRefreshCount'
+    - 'state.validationTighteningsUsed'

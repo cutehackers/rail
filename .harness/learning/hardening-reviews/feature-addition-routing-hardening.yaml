@@ -1,0 +1,10 @@
+hardening_candidate_ref: .harness/artifacts/2026-04-10-hardening-candidate-surfaced/hardening_candidates/01.yaml
+reviewer_decision: accept_for_hardening
+reviewer_identity: reviewer-quality-learning
+decision_timestamp: '2026-04-13T02:25:00Z'
+decision_reason: Route this policy-affecting approved-memory observation into hardening
+  review only so it stays out of reusable family memory.
+reviewed_observation_refs:
+- .harness/artifacts/2026-04-10-hardening-candidate-surfaced/execution_report.yaml
+- .harness/artifacts/2026-04-10-hardening-candidate-surfaced/evaluation_result.yaml
+follow_up_hardening_note_ref: .harness/artifacts/2026-04-10-hardening-candidate-surfaced/follow_up_hardening_note.yaml

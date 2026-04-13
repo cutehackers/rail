@@ -1,0 +1,44 @@
+type: object
+required:
+  - hardening_candidate_ref
+  - reviewer_decision
+  - reviewer_identity
+  - decision_timestamp
+  - decision_reason
+  - reviewed_observation_refs
+properties:
+  hardening_candidate_ref:
+    type: string
+
+  reviewer_decision:
+    type: string
+    enum:
+      - accept_for_hardening
+      - hold
+      - reject
+
+  reviewer_identity:
+    type: string
+
+  decision_timestamp:
+    type: string
+
+  decision_reason:
+    type: string
+
+  reviewed_observation_refs:
+    type: array
+    items:
+      type: string
+
+  follow_up_hardening_note_ref:
+    type: string
+allOf:
+  - if:
+      properties:
+        reviewer_decision:
+          const: accept_for_hardening
+    then:
+      required:
+        - follow_up_hardening_note_ref
+additionalProperties: false

@@ -1,0 +1,10 @@
+pending_hardening_entries:
+  -
+    hardening_candidate_ref: '.harness/artifacts/2026-04-10-hardening-candidate-surfaced/hardening_candidates/01.yaml'
+    policy_affecting_reason: 'When a live request tries to use approved memory as a policy shortcut, the observation must be surfaced for hardening review instead of becoming reusable same-family memory.'
+    review_state: 'accept_for_hardening'
+    latest_review_decision_ref: '.harness/learning/hardening-reviews/feature-addition-routing-hardening.yaml'
+    task_family: 'feature_addition'
+    task_family_source: 'task_type'
+queue_generated_at: '2026-04-13T02:28:04.613613Z'
+queue_sequence: 1

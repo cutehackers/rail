@@ -1,0 +1,12 @@
+candidate_ref: '.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml'
+candidate_user_outcome_status_at_review: 'confirmed'
+reviewer_decision: 'hold'
+reviewer_identity: 'reviewer-quality-learning'
+decision_timestamp: '2026-04-13T02:23:00Z'
+decision_reason: 'Earlier hold fixture for the same feature_addition candidate pending one more same-family follow-up check.'
+considered_user_outcome_feedback_refs:
+  - '.harness/learning/feedback/feature-addition-confirmed.yaml'
+guardrail_cost_predicate:
+  assessment: 'not_assessed'
+  rationale: 'This earlier hold fixture defers reuse until the final bounded same-family story is reviewed.'
+  excessive_intervention_cost_refs: []

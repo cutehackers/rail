@@ -1,4 +1,5 @@
 version: 1
+contract_version: 1
 
 input:
   required_fields:
@@ -45,6 +46,8 @@ actor_flow_schema:
       - execution_policy
     out:
       - execution_report
+      - quality_learning_candidate
+      - hardening_candidate
 
   evaluator:
     in:
@@ -67,6 +70,24 @@ actor_flow_schema:
       - integration_result
 
 workflow_semantics:
+  task_family_binding:
+    authoritative_input: task_type
+    derived_family_field: task_family
+    task_type_is_authoritative_task_family: true
+    task_family_must_match_task_type: true
+
+  artifact_emission:
+    run_end:
+      quality_learning_candidate:
+        cardinality: zero_or_more
+      hardening_candidate:
+        cardinality: zero_or_more
+
+  reuse_rules:
+    approved_family_memory_only: true
+    unreviewed_candidates_must_not_influence_later_runs_directly: true
+    review_queues_must_not_influence_later_runs_directly: true
+
   evaluator_pass_controls_supervisor_decision: true
   evaluator_is_the_conservative_production_gate: true
   integrator_role: post_pass_handoff_only

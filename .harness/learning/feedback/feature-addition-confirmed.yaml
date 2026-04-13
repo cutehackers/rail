@@ -1,0 +1,17 @@
+originating_run_artifact_identity:
+  run_ref: '.harness/artifacts/2026-04-10-quality-learning-candidate'
+  artifact_ref: '.harness/artifacts/2026-04-10-quality-learning-candidate/evaluation_result.yaml'
+candidate_ref_hint: '.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml'
+task_family: 'feature_addition'
+task_family_source: 'task_type'
+feedback_classification: 'accepted'
+feedback_summary: 'The follow-up user check confirmed the quality-learning baseline stayed bounded and set up the later same-family approved-memory reuse path without manual correction.'
+submitted_at: '2026-04-13T02:20:00Z'
+evidence_refs:
+  run_refs:
+    - '.harness/artifacts/2026-04-10-quality-learning-candidate/execution_report.yaml'
+    - '.harness/artifacts/2026-04-10-quality-learning-candidate/evaluation_result.yaml'
+  follow_up_refs:
+    - '.harness/artifacts/2026-04-10-quality-learning-candidate/request.yaml'
+    - '.harness/requests/quality-learning-feature-family-baseline.yaml'
+    - '.harness/requests/quality-learning-feature-family-followup.yaml'

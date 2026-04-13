@@ -95,6 +95,30 @@ void main(List<String> args) async {
       );
       await runner.validateArtifact(filePath: filePath, schemaName: schemaName);
       return;
+    case 'apply-user-outcome-feedback':
+      final feedbackPath = _readRequiredOption(
+        args.skip(1).toList(),
+        '--feedback',
+        usageSink: stderr,
+      );
+      await runner.applyUserOutcomeFeedback(feedbackPath: feedbackPath);
+      return;
+    case 'apply-learning-review':
+      final decisionPath = _readRequiredOption(
+        args.skip(1).toList(),
+        '--decision',
+        usageSink: stderr,
+      );
+      await runner.applyLearningReview(decisionPath: decisionPath);
+      return;
+    case 'apply-hardening-review':
+      final decisionPath = _readRequiredOption(
+        args.skip(1).toList(),
+        '--decision',
+        usageSink: stderr,
+      );
+      await runner.applyHardeningReview(decisionPath: decisionPath);
+      return;
     case 'run':
       final requestPath = _readRequiredOption(
         args.skip(1).toList(),
@@ -159,7 +183,16 @@ void _printUsage(IOSink sink) {
     '  dart run bin/rail.dart validate-request --request <path>',
   );
   sink.writeln(
-    '  dart run bin/rail.dart validate-artifact --file <path> --schema <request|plan|context_pack|implementation_result|execution_report|evaluation_result|integration_result>',
+    '  dart run bin/rail.dart validate-artifact --file <path> --schema <request|plan|context_pack|implementation_result|execution_report|evaluation_result|integration_result|quality_learning_candidate|hardening_candidate|approved_family_memory|learning_review_decision|hardening_review_decision|user_outcome_feedback|family_evidence_index|learning_review_queue|hardening_review_queue|quality_improvement_comparison>',
+  );
+  sink.writeln(
+    '  dart run bin/rail.dart apply-user-outcome-feedback --feedback <path>',
+  );
+  sink.writeln(
+    '  dart run bin/rail.dart apply-learning-review --decision <path>',
+  );
+  sink.writeln(
+    '  dart run bin/rail.dart apply-hardening-review --decision <path>',
   );
   sink.writeln(
     '  dart run bin/rail.dart run --request <path> --project-root <path> [--task-id <id>] [--force]',
@@ -332,6 +365,333 @@ class HarnessRunner {
     stdout.writeln('Artifact is valid for `$schemaName`: $filePath');
   }
 
+  Future<void> applyUserOutcomeFeedback({required String feedbackPath}) async {
+    final feedbackFile = _resolveFileWithinRoot(feedbackPath);
+    if (!feedbackFile.existsSync()) {
+      throw ArgumentError('Feedback file not found: $feedbackPath');
+    }
+
+    final feedbackRef = p.relative(feedbackFile.path, from: root.path);
+    await validateArtifact(
+      filePath: feedbackRef,
+      schemaName: 'user_outcome_feedback',
+    );
+    final feedback = _asMap(_loadYamlValue(feedbackFile), context: feedbackFile.path);
+    final feedbackIdentity = _readMap(feedback, 'originating_run_artifact_identity');
+    final taskFamily = _readString(feedback, 'task_family');
+    final taskFamilySource = _readString(feedback, 'task_family_source');
+    final runRef = _readString(feedbackIdentity, 'run_ref');
+    final artifactRef = _readString(feedbackIdentity, 'artifact_ref');
+    final candidateRefHint = _readOptionalString(feedback, 'candidate_ref_hint');
+    final evidenceRefs = _flattenFeedbackEvidenceRefs(feedback);
+    final matchedCandidateRefs = <String>[];
+
+    for (final candidateFile in _listQualityCandidateFiles()) {
+      final candidateRef = p.relative(candidateFile.path, from: root.path);
+      final candidate = _asMap(
+        _loadYamlValue(candidateFile),
+        context: candidateFile.path,
+      );
+      final candidateIdentity = _readMap(
+        candidate,
+        'originating_run_artifact_identity',
+      );
+      final candidateRunRef = candidateIdentity['run_ref']?.toString() ?? '';
+      final candidateArtifactRef =
+          candidateIdentity['artifact_ref']?.toString() ?? '';
+      final candidateTaskFamily = candidate['task_family']?.toString() ?? '';
+      final candidateTaskFamilySource =
+          candidate['task_family_source']?.toString() ?? '';
+      if (candidateRunRef != runRef ||
+          candidateArtifactRef != artifactRef ||
+          candidateTaskFamily != taskFamily ||
+          candidateTaskFamilySource != taskFamilySource ||
+          (candidateRefHint != null && candidateRef != candidateRefHint)) {
+        continue;
+      }
+
+      matchedCandidateRefs.add(candidateRef);
+    }
+
+    if (matchedCandidateRefs.length > 1 && candidateRefHint == null) {
+      throw StateError(
+        'Feedback `$feedbackRef` matches multiple candidates. Provide `candidate_ref_hint` so the evidence attaches to exactly one candidate.',
+      );
+    }
+
+    for (final candidateRef in matchedCandidateRefs) {
+      final candidateFile = _resolveFileWithinRoot(candidateRef);
+      final candidate = _asMap(
+        _loadYamlValue(candidateFile),
+        context: candidateFile.path,
+      );
+      final userOutcomeSignal = _readMap(candidate, 'user_outcome_signal');
+      userOutcomeSignal['supporting_feedback_refs'] = _mergeDistinctStrings(
+        _readOptionalStringList(userOutcomeSignal, 'supporting_feedback_refs'),
+        [feedbackRef],
+      );
+      if (userOutcomeSignal['status']?.toString() != 'confirmed') {
+        userOutcomeSignal['status'] = 'provisional';
+        userOutcomeSignal['summary'] =
+            'Direct user outcome evidence was appended from `$feedbackRef` and remains provisional until an explicit learning review reconciles it.';
+      }
+      candidate['supporting_evidence_refs'] = _mergeDistinctStrings(
+        _readOptionalStringList(candidate, 'supporting_evidence_refs'),
+        evidenceRefs,
+      );
+
+      await candidateFile.writeAsString(_toYaml(candidate));
+      await validateArtifact(
+        filePath: p.relative(candidateFile.path, from: root.path),
+        schemaName: 'quality_learning_candidate',
+      );
+    }
+
+    await _refreshLearningViews();
+    stdout.writeln(
+      matchedCandidateRefs.isEmpty
+          ? 'Applied user outcome feedback at $feedbackRef (no matching quality candidate was updated; queue/index views were refreshed with a reviewable trail).'
+          : 'Applied user outcome feedback at $feedbackRef and updated ${matchedCandidateRefs.length} matching quality candidate(s) with reviewable feedback refs.',
+    );
+  }
+
+  Future<void> applyLearningReview({required String decisionPath}) async {
+    final decisionFile = _resolveFileWithinRoot(decisionPath);
+    if (!decisionFile.existsSync()) {
+      throw ArgumentError('Learning review decision file not found: $decisionPath');
+    }
+
+    final decisionRef = p.relative(decisionFile.path, from: root.path);
+    await validateArtifact(
+      filePath: decisionRef,
+      schemaName: 'learning_review_decision',
+    );
+    final decision = _asMap(_loadYamlValue(decisionFile), context: decisionFile.path);
+    final candidateRef = _readString(decision, 'candidate_ref');
+    final candidateFile = _resolveFileWithinRoot(candidateRef);
+    if (!candidateFile.existsSync()) {
+      throw ArgumentError('Referenced quality candidate not found: $candidateRef');
+    }
+    final candidateRelativePath = p.relative(candidateFile.path, from: root.path);
+    await validateArtifact(
+      filePath: candidateRelativePath,
+      schemaName: 'quality_learning_candidate',
+    );
+
+    final candidate = _asMap(_loadYamlValue(candidateFile), context: candidateFile.path);
+    final rawDecision = _readString(decision, 'reviewer_decision');
+    final reviewStatusAtDecision = _readString(
+      decision,
+      'candidate_user_outcome_status_at_review',
+    );
+    final reviewerIdentity = _readString(decision, 'reviewer_identity');
+    final decisionTimestamp = _readString(decision, 'decision_timestamp');
+    final decisionReason = _readString(decision, 'decision_reason');
+    final guardrailPredicate = _readMap(decision, 'guardrail_cost_predicate');
+    final guardrailAssessment = _readString(guardrailPredicate, 'assessment');
+    final guardrailRationale = _readString(guardrailPredicate, 'rationale');
+
+    final userOutcomeSignal = _readMap(candidate, 'user_outcome_signal');
+    final actualStatusAtReview = userOutcomeSignal['status']?.toString() ?? 'unavailable';
+    if (actualStatusAtReview != reviewStatusAtDecision) {
+      throw StateError(
+        'Learning review `$decisionRef` expects candidate user_outcome_signal.status=`$reviewStatusAtDecision`, but the candidate is currently `$actualStatusAtReview`.',
+      );
+    }
+
+    final feedbackRefs = _mergeDistinctStrings(
+      _readOptionalStringList(userOutcomeSignal, 'supporting_feedback_refs'),
+      _readOptionalStringList(decision, 'considered_user_outcome_feedback_refs'),
+    );
+    final feedbackEntries = _loadFeedbackArtifacts(
+      feedbackRefs,
+      expectedRunRef: _readString(
+        _readMap(candidate, 'originating_run_artifact_identity'),
+        'run_ref',
+      ),
+      expectedTaskFamily: candidate['task_family']?.toString() ?? '',
+      expectedTaskFamilySource:
+          candidate['task_family_source']?.toString() ?? 'task_type',
+    );
+    final acceptedFeedbackEntries = feedbackEntries
+        .where(
+          (entry) =>
+              entry.value['feedback_classification']?.toString() == 'accepted',
+        )
+        .toList(growable: false);
+    final acceptedFeedbackRefs = acceptedFeedbackEntries
+        .map((entry) => entry.key)
+        .toList(growable: false);
+    final feedbackEvidenceRefs = acceptedFeedbackEntries
+        .expand((entry) => _flattenFeedbackEvidenceRefs(entry.value))
+        .toList(growable: false);
+
+    if (acceptedFeedbackEntries.isNotEmpty) {
+      userOutcomeSignal['status'] = 'confirmed';
+      userOutcomeSignal['supporting_feedback_refs'] = acceptedFeedbackRefs;
+      userOutcomeSignal['summary'] =
+          'Confirmed during explicit review by `$decisionRef` after considering appended direct user outcome feedback.';
+      candidate['supporting_evidence_refs'] = _mergeDistinctStrings(
+        _readOptionalStringList(candidate, 'supporting_evidence_refs'),
+        feedbackEvidenceRefs,
+      );
+      await candidateFile.writeAsString(_toYaml(candidate));
+      await validateArtifact(
+        filePath: candidateRelativePath,
+        schemaName: 'quality_learning_candidate',
+      );
+    }
+
+    if (rawDecision == 'promote' &&
+        guardrailAssessment !=
+            'intervention_cost_does_not_explain_improvement') {
+      throw StateError(
+        'Promote decision `$decisionRef` is invalid because the guardrail-cost predicate does not clear promotion.',
+      );
+    }
+
+    final finalUserOutcomeStatus =
+        userOutcomeSignal['status']?.toString() ?? actualStatusAtReview;
+    if (rawDecision == 'promote' && finalUserOutcomeStatus != 'confirmed') {
+      throw StateError(
+        'Promote decision `$decisionRef` requires confirmed direct user outcome evidence or accepted feedback refs considered during review.',
+      );
+    }
+
+    final approvedMemoryRef = _approvedMemoryRefForFamily(
+      candidate['task_family']?.toString() ?? 'unknown',
+    );
+    if (rawDecision == 'promote') {
+      final requestedApprovedRef = _readString(
+        decision,
+        'resulting_approved_memory_ref',
+      );
+      if (requestedApprovedRef != approvedMemoryRef) {
+        throw StateError(
+          'Promote decision `$decisionRef` must target `$approvedMemoryRef`, but requested `$requestedApprovedRef`.',
+        );
+      }
+
+      final approvedFile = _resolveFileWithinRoot(approvedMemoryRef);
+      Map<String, dynamic>? existingApprovedMemory;
+      if (approvedFile.existsSync()) {
+        await validateArtifact(
+          filePath: approvedMemoryRef,
+          schemaName: 'approved_family_memory',
+        );
+        existingApprovedMemory = _asMap(
+          _loadYamlValue(approvedFile),
+          context: approvedFile.path,
+        );
+      }
+      final approvedMemory = _buildApprovedFamilyMemory(
+        candidateRef: candidateRelativePath,
+        candidate: candidate,
+        decisionRef: decisionRef,
+        decision: decision,
+        acceptedFeedbackEntries: acceptedFeedbackEntries,
+        existingApprovedMemory: existingApprovedMemory,
+      );
+      await approvedFile.parent.create(recursive: true);
+      await approvedFile.writeAsString(_toYaml(approvedMemory));
+      await validateArtifact(
+        filePath: approvedMemoryRef,
+        schemaName: 'approved_family_memory',
+      );
+    } else {
+      final approvedFile = _resolveFileWithinRoot(approvedMemoryRef);
+      if (approvedFile.existsSync()) {
+        await validateArtifact(
+          filePath: approvedMemoryRef,
+          schemaName: 'approved_family_memory',
+        );
+        final approvedMemory = _asMap(
+          _loadYamlValue(approvedFile),
+          context: approvedFile.path,
+        );
+        final originatingCandidateRefs = _readOptionalStringList(
+          approvedMemory,
+          'originating_candidate_refs',
+        );
+        if (originatingCandidateRefs.contains(candidateRelativePath)) {
+          await approvedFile.delete();
+        }
+      }
+    }
+
+    await _persistReviewDecisionToLearningStore(
+      categoryDirectory: 'learning_review_decisions',
+      sourceRef: candidateRef,
+      decision: decision,
+      schemaName: 'learning_review_decision',
+    );
+
+    await _refreshLearningViews();
+    stdout.writeln(
+      'Applied learning review `$decisionRef` for `$candidateRelativePath` with disposition `$rawDecision` (guardrail assessment: $guardrailAssessment, rationale: $guardrailRationale).',
+    );
+  }
+
+  Future<void> applyHardeningReview({required String decisionPath}) async {
+    final decisionFile = _resolveFileWithinRoot(decisionPath);
+    if (!decisionFile.existsSync()) {
+      throw ArgumentError(
+        'Hardening review decision file not found: $decisionPath',
+      );
+    }
+
+    final decisionRef = p.relative(decisionFile.path, from: root.path);
+    await validateArtifact(
+      filePath: decisionRef,
+      schemaName: 'hardening_review_decision',
+    );
+    final decision = _asMap(_loadYamlValue(decisionFile), context: decisionFile.path);
+    final candidateRef = _readString(decision, 'hardening_candidate_ref');
+    final candidateFile = _resolveFileWithinRoot(candidateRef);
+    if (candidateFile.existsSync()) {
+      _loadYamlValue(candidateFile);
+    }
+
+    await _persistReviewDecisionToLearningStore(
+      categoryDirectory: 'hardening_review_decisions',
+      sourceRef: candidateRef,
+      decision: decision,
+      schemaName: 'hardening_review_decision',
+    );
+
+    await _refreshLearningViews();
+    stdout.writeln(
+      'Applied hardening review `$decisionRef` for `$candidateRef`; reusable family memory was not created.',
+    );
+  }
+
+  Future<File> _persistReviewDecisionToLearningStore({
+    required String categoryDirectory,
+    required String sourceRef,
+    required Map<String, dynamic> decision,
+    required String schemaName,
+  }) async {
+    final storeRef = p.join(
+      '.harness',
+      'learning',
+      categoryDirectory,
+      '${_sanitizeLearningStoreComponent(sourceRef)}.yaml',
+    );
+    final storeFile = _resolveFileWithinRoot(storeRef);
+    await storeFile.parent.create(recursive: true);
+    await storeFile.writeAsString(_toYaml(decision), flush: true);
+    await validateArtifact(
+      filePath: p.relative(storeFile.path, from: root.path),
+      schemaName: schemaName,
+    );
+    return storeFile;
+  }
+
+  String _sanitizeLearningStoreComponent(String value) {
+    final sanitized = value.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
+    return sanitized.isEmpty ? 'decision' : sanitized;
+  }
+
   Future<String> run({
     required String requestPath,
     required String projectRoot,
@@ -434,6 +794,8 @@ class HarnessRunner {
     final resolvedWorkflow = ResolvedWorkflow(
       taskId: effectiveTaskId,
       taskType: userRequest.taskType,
+      taskFamily: userRequest.taskType,
+      taskFamilySource: 'task_type',
       projectRoot: projectDirectory.path,
       actors: taskConfig.actors,
       rubricPath: taskConfig.rubric,
@@ -464,6 +826,29 @@ class HarnessRunner {
     );
 
     if (executionPolicy.persistJsonSnapshots) {
+      final initialStateJson = {
+        'taskId': effectiveTaskId,
+        'taskFamily': userRequest.taskType,
+        'taskFamilySource': 'task_type',
+        'status': 'initialized',
+        'currentActor': taskConfig.actors.firstOrNull,
+        'completedActors': <String>[],
+        'generatorRetriesRemaining': resolvedWorkflow.generatorRetryBudget,
+        'contextRebuildsRemaining': resolvedWorkflow.contextRebuildBudget,
+        'validationTighteningsRemaining': resolvedWorkflow.validationTightenBudget,
+        'lastDecision': null,
+        'lastReasonCodes': <String>[],
+        'actionHistory': <String>[],
+        'generatorRevisionsUsed': 0,
+        'contextRefreshCount': 0,
+        'lastContextRefreshTrigger': null,
+        'lastContextRefreshReasonFamily': null,
+        'lastInterventionTriggerReasonCodes': <String>[],
+        'lastInterventionTriggerCategory': null,
+        'pendingContextRefreshTrigger': null,
+        'pendingContextRefreshReasonFamily': null,
+        'validationTighteningsUsed': 0,
+      };
       await File(
         p.join(artifactDirectory.path, 'resolved_workflow.json'),
       ).writeAsString(
@@ -475,30 +860,7 @@ class HarnessRunner {
         const JsonEncoder.withIndent('  ').convert(executionPlan.toJson()),
       );
       await File(p.join(artifactDirectory.path, 'state.json')).writeAsString(
-        const JsonEncoder.withIndent('  ').convert(
-          {
-            'taskId': effectiveTaskId,
-            'status': 'initialized',
-            'currentActor': taskConfig.actors.firstOrNull,
-            'completedActors': <String>[],
-            'generatorRetriesRemaining': resolvedWorkflow.generatorRetryBudget,
-            'contextRebuildsRemaining': resolvedWorkflow.contextRebuildBudget,
-            'validationTighteningsRemaining':
-                resolvedWorkflow.validationTightenBudget,
-            'lastDecision': null,
-            'lastReasonCodes': <String>[],
-            'actionHistory': <String>[],
-            'generatorRevisionsUsed': 0,
-            'contextRefreshCount': 0,
-            'lastContextRefreshTrigger': null,
-            'lastContextRefreshReasonFamily': null,
-            'lastInterventionTriggerReasonCodes': <String>[],
-            'lastInterventionTriggerCategory': null,
-            'pendingContextRefreshTrigger': null,
-            'pendingContextRefreshReasonFamily': null,
-            'validationTighteningsUsed': 0,
-          },
-        ),
+        const JsonEncoder.withIndent('  ').convert(initialStateJson),
       );
     }
 
@@ -507,6 +869,11 @@ class HarnessRunner {
         final outputPath = _artifactFilePath(artifactDirectory.path, outputName);
         await File(outputPath).writeAsString(_placeholderContent(outputName));
       }
+      await _synchronizeApprovedMemoryArtifacts(
+        artifactDirectory: artifactDirectory,
+        userRequest: userRequest,
+        projectRoot: projectDirectory.path,
+      );
     }
 
     await File(
@@ -545,6 +912,14 @@ class HarnessRunner {
         );
       }
     }
+
+    await _refreshLearningArtifacts(
+      artifactDirectory: artifactDirectory,
+      userRequest: userRequest,
+      state: HarnessState.fromJson(
+        _readJsonFile(p.join(artifactDirectory.path, 'state.json')),
+      ),
+    );
 
     return artifactDirectory.path;
   }
@@ -762,6 +1137,15 @@ class HarnessRunner {
             break;
           }
           if (_shouldTerminate(currentState)) {
+            await _writeTerminalOutcomeReport(
+              artifactDirectory: artifactDirectory,
+              state: currentState,
+            );
+            await _refreshLearningArtifacts(
+              artifactDirectory: artifactDirectory,
+              userRequest: userRequest,
+              state: currentState,
+            );
             break;
           }
           continue;
@@ -833,10 +1217,18 @@ class HarnessRunner {
           );
         }
         await File(outputPath).writeAsString(_toYaml(responseObject));
-        await validateArtifact(
-          filePath: p.relative(outputPath, from: root.path),
-          schemaName: schemaName,
-        );
+        if (schemaName == 'context_pack' || schemaName == 'execution_report') {
+          await _synchronizeApprovedMemoryArtifacts(
+            artifactDirectory: artifactDirectory,
+            userRequest: userRequest,
+            projectRoot: projectDirectory.path,
+          );
+        } else {
+          await validateArtifact(
+            filePath: p.relative(outputPath, from: root.path),
+            schemaName: schemaName,
+          );
+        }
       }
 
       currentState = _advanceState(
@@ -861,6 +1253,11 @@ class HarnessRunner {
       if (_shouldTerminate(currentState)) {
         await _writeTerminalOutcomeReport(
           artifactDirectory: artifactDirectory,
+          state: currentState,
+        );
+        await _refreshLearningArtifacts(
+          artifactDirectory: artifactDirectory,
+          userRequest: userRequest,
           state: currentState,
         );
         break;
@@ -908,8 +1305,20 @@ class HarnessRunner {
       state: nextState,
     );
     if (_shouldTerminate(nextState)) {
+      final userRequest = UserRequest.fromMap(
+        _asMap(
+          _loadYamlValue(File(p.join(artifactDirectory.path, 'request.yaml'))),
+          context: p.join(artifactDirectory.path, 'request.yaml'),
+        ),
+        requestPath: workflow.requestPath,
+      );
       await _writeTerminalOutcomeReport(
         artifactDirectory: artifactDirectory,
+        state: nextState,
+      );
+      await _refreshLearningArtifacts(
+        artifactDirectory: artifactDirectory,
+        userRequest: userRequest,
         state: nextState,
       );
     }
@@ -953,6 +1362,26 @@ class HarnessRunner {
       'evaluation_result' => '.harness/templates/evaluation_result.schema.yaml',
       'integration_result' =>
         '.harness/templates/integration_result.schema.yaml',
+      'quality_learning_candidate' =>
+        '.harness/templates/quality_learning_candidate.schema.yaml',
+      'hardening_candidate' =>
+        '.harness/templates/hardening_candidate.schema.yaml',
+      'approved_family_memory' =>
+        '.harness/templates/approved_family_memory.schema.yaml',
+      'learning_review_decision' =>
+        '.harness/templates/learning_review_decision.schema.yaml',
+      'hardening_review_decision' =>
+        '.harness/templates/hardening_review_decision.schema.yaml',
+      'user_outcome_feedback' =>
+        '.harness/templates/user_outcome_feedback.schema.yaml',
+      'family_evidence_index' =>
+        '.harness/templates/family_evidence_index.schema.yaml',
+      'learning_review_queue' =>
+        '.harness/templates/learning_review_queue.schema.yaml',
+      'hardening_review_queue' =>
+        '.harness/templates/hardening_review_queue.schema.yaml',
+      'quality_improvement_comparison' =>
+        '.harness/templates/quality_improvement_comparison.schema.yaml',
       _ => throw ArgumentError('Unsupported schema: $schemaName'),
     };
     return SchemaValidator(_loadYamlMap(schemaPath), schemaName: schemaName);
@@ -1509,6 +1938,7 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           'test_patterns': <String>[],
           'forbidden_changes': <String>[],
           'implementation_hints': <String>[],
+          'approved_memory_hints': <Map<String, dynamic>>[],
         };
       case 'implementation_result':
         return {
@@ -1528,6 +1958,16 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
           },
           'failure_details': <String>['bootstrap placeholder'],
           'logs': <String>[],
+          'approved_memory_consideration': {
+            'considered_ref': '',
+            'lookup_key': '',
+            'task_family_source': '',
+            'disposition': 'drop',
+            'reasons': <String>[],
+            'originating_candidate_refs': <String>[],
+            'current_state_refresh_ref': '',
+            'current_state_refresh_generated_at': null,
+          },
         };
       case 'evaluation_result':
         return {
@@ -3382,6 +3822,2104 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
         normalizedPath.startsWith('$normalizedRoot${p.separator}');
   }
 
+  Future<void> _refreshLearningArtifacts({
+    required Directory artifactDirectory,
+    required UserRequest userRequest,
+    required HarnessState state,
+  }) async {
+    final executionFile = File(p.join(artifactDirectory.path, 'execution_report.yaml'));
+    if (!executionFile.existsSync()) {
+      return;
+    }
+
+    final evaluationFile = File(p.join(artifactDirectory.path, 'evaluation_result.yaml'));
+    final integrationFile = File(p.join(artifactDirectory.path, 'integration_result.yaml'));
+    final terminalOutcomeFile = File(p.join(artifactDirectory.path, 'terminal_outcome.md'));
+
+    final executionMap = _asMap(
+      _loadYamlValue(executionFile),
+      context: executionFile.path,
+    );
+    final evaluationMap = evaluationFile.existsSync()
+        ? _asMap(_loadYamlValue(evaluationFile), context: evaluationFile.path)
+        : <String, dynamic>{};
+    final integrationMap = integrationFile.existsSync()
+        ? _asMap(_loadYamlValue(integrationFile), context: integrationFile.path)
+        : <String, dynamic>{};
+
+    final taskFamily = state.taskFamily;
+    final taskFamilySource = state.taskFamilySource;
+    final runRef = p.relative(artifactDirectory.path, from: root.path);
+    final artifactRef = evaluationFile.existsSync()
+        ? p.relative(evaluationFile.path, from: root.path)
+        : p.relative(executionFile.path, from: root.path);
+    final evidenceRefs = <String>[
+      p.relative(executionFile.path, from: root.path),
+      if (evaluationFile.existsSync()) p.relative(evaluationFile.path, from: root.path),
+      if (integrationFile.existsSync()) p.relative(integrationFile.path, from: root.path),
+      if (terminalOutcomeFile.existsSync())
+        p.relative(terminalOutcomeFile.path, from: root.path),
+    ];
+
+    final userOutcomeSignal = _buildUserOutcomeSignal(
+      integrationMap: integrationMap,
+      integrationRef: integrationFile.existsSync()
+          ? p.relative(integrationFile.path, from: root.path)
+          : null,
+      terminalStatus: state.status,
+    );
+    final effectiveContextSignal = _buildEffectiveContextSignal(
+      taskFamily: taskFamily,
+      state: state,
+      reasonCodes: _readOptionalStringList(evaluationMap, 'reason_codes'),
+      evidenceRefs: evidenceRefs,
+    );
+    final effectiveValidationSignal = _buildEffectiveValidationSignal(
+      executionMap: executionMap,
+      evidenceRefs: evidenceRefs,
+    );
+    final evaluatorSupportSignal = _buildEvaluatorSupportSignal(
+      evaluationMap: evaluationMap,
+      executionMap: executionMap,
+      terminalStatus: state.status,
+    );
+
+    final qualityCandidateDirectory = Directory(
+      p.join(artifactDirectory.path, 'quality_learning_candidates'),
+    )..createSync(recursive: true);
+    final qualityCandidates = _buildQualityLearningCandidates(
+      runRef: runRef,
+      artifactRef: artifactRef,
+      taskFamily: taskFamily,
+      taskFamilySource: taskFamilySource,
+      terminalStatus: state.status,
+      userOutcomeSignal: userOutcomeSignal,
+      effectiveContextSignal: effectiveContextSignal,
+      effectiveValidationSignal: effectiveValidationSignal,
+      evaluatorSupportSignal: evaluatorSupportSignal,
+      evidenceRefs: evidenceRefs,
+      state: state,
+    );
+    final qualityCandidateRefs = <String>[];
+    for (var index = 0; index < qualityCandidates.length; index++) {
+      final candidate = _finalizeCandidateIdentity(qualityCandidates[index]);
+      final canonicalRef = await _writeCanonicalCandidateFile(
+        directory: qualityCandidateDirectory,
+        candidate: candidate,
+      );
+      qualityCandidateRefs.add(canonicalRef);
+      await _writeCompatibilityCandidateAlias(
+        directory: qualityCandidateDirectory,
+        aliasIndex: index + 1,
+        candidate: candidate,
+      );
+      await validateArtifact(
+        filePath: canonicalRef,
+        schemaName: 'quality_learning_candidate',
+      );
+    }
+
+    final hardeningCandidateDirectory = Directory(
+      p.join(artifactDirectory.path, 'hardening_candidates'),
+    )..createSync(recursive: true);
+    final hardeningCandidates = _buildHardeningCandidates(
+      runRef: runRef,
+      artifactRef: artifactRef,
+      taskFamily: taskFamily,
+      taskFamilySource: taskFamilySource,
+      state: state,
+      evaluationMap: evaluationMap,
+      evidenceRefs: evidenceRefs,
+    );
+    final hardeningCandidateRefs = <String>[];
+    for (var index = 0; index < hardeningCandidates.length; index++) {
+      final candidate = _finalizeCandidateIdentity(hardeningCandidates[index]);
+      final canonicalRef = await _writeCanonicalCandidateFile(
+        directory: hardeningCandidateDirectory,
+        candidate: candidate,
+      );
+      hardeningCandidateRefs.add(canonicalRef);
+      await validateArtifact(
+        filePath: canonicalRef,
+        schemaName: 'hardening_candidate',
+      );
+    }
+
+    executionMap['quality_learning_candidate_refs'] = qualityCandidateRefs;
+    executionMap['hardening_candidate_refs'] = hardeningCandidateRefs;
+    await executionFile.writeAsString(_toYaml(executionMap));
+    await validateArtifact(
+      filePath: p.relative(executionFile.path, from: root.path),
+      schemaName: 'execution_report',
+    );
+
+    await _refreshLearningViews();
+  }
+
+  Map<String, Object?> _buildUserOutcomeSignal({
+    required Map<String, dynamic> integrationMap,
+    required String? integrationRef,
+    required String terminalStatus,
+  }) {
+    final summary = integrationMap['summary']?.toString().trim();
+    final validationEntries = _readOptionalStringList(integrationMap, 'validation');
+    final haystack = <String>[
+      if (summary != null && summary.isNotEmpty) summary,
+      ...validationEntries,
+    ].join(' ').toLowerCase();
+
+    final hasDirectConfirmation = haystack.contains('user confirmed') ||
+        haystack.contains('confirmed by user') ||
+        haystack.contains('accepted by user') ||
+        haystack.contains('direct user confirmation');
+    if (hasDirectConfirmation && integrationRef != null) {
+      return {
+        'status': 'confirmed',
+        'supporting_feedback_refs': <String>[integrationRef],
+        'summary':
+            'Integration artifacts record direct user confirmation for this run.',
+      };
+    }
+
+    if (terminalStatus == 'passed') {
+      return {
+        'status': 'provisional',
+        'summary':
+            'The harness reached a passed terminal outcome, but no direct user confirmation is recorded.',
+      };
+    }
+
+    return {
+      'status': 'unavailable',
+      'summary': _isTerminalOutcomeClass(terminalStatus)
+          ? 'No direct user outcome is recorded in the runtime artifacts for this run.'
+          : 'This candidate was emitted from scaffold-only or otherwise non-terminal runtime artifacts; no terminal user outcome is available yet.',
+    };
+  }
+
+  Map<String, Object?> _buildEffectiveContextSignal({
+    required String taskFamily,
+    required HarnessState state,
+    required List<String> reasonCodes,
+    required List<String> evidenceRefs,
+  }) {
+    final helped = <String>[];
+    final failed = <String>[];
+    final neutral = <String>[
+      'Task family stayed pinned to request.task_type=`$taskFamily` without secondary inference.',
+    ];
+
+    if (state.contextRefreshCount > 0 && state.status == 'passed') {
+      helped.add(
+        'Context rebuilds (${state.contextRefreshCount}) preceded a passed terminal outcome.',
+      );
+    } else if (state.contextRefreshCount > 0) {
+      failed.add(
+        'Context rebuilds (${state.contextRefreshCount}) were attempted but did not reach a passed terminal outcome.',
+      );
+    } else {
+      neutral.add('No runtime context rebuild was required for this run.');
+    }
+
+    final contextReasonCodes = reasonCodes
+        .where((code) => code.startsWith('context_'))
+        .toList(growable: false);
+    if (contextReasonCodes.isNotEmpty) {
+      failed.add(
+        'Evaluator-reported context gaps remained: ${contextReasonCodes.join(', ')}.',
+      );
+    }
+
+    final summaryParts = <String>[
+      if (helped.isNotEmpty) 'helped: ${helped.join(' ')}',
+      if (failed.isNotEmpty) 'failed: ${failed.join(' ')}',
+      if (neutral.isNotEmpty) 'neutral: ${neutral.join(' ')}',
+    ];
+    return {
+      'summary': summaryParts.join(' | '),
+      'helped_context_factors': helped,
+      'failed_context_factors': failed,
+      'neutral_context_factors': neutral,
+      'evidence_refs': evidenceRefs,
+      'context_factor_refs': <String>[
+        'request.task_type',
+        'state.contextRefreshCount',
+        if (contextReasonCodes.isNotEmpty) 'evaluation_result.reason_codes',
+      ],
+    };
+  }
+
+  Map<String, Object?> _buildEffectiveValidationSignal({
+    required Map<String, dynamic> executionMap,
+    required List<String> evidenceRefs,
+  }) {
+    final supporting = <String>[];
+    final failedToSupport = <String>[];
+    final contradicting = <String>[];
+    final validationStepRefs = <String>[];
+
+    final formatResult = executionMap['format']?.toString();
+    if (formatResult != null) {
+      validationStepRefs.add('execution_report.format');
+      if (formatResult == 'pass') {
+        supporting.add('Formatting checks passed.');
+      } else {
+        contradicting.add('Formatting checks failed.');
+      }
+    }
+
+    final analyzeResult = executionMap['analyze']?.toString();
+    if (analyzeResult != null) {
+      validationStepRefs.add('execution_report.analyze');
+      if (analyzeResult == 'pass') {
+        supporting.add('Static analysis passed.');
+      } else {
+        contradicting.add('Static analysis failed.');
+      }
+    }
+
+    final testsMap = executionMap['tests'] is Map<String, dynamic>
+        ? executionMap['tests'] as Map<String, dynamic>
+        : executionMap['tests'] is Map
+            ? Map<String, dynamic>.from(executionMap['tests'] as Map)
+            : const <String, dynamic>{};
+    final totalTests = (testsMap['total'] as num?)?.toInt() ?? 0;
+    final passedTests = (testsMap['passed'] as num?)?.toInt() ?? 0;
+    final failedTests = (testsMap['failed'] as num?)?.toInt() ?? 0;
+    validationStepRefs.add('execution_report.tests');
+    if (totalTests == 0) {
+      failedToSupport.add('No tests were executed, so test evidence did not support the outcome.');
+    } else if (failedTests == 0) {
+      supporting.add('Tests passed ($passedTests/$totalTests).');
+    } else {
+      contradicting.add('Tests failed ($failedTests/$totalTests).');
+    }
+
+    final failureDetails = _readOptionalStringList(executionMap, 'failure_details');
+    if (failureDetails.isNotEmpty) {
+      contradicting.addAll(
+        failureDetails.take(2).map((detail) => 'Observed failure detail: $detail'),
+      );
+    }
+
+    final summaryParts = <String>[
+      if (supporting.isNotEmpty) 'supported: ${supporting.join(' ')}',
+      if (failedToSupport.isNotEmpty)
+        'failed_to_support: ${failedToSupport.join(' ')}',
+      if (contradicting.isNotEmpty) 'contradicted: ${contradicting.join(' ')}',
+    ];
+    return {
+      'summary': summaryParts.join(' | '),
+      'materially_supporting_validation_evidence': supporting,
+      'failed_to_support_validation_evidence': failedToSupport,
+      'contradicting_validation_evidence': contradicting,
+      'evidence_refs': evidenceRefs,
+      'validation_step_refs': validationStepRefs,
+    };
+  }
+
+  Map<String, Object?> _buildEvaluatorSupportSignal({
+    required Map<String, dynamic> evaluationMap,
+    required Map<String, dynamic> executionMap,
+    required String terminalStatus,
+  }) {
+    final findings = _readOptionalStringList(evaluationMap, 'findings');
+    final reasonCodes = _readOptionalStringList(evaluationMap, 'reason_codes');
+    final guardrailValueMap = executionMap['guardrail_value'] is Map<String, dynamic>
+        ? executionMap['guardrail_value'] as Map<String, dynamic>
+        : executionMap['guardrail_value'] is Map
+            ? Map<String, dynamic>.from(executionMap['guardrail_value'] as Map)
+            : const <String, dynamic>{};
+    final guardrailConfidence = (guardrailValueMap['quality_confidence'] as num?)?.toDouble();
+    final evaluationConfidence = switch (evaluationMap['quality_confidence']?.toString()) {
+      'high' => 0.9,
+      'medium' => 0.6,
+      'low' => 0.3,
+      _ => null,
+    };
+    final qualityConfidence = guardrailConfidence ?? evaluationConfidence ?? 0.5;
+
+    final formatResult = executionMap['format']?.toString();
+    final analyzeResult = executionMap['analyze']?.toString();
+    final testsMap = executionMap['tests'] is Map<String, dynamic>
+        ? executionMap['tests'] as Map<String, dynamic>
+        : executionMap['tests'] is Map
+            ? Map<String, dynamic>.from(executionMap['tests'] as Map)
+            : const <String, dynamic>{};
+    final totalTests = (testsMap['total'] as num?)?.toInt() ?? 0;
+    final failedTests = (testsMap['failed'] as num?)?.toInt() ?? 0;
+    final validationSufficiency = terminalStatus == 'blocked_environment'
+        ? 'insufficient'
+        : ((formatResult == 'pass' || analyzeResult == 'pass' || totalTests > 0)
+            ? (failedTests == 0 && terminalStatus == 'passed' ? 'sufficient' : 'partial')
+            : 'insufficient');
+
+    return {
+      'quality_confidence': qualityConfidence,
+      'final_reason_codes': reasonCodes,
+      'validation_sufficiency_assessment': validationSufficiency,
+      'terminal_outcome_class': terminalStatus,
+      if (findings.isNotEmpty) 'supporting_evaluator_notes': findings,
+    };
+  }
+
+  List<Map<String, Object?>> _buildQualityLearningCandidates({
+    required String runRef,
+    required String artifactRef,
+    required String taskFamily,
+    required String taskFamilySource,
+    required String terminalStatus,
+    required Map<String, Object?> userOutcomeSignal,
+    required Map<String, Object?> effectiveContextSignal,
+    required Map<String, Object?> effectiveValidationSignal,
+    required Map<String, Object?> evaluatorSupportSignal,
+    required List<String> evidenceRefs,
+    required HarnessState state,
+  }) {
+    final candidates = <Map<String, Object?>>[];
+    final userOutcomeStatus = userOutcomeSignal['status']?.toString() ?? 'unavailable';
+    final qualityConfidence =
+        (evaluatorSupportSignal['quality_confidence'] as num?)?.toDouble() ?? 0.5;
+    final validationSufficiency =
+        evaluatorSupportSignal['validation_sufficiency_assessment']?.toString() ??
+            'partial';
+    final reasonCodes = (evaluatorSupportSignal['final_reason_codes'] as List?)
+            ?.map((item) => item.toString())
+            .toList(growable: false) ??
+        const <String>[];
+    final runtimeRecommendation = terminalStatus == 'passed' &&
+            validationSufficiency != 'insufficient' &&
+            qualityConfidence >= 0.6
+        ? 'promote'
+        : (terminalStatus == 'blocked_environment' ||
+                terminalStatus == 'split_required' ||
+                terminalStatus == 'rejected'
+            ? 'reject'
+            : 'hold');
+
+    String buildQualityOutcomeSummary(String claimLabel) {
+      if (!_isTerminalOutcomeClass(terminalStatus)) {
+        return 'Non-terminal scaffold/runtime evidence for `$claimLabel`; this is explicitly not terminal success or failure evidence and uses evaluator confidence ${qualityConfidence.toStringAsFixed(2)} only as provisional support.';
+      }
+      if (userOutcomeStatus == 'confirmed') {
+        return 'Direct user outcome is confirmed for `$claimLabel`; evaluator confidence ${qualityConfidence.toStringAsFixed(2)} remains secondary support.';
+      }
+      if (userOutcomeStatus == 'provisional') {
+        return 'Direct user outcome is still provisional for `$claimLabel`; using evaluator confidence ${qualityConfidence.toStringAsFixed(2)} with terminal outcome `$terminalStatus`.';
+      }
+      return 'No direct user outcome is available for `$claimLabel`; using evaluator confidence ${qualityConfidence.toStringAsFixed(2)} with terminal outcome `$terminalStatus`.';
+    }
+
+    Map<String, Object?> baseCandidate({
+      required String identifier,
+      required String claim,
+      required List<String> supportingEvidenceRefs,
+    }) {
+      return {
+        'originating_run_artifact_identity': {
+          'run_ref': runRef,
+          'artifact_ref': artifactRef,
+        },
+        'candidate_identifier': identifier,
+        'task_family': taskFamily,
+        'task_family_source': taskFamilySource,
+        'quality_outcome_summary': buildQualityOutcomeSummary(claim),
+        'user_outcome_signal': userOutcomeSignal,
+        'effective_context_signal': effectiveContextSignal,
+        'effective_validation_signal': effectiveValidationSignal,
+        'evaluator_support_signal': evaluatorSupportSignal,
+        'candidate_claim': claim,
+        'supporting_evidence_refs': supportingEvidenceRefs,
+        'guardrail_cost': {
+          'summary':
+              'Generator revisions=${state.generatorRevisionsUsed}, context rebuilds=${state.contextRefreshCount}, validation tightenings=${state.validationTighteningsUsed}.',
+          'intervention_count': _executedInterventionCount(state),
+          'intervention_refs': <String>[
+            'state.generatorRevisionsUsed',
+            'state.contextRefreshCount',
+            'state.validationTighteningsUsed',
+          ],
+        },
+        'runtime_recommendation': runtimeRecommendation,
+      };
+    }
+
+    candidates.add(
+      baseCandidate(
+        identifier: 'quality:$taskFamily:overall',
+        claim:
+            'Overall run-quality evidence for task family `$taskFamily`, preserving the request task_type as the family key.',
+        supportingEvidenceRefs: evidenceRefs,
+      ),
+    );
+
+    final contextHelped =
+        (effectiveContextSignal['helped_context_factors'] as List?)?.isNotEmpty == true;
+    final contextFailed =
+        (effectiveContextSignal['failed_context_factors'] as List?)?.isNotEmpty == true;
+    if (state.contextRefreshCount > 0 && (contextHelped || contextFailed)) {
+      candidates.add(
+        baseCandidate(
+          identifier: 'quality:$taskFamily:context',
+          claim: contextHelped
+              ? 'Effective context adjustments materially affected the outcome for task family `$taskFamily`.'
+              : 'Context adjustments exposed a recurring context gap for task family `$taskFamily`.',
+          supportingEvidenceRefs: evidenceRefs,
+        ),
+      );
+    }
+
+    if (terminalStatus != 'passed' && reasonCodes.length >= 2) {
+      candidates.add(
+        baseCandidate(
+          identifier: 'quality:$taskFamily:failure-pattern',
+          claim:
+              'Recurring failure pattern observed for task family `$taskFamily`: ${reasonCodes.join(', ')}.',
+          supportingEvidenceRefs: evidenceRefs,
+        ),
+      );
+    }
+
+    return candidates.take(3).toList(growable: false);
+  }
+
+  List<Map<String, Object?>> _buildHardeningCandidates({
+    required String runRef,
+    required String artifactRef,
+    required String taskFamily,
+    required String taskFamilySource,
+    required HarnessState state,
+    required Map<String, dynamic> evaluationMap,
+    required List<String> evidenceRefs,
+  }) {
+    final reasonCodes = _readOptionalStringList(evaluationMap, 'reason_codes');
+    final hardeningCandidates = <Map<String, Object?>>[];
+
+    void addCandidate({
+      required String identifier,
+      required String observation,
+      required String recommendation,
+    }) {
+      hardeningCandidates.add({
+        'originating_run_artifact_identity': {
+          'run_ref': runRef,
+          'artifact_ref': artifactRef,
+        },
+        'candidate_identifier': identifier,
+        'task_family': taskFamily,
+        'task_family_source': taskFamilySource,
+        'policy_affecting_observation': observation,
+        'why_it_must_not_become_reusable_family_memory':
+            'This observation changes runtime hardening or review policy rather than reusable task-family guidance, so it must stay out of approved family memory.',
+        'supporting_evidence_refs': evidenceRefs,
+        'hardening_recommendation': recommendation,
+      });
+    }
+
+    if (state.status == 'blocked_environment') {
+      addCandidate(
+        identifier: 'hardening:$taskFamily:environment',
+        observation:
+            'The run terminated because validation was blocked by environment or tooling constraints.',
+        recommendation: 'accept_for_hardening',
+      );
+    }
+
+    if (state.status == 'split_required') {
+      addCandidate(
+        identifier: 'hardening:$taskFamily:scope-boundary',
+        observation:
+            'The run terminated because the request crossed a task boundary and needed decomposition before safe execution.',
+        recommendation: 'accept_for_hardening',
+      );
+    }
+
+    if (reasonCodes.any(
+          (code) => code.startsWith('scope_') || code.startsWith('architecture_'),
+        ) &&
+        hardeningCandidates.length < 2) {
+      addCandidate(
+        identifier: 'hardening:$taskFamily:policy-signal',
+        observation:
+            'Evaluator reason codes indicate a policy-affecting scope or architecture signal: ${reasonCodes.join(', ')}.',
+        recommendation: 'hold',
+      );
+    }
+
+    return hardeningCandidates.take(3).toList(growable: false);
+  }
+
+  Map<String, Object?> _finalizeCandidateIdentity(Map<String, Object?> candidate) {
+    final seeded = Map<String, Object?>.from(candidate);
+    final baseIdentifier = seeded['candidate_identifier']?.toString() ?? 'candidate';
+    final hashable = Map<String, Object?>.from(seeded)..remove('candidate_identifier');
+    final digest = _stableDigest(_canonicalJson(hashable));
+    seeded['candidate_identifier'] = '$baseIdentifier@$digest';
+    return seeded;
+  }
+
+  Future<String> _writeCanonicalCandidateFile({
+    required Directory directory,
+    required Map<String, Object?> candidate,
+  }) async {
+    final identifier = candidate['candidate_identifier']!.toString();
+    final file = File(
+      p.join(directory.path, '${_candidateFileStem(identifier)}.yaml'),
+    );
+    await file.writeAsString(_toYaml(candidate));
+    return p.relative(file.path, from: root.path);
+  }
+
+  Future<void> _writeCompatibilityCandidateAlias({
+    required Directory directory,
+    required int aliasIndex,
+    required Map<String, Object?> candidate,
+  }) async {
+    final aliasFile = File(
+      p.join(directory.path, '${aliasIndex.toString().padLeft(2, '0')}.yaml'),
+    );
+    if (!aliasFile.existsSync()) {
+      await aliasFile.writeAsString(_toYaml(candidate));
+    }
+  }
+
+  String _candidateFileStem(String identifier) {
+    return identifier.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
+  }
+
+  String _canonicalJson(dynamic value) {
+    dynamic normalize(dynamic node) {
+      if (node is Map) {
+        final sortedKeys = node.keys.map((key) => key.toString()).toList()..sort();
+        return {
+          for (final key in sortedKeys) key: normalize(node[key]),
+        };
+      }
+      if (node is List) {
+        return node.map(normalize).toList(growable: false);
+      }
+      return node;
+    }
+
+    return jsonEncode(normalize(value));
+  }
+
+  String _stableDigest(String input) {
+    var hash = 0x811c9dc5;
+    for (final byte in utf8.encode(input)) {
+      hash ^= byte;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
+  }
+
+  bool _isOrdinalCandidateAlias(File file) {
+    return RegExp(r'^\d+\.yaml$').hasMatch(p.basename(file.path));
+  }
+
+  String _candidateLineageKey(Map<String, dynamic> candidate) {
+    final identifier = candidate['candidate_identifier']?.toString() ?? 'candidate';
+    final atIndex = identifier.lastIndexOf('@');
+    return atIndex == -1 ? identifier : identifier.substring(0, atIndex);
+  }
+
+  List<File> _listQualityCandidateFiles() {
+    final artifactRoot = Directory(p.join(root.path, '.harness', 'artifacts'));
+    if (!artifactRoot.existsSync()) {
+      return const <File>[];
+    }
+    return artifactRoot
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where(
+          (file) =>
+              p.basename(p.dirname(file.path)) == 'quality_learning_candidates' &&
+              file.path.endsWith('.yaml') &&
+              !_isOrdinalCandidateAlias(file),
+        )
+        .toList(growable: false);
+  }
+
+  List<String> _flattenFeedbackEvidenceRefs(Map<String, dynamic> feedback) {
+    final evidenceRefs = _readMap(feedback, 'evidence_refs');
+    return _mergeDistinctStrings(
+      _readStringList(evidenceRefs, 'run_refs'),
+      _readStringList(evidenceRefs, 'follow_up_refs'),
+    );
+  }
+
+  List<MapEntry<String, Map<String, dynamic>>> _loadFeedbackArtifacts(
+    Iterable<String> feedbackRefs, {
+    required String expectedRunRef,
+    required String expectedTaskFamily,
+    required String expectedTaskFamilySource,
+  }) {
+    final feedbackEntries = <MapEntry<String, Map<String, dynamic>>>[];
+    for (final ref in feedbackRefs) {
+      final feedbackFile = _resolveFileWithinRoot(ref);
+      if (!feedbackFile.existsSync()) {
+        throw ArgumentError('Referenced feedback artifact not found: $ref');
+      }
+      final relativeRef = p.relative(feedbackFile.path, from: root.path);
+      _loadSchema('user_outcome_feedback').validate(
+        _loadYamlValue(feedbackFile),
+        fileLabel: relativeRef,
+      );
+      final feedback = _asMap(
+        _loadYamlValue(feedbackFile),
+        context: feedbackFile.path,
+      );
+      final feedbackIdentity = _readMap(
+        feedback,
+        'originating_run_artifact_identity',
+      );
+      final feedbackRunRef = _readString(feedbackIdentity, 'run_ref');
+      final feedbackTaskFamily = _readString(feedback, 'task_family');
+      final feedbackTaskFamilySource = _readString(
+        feedback,
+        'task_family_source',
+      );
+      if (feedbackRunRef != expectedRunRef ||
+          feedbackTaskFamily != expectedTaskFamily ||
+          feedbackTaskFamilySource != expectedTaskFamilySource) {
+        throw StateError(
+          'Feedback artifact `$relativeRef` does not match candidate run/task family/source `${expectedRunRef}/${expectedTaskFamily}/${expectedTaskFamilySource}`.',
+        );
+      }
+      feedbackEntries.add(MapEntry(relativeRef, feedback));
+    }
+    feedbackEntries.sort(
+      (left, right) => _feedbackTimestamp(left.value, left.key)
+          .compareTo(_feedbackTimestamp(right.value, right.key)),
+    );
+    return feedbackEntries;
+  }
+
+  String _feedbackTimestamp(Map<String, dynamic> feedback, String feedbackRef) {
+    final submittedAt = feedback['submitted_at']?.toString();
+    if (submittedAt != null && submittedAt.isNotEmpty) {
+      return submittedAt;
+    }
+    return File(p.join(root.path, feedbackRef))
+        .statSync()
+        .modified
+        .toUtc()
+        .toIso8601String();
+  }
+
+  String _approvedMemoryRefForFamily(String taskFamily) {
+    final sanitized = taskFamily.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
+    return p.join('.harness', 'learning', 'approved', '$sanitized.yaml');
+  }
+
+  int _approvedMemorySchemaVersion() => 3;
+
+  String _familySourceKey(String taskFamily, String taskFamilySource) {
+    return '$taskFamily::$taskFamilySource';
+  }
+
+  Future<void> _synchronizeApprovedMemoryArtifacts({
+    required Directory artifactDirectory,
+    required UserRequest userRequest,
+    required String projectRoot,
+    bool refreshCurrentState = true,
+  }) async {
+    final contextFile = File(p.join(artifactDirectory.path, 'context_pack.yaml'));
+    final executionFile = File(
+      p.join(artifactDirectory.path, 'execution_report.yaml'),
+    );
+    if (!contextFile.existsSync() || !executionFile.existsSync()) {
+      return;
+    }
+
+    if (refreshCurrentState) {
+      await _refreshLearningViews();
+    }
+
+    final consideration = _considerApprovedMemory(
+      userRequest: userRequest,
+      projectRoot: projectRoot,
+    );
+    final contextPack = _asMap(
+      _loadYamlValue(contextFile),
+      context: contextFile.path,
+    );
+    final approvedMemoryHints = (consideration['approved_memory_hints'] as List?)
+            ?.whereType<Map>()
+            .map((entry) => Map<String, dynamic>.from(entry))
+            .toList(growable: false) ??
+        const <Map<String, dynamic>>[];
+    if (approvedMemoryHints.isEmpty) {
+      contextPack.remove('approved_memory_hints');
+    } else {
+      contextPack['approved_memory_hints'] = approvedMemoryHints;
+    }
+
+    final executionReport = _asMap(
+      _loadYamlValue(executionFile),
+      context: executionFile.path,
+    );
+    executionReport['approved_memory_consideration'] = {
+      'considered_ref': consideration['considered_ref'],
+      'lookup_key': consideration['lookup_key'],
+      'task_family_source': consideration['task_family_source'],
+      'disposition': consideration['disposition'],
+      'reasons': consideration['reasons'],
+      'originating_candidate_refs':
+          consideration['originating_candidate_refs'],
+      'current_state_refresh_ref': consideration['current_state_refresh_ref'],
+      'current_state_refresh_generated_at':
+          consideration['current_state_refresh_generated_at'],
+    };
+
+    await contextFile.writeAsString(_toYaml(contextPack), flush: true);
+    await executionFile.writeAsString(_toYaml(executionReport), flush: true);
+    await validateArtifact(
+      filePath: p.relative(contextFile.path, from: root.path),
+      schemaName: 'context_pack',
+    );
+    await validateArtifact(
+      filePath: p.relative(executionFile.path, from: root.path),
+      schemaName: 'execution_report',
+    );
+  }
+
+  Map<String, Object?> _considerApprovedMemory({
+    required UserRequest userRequest,
+    required String projectRoot,
+  }) {
+    const currentStateRefreshRef = '.harness/learning/family_evidence_index.yaml';
+    final taskFamily = userRequest.taskType;
+    const taskFamilySource = 'task_type';
+    final lookupKey = _familySourceKey(taskFamily, taskFamilySource);
+    final approvedMemoryRef = _approvedMemoryRefForFamily(taskFamily);
+    final dropReasons = <String>[];
+    final quarantineReasons = <String>[];
+    var approvedObservation = '';
+    var guardrailNote = '';
+    var applicabilityConditions = const <String>[];
+    var originatingCandidateRefs = const <String>[];
+    var refreshGeneratedAt = '';
+
+    final evidenceIndexFile = _resolveFileWithinRoot(currentStateRefreshRef);
+    Map<String, dynamic> evidenceIndex = <String, dynamic>{};
+    if (evidenceIndexFile.existsSync()) {
+      evidenceIndex = _asMap(
+        _loadYamlValue(evidenceIndexFile),
+        context: evidenceIndexFile.path,
+      );
+      refreshGeneratedAt = evidenceIndex['index_generated_at']?.toString() ?? '';
+    }
+    final latestReviewDecisionByFamily = evidenceIndex['latest_review_decision_refs_by_family']
+            is Map
+        ? Map<String, dynamic>.from(
+            evidenceIndex['latest_review_decision_refs_by_family'] as Map,
+          )[lookupKey]
+        : null;
+    final latestReviewDecisionMap = latestReviewDecisionByFamily is Map
+        ? Map<String, dynamic>.from(latestReviewDecisionByFamily)
+        : const <String, dynamic>{};
+    final latestReviewDecisionRef = latestReviewDecisionMap['ref']?.toString() ?? '';
+
+    final approvedFile = _resolveFileWithinRoot(approvedMemoryRef);
+    if (!approvedFile.existsSync()) {
+      dropReasons.add('approved_memory_missing');
+      return {
+        'considered_ref': approvedMemoryRef,
+        'lookup_key': lookupKey,
+        'task_family_source': taskFamilySource,
+        'disposition': 'drop',
+        'reasons': dropReasons,
+        'originating_candidate_refs': const <String>[],
+        'current_state_refresh_ref': currentStateRefreshRef,
+        'current_state_refresh_generated_at':
+            refreshGeneratedAt.isEmpty ? null : refreshGeneratedAt,
+        'approved_memory_hints': const <Map<String, dynamic>>[],
+      };
+    }
+
+    final fileKey = p.basenameWithoutExtension(approvedFile.path);
+    if (fileKey != taskFamily) {
+      dropReasons.add('same_family_filename_mismatch');
+    }
+
+    Map<String, dynamic> approvedMemory = <String, dynamic>{};
+    try {
+      final approvedValue = _loadYamlValue(approvedFile);
+      _loadSchema('approved_family_memory').validate(
+        approvedValue,
+        fileLabel: approvedMemoryRef,
+      );
+      approvedMemory = _asMap(approvedValue, context: approvedFile.path);
+    } catch (_) {
+      quarantineReasons.add('approved_memory_schema_invalid');
+    }
+
+    if (approvedMemory.isNotEmpty) {
+      approvedObservation =
+          approvedMemory['approved_observation']?.toString().trim() ?? '';
+      guardrailNote = approvedMemory['guardrail_note']?.toString().trim() ?? '';
+      applicabilityConditions = _readOptionalStringList(
+        approvedMemory,
+        'applicability_conditions',
+      );
+      originatingCandidateRefs = _readOptionalStringList(
+        approvedMemory,
+        'originating_candidate_refs',
+      );
+
+      if (approvedMemory['task_family']?.toString() != taskFamily) {
+        dropReasons.add('task_family_mismatch');
+      }
+      if (approvedMemory['task_family_source']?.toString() != taskFamilySource) {
+        dropReasons.add('task_family_source_mismatch');
+      }
+      if (!_approvedMemoryMatchesRequest(
+        approvedMemory: approvedMemory,
+        userRequest: userRequest,
+      )) {
+        dropReasons.add('request_conflict');
+      }
+
+      final freshnessMarker = _readMap(approvedMemory, 'freshness_marker');
+      final contextContract = _loadYamlMap(
+        '.harness/supervisor/context_contract.yaml',
+      );
+      final policy = _loadYamlMap('.harness/supervisor/policy.yaml');
+      if ((freshnessMarker['contract_version'] as num?)?.toInt() !=
+          _readInt(contextContract, 'contract_version')) {
+        quarantineReasons.add('contract_version_mismatch');
+      }
+      if ((freshnessMarker['policy_version'] as num?)?.toInt() !=
+          _readInt(policy, 'policy_version')) {
+        quarantineReasons.add('policy_version_mismatch');
+      }
+      if ((freshnessMarker['memory_schema_version'] as num?)?.toInt() !=
+          _approvedMemorySchemaVersion()) {
+        quarantineReasons.add('memory_schema_version_mismatch');
+      }
+      if (!_approvedMemoryMatchesRepository(
+        approvedMemory: approvedMemory,
+        projectRoot: projectRoot,
+      )) {
+        quarantineReasons.add('repository_condition_mismatch');
+      }
+      if (latestReviewDecisionRef.isEmpty) {
+        quarantineReasons.add('reviewed_memory_precondition_missing');
+      }
+      quarantineReasons.addAll(
+        _approvedMemoryEvidenceConflicts(
+          approvedMemory: approvedMemory,
+          evidenceIndex: evidenceIndex,
+          lookupKey: lookupKey,
+          approvedMemoryRef: approvedMemoryRef,
+        ),
+      );
+    }
+
+    final disposition = dropReasons.isNotEmpty
+        ? 'drop'
+        : quarantineReasons.isNotEmpty
+        ? 'quarantine'
+        : 'reuse';
+    final reasons = dropReasons.isNotEmpty
+        ? dropReasons
+        : quarantineReasons.isNotEmpty
+        ? quarantineReasons
+        : <String>['same_family_memory_reused'];
+
+    return {
+      'considered_ref': approvedMemoryRef,
+      'lookup_key': lookupKey,
+      'task_family_source': taskFamilySource,
+      'disposition': disposition,
+      'reasons': reasons,
+      'originating_candidate_refs': originatingCandidateRefs,
+      'current_state_refresh_ref': currentStateRefreshRef,
+      'current_state_refresh_generated_at':
+          refreshGeneratedAt.isEmpty ? null : refreshGeneratedAt,
+      'approved_memory_hints': disposition == 'reuse'
+            ? _buildApprovedMemoryHints(
+              taskFamily: taskFamily,
+              consideredRef: approvedMemoryRef,
+              reviewDecisionRef: latestReviewDecisionRef,
+              approvedObservation: approvedObservation,
+              applicabilityConditions: applicabilityConditions,
+              guardrailNote: guardrailNote,
+              taskFamilySource: taskFamilySource,
+              currentStateRefreshRef: currentStateRefreshRef,
+              currentStateRefreshGeneratedAt:
+                  refreshGeneratedAt.isEmpty ? null : refreshGeneratedAt,
+              originatingCandidateRefs: originatingCandidateRefs,
+            )
+          : const <Map<String, dynamic>>[],
+    };
+  }
+
+  bool _approvedMemoryMatchesRequest({
+    required Map<String, dynamic> approvedMemory,
+    required UserRequest userRequest,
+  }) {
+    final compatibility = approvedMemory['request_compatibility'];
+    if (compatibility is! Map) {
+      return true;
+    }
+    final requestCompatibility = Map<String, dynamic>.from(compatibility);
+    final normalizedFeature =
+        userRequest.context.feature?.trim().toLowerCase() ?? '';
+    final goalHaystack = userRequest.goal.toLowerCase();
+    final constraintHaystack = userRequest.constraints.join(' ').toLowerCase();
+
+    final requiredFeatures = _readOptionalStringList(
+      requestCompatibility,
+      'required_context_features',
+    ).map((value) => value.toLowerCase()).toList(growable: false);
+    if (requiredFeatures.isNotEmpty &&
+        !requiredFeatures.contains(normalizedFeature)) {
+      return false;
+    }
+
+    final goalMustInclude = _readOptionalStringList(
+      requestCompatibility,
+      'goal_must_include_any',
+    );
+    if (goalMustInclude.isNotEmpty &&
+        !_haystackContainsAny(goalHaystack, goalMustInclude)) {
+      return false;
+    }
+
+    final goalMustExclude = _readOptionalStringList(
+      requestCompatibility,
+      'goal_must_exclude_any',
+    );
+    if (_haystackContainsAny(goalHaystack, goalMustExclude)) {
+      return false;
+    }
+
+    final constraintMustInclude = _readOptionalStringList(
+      requestCompatibility,
+      'constraint_must_include_any',
+    );
+    if (constraintMustInclude.isNotEmpty &&
+        !_haystackContainsAny(constraintHaystack, constraintMustInclude)) {
+      return false;
+    }
+
+    final constraintMustExclude = _readOptionalStringList(
+      requestCompatibility,
+      'constraint_must_exclude_any',
+    );
+    if (_haystackContainsAny(constraintHaystack, constraintMustExclude)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _approvedMemoryMatchesRepository({
+    required Map<String, dynamic> approvedMemory,
+    required String projectRoot,
+  }) {
+    final compatibility = approvedMemory['repository_compatibility'];
+    if (compatibility is! Map) {
+      return true;
+    }
+    final repositoryCompatibility = Map<String, dynamic>.from(compatibility);
+    for (final path in _readOptionalStringList(
+      repositoryCompatibility,
+      'required_paths_exist',
+    )) {
+      if (!_projectPathExists(projectRoot, path)) {
+        return false;
+      }
+    }
+    for (final path in _readOptionalStringList(
+      repositoryCompatibility,
+      'required_paths_absent',
+    )) {
+      if (_projectPathExists(projectRoot, path)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  List<String> _approvedMemoryEvidenceConflicts({
+    required Map<String, dynamic> approvedMemory,
+    required Map<String, dynamic> evidenceIndex,
+    required String lookupKey,
+    required String approvedMemoryRef,
+  }) {
+    final conflicts = <String>[];
+    final expectations = approvedMemory['latest_family_evidence_expectations'];
+    final expectationMap = expectations is Map
+        ? Map<String, dynamic>.from(expectations)
+        : <String, dynamic>{};
+    final latestApproved =
+        (evidenceIndex['latest_approved_memory_refs_by_family'] is Map)
+            ? Map<String, dynamic>.from(
+                evidenceIndex['latest_approved_memory_refs_by_family'] as Map,
+              )[lookupKey]
+            : null;
+    final latestSuccess =
+        (evidenceIndex['latest_confirmed_success_refs_by_family'] is Map)
+            ? Map<String, dynamic>.from(
+                evidenceIndex['latest_confirmed_success_refs_by_family'] as Map,
+              )[lookupKey]
+            : null;
+    final latestFailure =
+        (evidenceIndex['latest_failure_refs_by_family'] is Map)
+            ? Map<String, dynamic>.from(
+                evidenceIndex['latest_failure_refs_by_family'] as Map,
+              )[lookupKey]
+            : null;
+
+    final latestApprovedMap = latestApproved is Map
+        ? Map<String, dynamic>.from(latestApproved)
+        : const <String, dynamic>{};
+    final latestSuccessMap = latestSuccess is Map
+        ? Map<String, dynamic>.from(latestSuccess)
+        : const <String, dynamic>{};
+    final latestFailureMap = latestFailure is Map
+        ? Map<String, dynamic>.from(latestFailure)
+        : const <String, dynamic>{};
+    if (latestApprovedMap.isNotEmpty &&
+        latestApprovedMap['ref']?.toString() != approvedMemoryRef) {
+      conflicts.add('latest_approved_memory_ref_conflict');
+    }
+
+    final freshnessMarker = _readMap(approvedMemory, 'freshness_marker');
+    final refreshedAt = freshnessMarker['refreshed_at']?.toString() ?? '';
+    final latestFailureRecordedAt =
+        latestFailureMap['recorded_at']?.toString() ?? '';
+    if (refreshedAt.isNotEmpty &&
+        latestFailureRecordedAt.isNotEmpty &&
+        latestFailureRecordedAt.compareTo(refreshedAt) > 0) {
+      conflicts.add('newer_family_failure_recorded');
+    }
+
+    final requiredSuccessRef =
+        expectationMap['required_latest_success_ref']?.toString();
+    if (requiredSuccessRef != null &&
+        requiredSuccessRef.isNotEmpty &&
+        latestSuccessMap['ref']?.toString() != requiredSuccessRef) {
+      conflicts.add('latest_success_ref_mismatch');
+    }
+
+    final expectedLookupKey = expectationMap['lookup_key']?.toString();
+    if (expectedLookupKey != null &&
+        expectedLookupKey.isNotEmpty &&
+        expectedLookupKey != lookupKey) {
+      conflicts.add('latest_evidence_lookup_key_mismatch');
+    }
+
+    final expectedApprovedRef =
+        expectationMap['baseline_approved_memory_ref']?.toString();
+    if (expectedApprovedRef != null &&
+        expectedApprovedRef.isNotEmpty &&
+        expectedApprovedRef != approvedMemoryRef) {
+      conflicts.add('baseline_approved_memory_ref_mismatch');
+    }
+
+    final requiredFailureRef =
+        expectationMap['required_latest_failure_ref']?.toString();
+    if (requiredFailureRef != null &&
+        requiredFailureRef.isNotEmpty &&
+        latestFailureMap['ref']?.toString() != requiredFailureRef) {
+      conflicts.add('latest_failure_ref_mismatch');
+    }
+
+    final forbidAnyLatestFailure =
+        expectationMap['forbid_any_latest_failure'] == true;
+    if (forbidAnyLatestFailure && latestFailureMap.isNotEmpty) {
+      conflicts.add('latest_failure_present');
+    }
+    return conflicts;
+  }
+
+  List<Map<String, dynamic>> _buildApprovedMemoryHints({
+    required String taskFamily,
+    required String consideredRef,
+    required String reviewDecisionRef,
+    required String approvedObservation,
+    required List<String> applicabilityConditions,
+    required String guardrailNote,
+    required String taskFamilySource,
+    required String currentStateRefreshRef,
+    required String? currentStateRefreshGeneratedAt,
+    required List<String> originatingCandidateRefs,
+  }) {
+    final provenance = <String, dynamic>{
+      'considered_ref': consideredRef,
+      'review_decision_ref': reviewDecisionRef,
+      'task_family': taskFamily,
+      'task_family_source': taskFamilySource,
+      'disposition': 'reuse',
+      'current_state_refresh_ref': currentStateRefreshRef,
+      'current_state_refresh_generated_at': currentStateRefreshGeneratedAt,
+      'originating_candidate_refs': originatingCandidateRefs,
+    };
+    final hints = <Map<String, dynamic>>[
+      {
+        'text': _truncateHint(
+          'Reviewed same-family `$taskFamily` observation: $approvedObservation',
+        ),
+        'provenance': Map<String, dynamic>.from(provenance),
+      },
+      if (applicabilityConditions.isNotEmpty)
+        {
+          'text': _truncateHint(
+            'Previously approved under conditions such as ${applicabilityConditions.take(2).join('; ')}.',
+          ),
+          'provenance': Map<String, dynamic>.from(provenance),
+        },
+      {
+        'text': _truncateHint(
+          'This supplement is descriptive context only and does not override the live request, repository state, or supervisor policy. ${guardrailNote.trim()}',
+        ),
+        'provenance': Map<String, dynamic>.from(provenance),
+      },
+    ];
+    return hints.take(4).toList(growable: false);
+  }
+
+  String _truncateHint(String value) {
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= 240) {
+      return normalized;
+    }
+    return '${normalized.substring(0, 237)}...';
+  }
+
+  bool _haystackContainsAny(String haystack, Iterable<String> tokens) {
+    final normalizedHaystack = haystack.toLowerCase();
+    for (final token in tokens) {
+      final normalizedToken = token.trim().toLowerCase();
+      if (normalizedToken.isNotEmpty &&
+          normalizedHaystack.contains(normalizedToken)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  List<String> _compatibilityKeywords(
+    String text, {
+    required List<String> fallback,
+  }) {
+    final stopwords = <String>{
+      'the',
+      'and',
+      'with',
+      'that',
+      'this',
+      'from',
+      'into',
+      'only',
+      'work',
+      'task',
+      'follow',
+      'followup',
+      'request',
+      'quality',
+      'feature',
+    };
+    final extracted = text
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9_-]+'))
+        .where((token) => token.length >= 4 && !stopwords.contains(token))
+        .toList(growable: false);
+    final merged = _mergeDistinctStrings(extracted, fallback);
+    if (merged.isNotEmpty) {
+      return merged.take(4).toList(growable: false);
+    }
+    return fallback.isNotEmpty
+        ? fallback.take(4).toList(growable: false)
+        : <String>['task-family'];
+  }
+
+  Map<String, dynamic> _buildApprovedFamilyMemory({
+    required String candidateRef,
+    required Map<String, dynamic> candidate,
+    required String decisionRef,
+    required Map<String, dynamic> decision,
+    required List<MapEntry<String, Map<String, dynamic>>> acceptedFeedbackEntries,
+    Map<String, dynamic>? existingApprovedMemory,
+  }) {
+    final runIdentity = _readMap(candidate, 'originating_run_artifact_identity');
+    final runRef = _readString(runIdentity, 'run_ref');
+    final contextContract = _loadYamlMap('.harness/supervisor/context_contract.yaml');
+    final policy = _loadYamlMap('.harness/supervisor/policy.yaml');
+    final effectiveContextSignal = _readMap(candidate, 'effective_context_signal');
+    final guardrailCost = _readMap(candidate, 'guardrail_cost');
+    final decisionTimestamp = _readString(decision, 'decision_timestamp');
+    final decisionReason = _readString(decision, 'decision_reason');
+    final reviewerIdentity = _readString(decision, 'reviewer_identity');
+    final guardrailPredicate = _readMap(decision, 'guardrail_cost_predicate');
+    final guardrailAssessment = _readString(guardrailPredicate, 'assessment');
+    final guardrailRationale = _readString(guardrailPredicate, 'rationale');
+    final acceptedFeedbackRefs = acceptedFeedbackEntries
+        .map((entry) => entry.key)
+        .toList(growable: false);
+    final acceptedFeedbackEvidenceRefs = acceptedFeedbackEntries
+        .expand((entry) => _flattenFeedbackEvidenceRefs(entry.value))
+        .toList(growable: false);
+    final taskFamily = candidate['task_family']?.toString() ?? 'unknown';
+    final taskFamilySource =
+        candidate['task_family_source']?.toString() ?? 'task_type';
+    final lookupKey = _familySourceKey(taskFamily, taskFamilySource);
+    final originatingRequestFile = _resolveFileWithinRoot(
+      p.join(runRef, 'request.yaml'),
+    );
+    final originatingRequest = originatingRequestFile.existsSync()
+        ? UserRequest.fromMap(
+            _asMap(
+              _loadYamlValue(originatingRequestFile),
+              context: originatingRequestFile.path,
+            ),
+            requestPath: p.relative(originatingRequestFile.path, from: root.path),
+          )
+        : null;
+    final originatingPlanFile = _resolveFileWithinRoot(p.join(runRef, 'plan.yaml'));
+    final originatingPlan = originatingPlanFile.existsSync()
+        ? _asMap(_loadYamlValue(originatingPlanFile), context: originatingPlanFile.path)
+        : const <String, dynamic>{};
+    final familyEvidenceIndexFile = _resolveFileWithinRoot(
+      '.harness/learning/family_evidence_index.yaml',
+    );
+    final familyEvidenceIndex = familyEvidenceIndexFile.existsSync()
+        ? _asMap(
+            _loadYamlValue(familyEvidenceIndexFile),
+            context: familyEvidenceIndexFile.path,
+          )
+        : const <String, dynamic>{};
+    final latestSuccessByFamily =
+        familyEvidenceIndex['latest_confirmed_success_refs_by_family'] is Map
+            ? Map<String, dynamic>.from(
+                familyEvidenceIndex['latest_confirmed_success_refs_by_family']
+                    as Map,
+              )
+            : const <String, dynamic>{};
+    final latestFailureByFamily =
+        familyEvidenceIndex['latest_failure_refs_by_family'] is Map
+            ? Map<String, dynamic>.from(
+                familyEvidenceIndex['latest_failure_refs_by_family'] as Map,
+              )
+            : const <String, dynamic>{};
+    final latestSuccessRef = latestSuccessByFamily[lookupKey] is Map
+        ? Map<String, dynamic>.from(latestSuccessByFamily[lookupKey] as Map)['ref']
+            ?.toString()
+        : acceptedFeedbackRefs.isNotEmpty
+        ? acceptedFeedbackRefs.last
+        : null;
+    final latestFailureRef = latestFailureByFamily[lookupKey] is Map
+        ? Map<String, dynamic>.from(latestFailureByFamily[lookupKey] as Map)['ref']
+            ?.toString()
+        : null;
+    final requestFeature = originatingRequest?.context.feature?.trim();
+    final requestGoalKeywords = _compatibilityKeywords(
+      originatingRequest?.goal ?? taskFamily,
+      fallback: [
+        if (requestFeature != null && requestFeature.isNotEmpty) requestFeature,
+        taskFamily.replaceAll('_', '-'),
+      ],
+    );
+    final constraintKeywords = _compatibilityKeywords(
+      originatingRequest?.constraints.join(' ') ?? '',
+      fallback: const <String>[],
+    );
+    final requiredPathsExist = _mergeDistinctStrings(
+      _readOptionalStringList(originatingPlan, 'likely_files'),
+      [
+        ...?originatingRequest?.context.suspectedFiles,
+        ...?originatingRequest?.context.relatedFiles,
+        ...?originatingRequest?.context.validationTargets,
+      ],
+    );
+    final continuingLineage =
+        existingApprovedMemory != null &&
+        _readOptionalStringList(
+          existingApprovedMemory,
+          'originating_candidate_refs',
+        ).contains(candidateRef);
+    final existingDispositionHistory =
+        continuingLineage && existingApprovedMemory?['disposition_history'] is List
+            ? List<Object?>.from(existingApprovedMemory!['disposition_history'] as List)
+            : <Object?>[];
+    final mergedDispositionHistory = <Object?>[
+      ...existingDispositionHistory.where(
+        (entry) => !(entry is Map && entry['decision_ref']?.toString() == decisionRef),
+      ),
+      {
+        'disposition': 'approved',
+        'decided_at': decisionTimestamp,
+        'decision_ref': decisionRef,
+        'reviewer_identity': reviewerIdentity,
+        'reason': decisionReason,
+      },
+    ];
+    final existingOriginatingCandidateRefs =
+        continuingLineage
+            ? _readOptionalStringList(
+                existingApprovedMemory,
+                'originating_candidate_refs',
+              )
+            : const <String>[];
+    final existingFeedbackRefs =
+        continuingLineage
+            ? _readOptionalStringList(
+                existingApprovedMemory,
+                'reviewed_user_outcome_feedback_refs',
+              )
+            : const <String>[];
+    final previousFreshnessSequence =
+        !continuingLineage || existingApprovedMemory == null
+            ? null
+            : _readOptionalInt(
+                _readMap(existingApprovedMemory, 'freshness_marker'),
+                'freshness_sequence',
+              );
+
+    return {
+      'task_family': taskFamily,
+      'task_family_source': taskFamilySource,
+      'approved_observation':
+          candidate['candidate_claim']?.toString() ??
+              candidate['quality_outcome_summary']?.toString() ??
+              '',
+      'applicability_conditions': _mergeDistinctStrings(
+        _readOptionalStringList(effectiveContextSignal, 'helped_context_factors'),
+        _readOptionalStringList(effectiveContextSignal, 'neutral_context_factors'),
+      ),
+      'evidence_basis': _mergeDistinctStrings(
+        _readOptionalStringList(candidate, 'supporting_evidence_refs'),
+        acceptedFeedbackEvidenceRefs,
+      ),
+      'guardrail_note':
+          '${guardrailCost['summary']?.toString() ?? ''} | Review predicate: $guardrailAssessment. $guardrailRationale',
+      'request_compatibility': {
+        'required_context_features': [
+          if (requestFeature != null && requestFeature.isNotEmpty) requestFeature,
+          if (requestFeature == null || requestFeature.isEmpty) taskFamily,
+        ],
+        'goal_must_include_any': requestGoalKeywords,
+        'goal_must_exclude_any': <String>[
+          'policy override',
+          'override supervisor policy',
+        ],
+        'constraint_must_include_any': constraintKeywords,
+        'constraint_must_exclude_any': <String>[
+          'policy override',
+        ],
+      },
+      'repository_compatibility': {
+        'required_paths_exist':
+            requiredPathsExist.isEmpty ? <String>['bin/rail.dart'] : requiredPathsExist,
+        'required_paths_absent': <String>[],
+      },
+      'latest_family_evidence_expectations': {
+        'lookup_key': lookupKey,
+        'baseline_approved_memory_ref': _approvedMemoryRefForFamily(taskFamily),
+        'required_latest_success_ref': latestSuccessRef,
+        'required_latest_failure_ref': latestFailureRef,
+        'forbid_any_latest_failure': true,
+      },
+      'freshness_marker': {
+        'contract_version': _readInt(contextContract, 'contract_version'),
+        'policy_version': _readInt(policy, 'policy_version'),
+        'memory_schema_version': _approvedMemorySchemaVersion(),
+        'repository_assumptions_ref': p.join(runRef, 'request.yaml'),
+        'repository_state_ref': p.join(runRef, 'state.json'),
+        'refreshed_at': decisionTimestamp,
+        'freshness_sequence': (previousFreshnessSequence ?? 0) + 1,
+      },
+      'disposition_history': mergedDispositionHistory,
+      'originating_candidate_refs': _mergeDistinctStrings(
+        existingOriginatingCandidateRefs,
+        [candidateRef],
+      ),
+      'reviewed_user_outcome_feedback_refs': _mergeDistinctStrings(
+        existingFeedbackRefs,
+        acceptedFeedbackRefs,
+      ),
+    };
+  }
+
+  Future<void> _refreshLearningViews() async {
+    final learningDirectory = Directory(p.join(root.path, '.harness', 'learning'))
+      ..createSync(recursive: true);
+    final artifactRoot = Directory(p.join(root.path, '.harness', 'artifacts'));
+
+    final qualityCandidateFiles = artifactRoot.existsSync()
+        ? artifactRoot
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where(
+              (file) =>
+                  p.basename(p.dirname(file.path)) == 'quality_learning_candidates' &&
+                  file.path.endsWith('.yaml') &&
+                  !_isOrdinalCandidateAlias(file),
+            )
+            .toList(growable: false)
+        : const <File>[];
+    final hardeningCandidateFiles = artifactRoot.existsSync()
+        ? artifactRoot
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where(
+              (file) =>
+                  p.basename(p.dirname(file.path)) == 'hardening_candidates' &&
+                  file.path.endsWith('.yaml'),
+            )
+            .toList(growable: false)
+        : const <File>[];
+    final learningFiles = learningDirectory
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.yaml'))
+        .toList(growable: false);
+
+    final qualityCandidates = <String, Map<String, dynamic>>{};
+    final qualityCandidateTimes = <String, String>{};
+    for (final file in qualityCandidateFiles) {
+      final ref = p.relative(file.path, from: root.path);
+      qualityCandidates[ref] = _asMap(_loadYamlValue(file), context: file.path);
+      qualityCandidateTimes[ref] =
+          file.statSync().modified.toUtc().toIso8601String();
+    }
+    final activeQualityCandidateRefs = <String, String>{};
+    for (final entry in qualityCandidates.entries) {
+      final candidate = entry.value;
+      final runRef =
+          _readMap(candidate, 'originating_run_artifact_identity')['run_ref']
+              ?.toString() ??
+          '';
+      final lineageKey = _candidateLineageKey(candidate);
+      final groupingKey = '$runRef::$lineageKey';
+      final recordedAt = qualityCandidateTimes[entry.key] ?? '';
+      final existingRef = activeQualityCandidateRefs[groupingKey];
+      final existingRecordedAt =
+          existingRef == null ? '' : (qualityCandidateTimes[existingRef] ?? '');
+      if (existingRef == null || recordedAt.compareTo(existingRecordedAt) >= 0) {
+        activeQualityCandidateRefs[groupingKey] = entry.key;
+      }
+    }
+    final activeQualityCandidates = <String, Map<String, dynamic>>{
+      for (final ref in activeQualityCandidateRefs.values) ref: qualityCandidates[ref]!,
+    };
+
+    final hardeningCandidates = <String, Map<String, dynamic>>{};
+    final hardeningCandidateTimes = <String, String>{};
+    for (final file in hardeningCandidateFiles) {
+      final ref = p.relative(file.path, from: root.path);
+      hardeningCandidates[ref] = _asMap(_loadYamlValue(file), context: file.path);
+      hardeningCandidateTimes[ref] =
+          file.statSync().modified.toUtc().toIso8601String();
+    }
+    final activeHardeningCandidateRefs = <String, String>{};
+    for (final entry in hardeningCandidates.entries) {
+      final candidate = entry.value;
+      final runRef =
+          _readMap(candidate, 'originating_run_artifact_identity')['run_ref']
+              ?.toString() ??
+          '';
+      final lineageKey = _candidateLineageKey(candidate);
+      final groupingKey = '$runRef::$lineageKey';
+      final recordedAt = hardeningCandidateTimes[entry.key] ?? '';
+      final existingRef = activeHardeningCandidateRefs[groupingKey];
+      final existingRecordedAt =
+          existingRef == null ? '' : (hardeningCandidateTimes[existingRef] ?? '');
+      if (existingRef == null || recordedAt.compareTo(existingRecordedAt) >= 0) {
+        activeHardeningCandidateRefs[groupingKey] = entry.key;
+      }
+    }
+    final activeHardeningCandidates = <String, Map<String, dynamic>>{
+      for (final ref in activeHardeningCandidateRefs.values)
+        ref: hardeningCandidates[ref]!,
+    };
+
+    final learningReviewDecisions = <String, Map<String, dynamic>>{};
+    final hardeningReviewDecisions = <String, Map<String, dynamic>>{};
+    final userOutcomeFeedbacks = <String, Map<String, dynamic>>{};
+    final approvedMemories = <String, Map<String, dynamic>>{};
+    for (final file in learningFiles) {
+      final ref = p.relative(file.path, from: root.path);
+      final map = _asMap(_loadYamlValue(file), context: file.path);
+      if (map.containsKey('candidate_ref') && map.containsKey('reviewer_decision')) {
+        learningReviewDecisions[ref] = map;
+      } else if (map.containsKey('hardening_candidate_ref') &&
+          map.containsKey('reviewer_decision')) {
+        hardeningReviewDecisions[ref] = map;
+      } else if (map.containsKey('feedback_classification') &&
+          map.containsKey('originating_run_artifact_identity')) {
+        userOutcomeFeedbacks[ref] = map;
+      } else if (map.containsKey('approved_observation') &&
+          map.containsKey('task_family')) {
+        approvedMemories[ref] = map;
+      }
+    }
+
+    final reviewDecisionsByCandidate = <String, MapEntry<String, Map<String, dynamic>>>{};
+    for (final entry in learningReviewDecisions.entries) {
+      final candidateRef = entry.value['candidate_ref']?.toString();
+      final decisionTimestamp = entry.value['decision_timestamp']?.toString() ?? '';
+      if (candidateRef == null || candidateRef.isEmpty) {
+        continue;
+      }
+      final existing = reviewDecisionsByCandidate[candidateRef];
+      final existingTimestamp =
+          existing?.value['decision_timestamp']?.toString() ?? '';
+      if (existing == null || decisionTimestamp.compareTo(existingTimestamp) >= 0) {
+        reviewDecisionsByCandidate[candidateRef] = MapEntry(entry.key, entry.value);
+      }
+    }
+
+    final hardeningDecisionsByCandidate = <String, MapEntry<String, Map<String, dynamic>>>{};
+    for (final entry in hardeningReviewDecisions.entries) {
+      final candidateRef = entry.value['hardening_candidate_ref']?.toString();
+      final decisionTimestamp = entry.value['decision_timestamp']?.toString() ?? '';
+      if (candidateRef == null || candidateRef.isEmpty) {
+        continue;
+      }
+      final existing = hardeningDecisionsByCandidate[candidateRef];
+      final existingTimestamp =
+          existing?.value['decision_timestamp']?.toString() ?? '';
+      if (existing == null || decisionTimestamp.compareTo(existingTimestamp) >= 0) {
+        hardeningDecisionsByCandidate[candidateRef] = MapEntry(entry.key, entry.value);
+      }
+    }
+
+    final families = <String, Map<String, Object?>>{};
+    final latestFamilyDecisionByGroup = <String, Map<String, String>>{};
+    for (final entry in activeQualityCandidates.entries) {
+      final decisionEntry = reviewDecisionsByCandidate[entry.key];
+      if (decisionEntry == null) {
+        continue;
+      }
+      final family = entry.value['task_family']?.toString() ?? 'unknown';
+      final familySource =
+          entry.value['task_family_source']?.toString() ?? 'task_type';
+      final groupKey = '$family::$familySource';
+      final decisionTimestamp =
+          decisionEntry.value['decision_timestamp']?.toString() ?? '';
+      final existing = latestFamilyDecisionByGroup[groupKey];
+      if (existing == null ||
+          decisionTimestamp.compareTo(existing['timestamp'] ?? '') >= 0) {
+        latestFamilyDecisionByGroup[groupKey] = {
+          'ref': decisionEntry.key,
+          'timestamp': decisionTimestamp,
+          'decision':
+              decisionEntry.value['reviewer_decision']?.toString() ?? 'pending',
+        };
+      }
+    }
+
+    final feedbackRefsByFamilyGroup = <String, List<String>>{};
+    final feedbackRefsByRunAndFamily = <String, List<String>>{};
+    final latestFeedbackByFamilyGroup =
+        <String, MapEntry<String, Map<String, dynamic>>>{};
+    for (final entry in userOutcomeFeedbacks.entries) {
+      final feedback = entry.value;
+      final identity = _readMap(feedback, 'originating_run_artifact_identity');
+      final taskFamily = feedback['task_family']?.toString() ?? 'unknown';
+      final taskFamilySource =
+          feedback['task_family_source']?.toString() ?? 'task_type';
+      final familyGroupKey = '$taskFamily::$taskFamilySource';
+      feedbackRefsByFamilyGroup.putIfAbsent(familyGroupKey, () => <String>[]).add(
+        entry.key,
+      );
+      final runFamilyKey =
+          '${identity['run_ref']?.toString() ?? ''}::$taskFamily::$taskFamilySource';
+      feedbackRefsByRunAndFamily.putIfAbsent(runFamilyKey, () => <String>[]).add(
+        entry.key,
+      );
+      final existing = latestFeedbackByFamilyGroup[familyGroupKey];
+      if (existing == null ||
+          _feedbackTimestamp(feedback, entry.key).compareTo(
+                _feedbackTimestamp(existing.value, existing.key),
+              ) >=
+              0) {
+        latestFeedbackByFamilyGroup[familyGroupKey] = entry;
+      }
+    }
+
+    for (final entry in activeQualityCandidates.entries) {
+      final family = entry.value['task_family']?.toString() ?? 'unknown';
+      final familySource =
+          entry.value['task_family_source']?.toString() ?? 'task_type';
+      final groupKey = '$family::$familySource';
+      final group = families.putIfAbsent(
+        groupKey,
+        () => {
+          'task_family': family,
+          'task_family_source': familySource,
+          'direct_user_outcome_status': 'unknown',
+          'last_disposition_state': 'pending',
+          'pending_candidate_refs': <String>[],
+          'appended_user_outcome_feedback_refs': <String>[],
+          'reviewable_candidate_dispositions': <Map<String, Object?>>[],
+          '_latest_candidate_at': '',
+        },
+      );
+
+      final candidateRef = entry.key;
+      final candidateMap = entry.value;
+      final userOutcomeStatus =
+        _readMap(candidateMap, 'user_outcome_signal')['status']?.toString() ??
+              'unavailable';
+      final runtimeRecommendation =
+          candidateMap['runtime_recommendation']?.toString() ?? 'hold';
+      final runRef =
+          _readMap(candidateMap, 'originating_run_artifact_identity')['run_ref']
+              ?.toString() ??
+          '';
+      final feedbackRefsForCandidate = _mergeDistinctStrings(
+        _readOptionalStringList(
+          _readMap(candidateMap, 'user_outcome_signal'),
+          'supporting_feedback_refs',
+        ),
+        feedbackRefsByRunAndFamily['$runRef::$family::$familySource'] ??
+            const <String>[],
+      );
+      final mappedUserOutcome = switch (userOutcomeStatus) {
+        'confirmed' =>
+          runtimeRecommendation == 'promote' ? 'accepted' : 'corrected',
+        'provisional' => 'unresolved',
+        _ => 'unknown',
+      };
+
+      final candidateTime = qualityCandidateTimes[candidateRef] ?? '';
+      final latestCandidateAt = group['_latest_candidate_at']?.toString() ?? '';
+      if (candidateTime.compareTo(latestCandidateAt) >= 0) {
+        group['direct_user_outcome_status'] = mappedUserOutcome;
+        group['_latest_candidate_at'] = candidateTime;
+      }
+
+      final decisionEntry = reviewDecisionsByCandidate[candidateRef];
+      final latestFamilyDecision = latestFamilyDecisionByGroup[groupKey];
+      final shouldExpire =
+          decisionEntry == null &&
+          userOutcomeStatus != 'confirmed' &&
+          feedbackRefsForCandidate.isEmpty &&
+          latestFamilyDecision != null &&
+          candidateTime.compareTo(latestFamilyDecision['timestamp'] ?? '') <= 0;
+      if (decisionEntry == null && !shouldExpire) {
+        (group['pending_candidate_refs'] as List<String>).add(candidateRef);
+      }
+
+      final dispositionState = decisionEntry != null
+          ? decisionEntry.value['reviewer_decision']?.toString() ?? 'pending'
+          : shouldExpire
+              ? 'expired'
+              : 'pending';
+      final reviewWindowStatus = switch (dispositionState) {
+        'expired' => 'expired',
+        'pending' =>
+          feedbackRefsForCandidate.isNotEmpty || userOutcomeStatus == 'confirmed'
+              ? 'ready_for_review'
+              : 'awaiting_feedback',
+        _ => 'reviewed',
+      };
+      (group['reviewable_candidate_dispositions'] as List<Map<String, Object?>>)
+          .add({
+            'candidate_ref': candidateRef,
+            'user_outcome_status': userOutcomeStatus,
+            'appended_user_outcome_feedback_refs': feedbackRefsForCandidate,
+            'disposition_state': dispositionState,
+            'latest_review_decision_ref': decisionEntry != null
+                ? decisionEntry.key
+                : (shouldExpire
+                    ? (latestFamilyDecision == null
+                        ? null
+                        : latestFamilyDecision['ref'])
+                    : null),
+            if ((decisionEntry?.value['decision_timestamp']?.toString().isNotEmpty ??
+                    false))
+              'latest_review_decision_timestamp':
+                  decisionEntry!.value['decision_timestamp']?.toString(),
+            if (shouldExpire &&
+                (latestFamilyDecision?['timestamp']?.isNotEmpty ?? false))
+              'latest_review_decision_timestamp':
+                  latestFamilyDecision?['timestamp'],
+            'review_window_status': reviewWindowStatus,
+          });
+    }
+
+    for (final entry in feedbackRefsByFamilyGroup.entries) {
+      final parts = entry.key.split('::');
+      final family = parts.first;
+      final familySource = parts.length > 1 ? parts[1] : 'task_type';
+      final group = families.putIfAbsent(
+        entry.key,
+        () => {
+          'task_family': family,
+          'task_family_source': familySource,
+          'direct_user_outcome_status': 'unknown',
+          'last_disposition_state': 'pending',
+          'pending_candidate_refs': <String>[],
+          'appended_user_outcome_feedback_refs': <String>[],
+          'reviewable_candidate_dispositions': <Map<String, Object?>>[],
+          '_latest_candidate_at': '',
+        },
+      );
+      group['appended_user_outcome_feedback_refs'] = _mergeDistinctStrings(
+        (group['appended_user_outcome_feedback_refs'] as List<String>),
+        entry.value,
+      );
+      final latestFeedback = latestFeedbackByFamilyGroup[entry.key];
+      if (latestFeedback != null) {
+        group['direct_user_outcome_status'] = switch (
+          latestFeedback.value['feedback_classification']?.toString() ?? 'unresolved'
+        ) {
+          'accepted' => 'accepted',
+          'corrected' => 'corrected',
+          'unresolved' => 'unresolved',
+          _ => 'unknown',
+        };
+      }
+    }
+
+    final reviewQueue = {
+      'pending_candidate_groups': families.values.map((group) {
+        final pendingRefs = (group['pending_candidate_refs'] as List<String>)
+          ..sort();
+        final candidateDispositions =
+            (group['reviewable_candidate_dispositions']
+                    as List<Map<String, Object?>>)
+              ..sort(
+                (left, right) => left['candidate_ref']
+                    .toString()
+                    .compareTo(right['candidate_ref'].toString()),
+              );
+        final latestDecision = latestFamilyDecisionByGroup[
+            '${group['task_family']}::${group['task_family_source']}'];
+        final hasPending = pendingRefs.isNotEmpty;
+        return {
+          'task_family': group['task_family'],
+          'task_family_source': group['task_family_source'],
+          'direct_user_outcome_status': group['direct_user_outcome_status'],
+          'last_disposition_state':
+              hasPending
+                  ? 'pending'
+                  : latestDecision?['decision'] ?? 'pending',
+          'latest_review_decision_ref':
+              hasPending ? null : latestDecision?['ref'],
+          'pending_candidate_refs': pendingRefs,
+          'appended_user_outcome_feedback_refs':
+              (group['appended_user_outcome_feedback_refs'] as List<String>)
+                ..sort(),
+          'reviewable_candidate_dispositions': candidateDispositions,
+          if (!hasPending && (latestDecision?['timestamp']?.isNotEmpty ?? false))
+            'latest_review_decision_timestamp': latestDecision?['timestamp'],
+        };
+      }).toList(growable: false),
+      'queue_generated_at': DateTime.now().toUtc().toIso8601String(),
+      'queue_sequence': activeQualityCandidates.length,
+    };
+
+    final hardeningQueueEntries = <Map<String, Object?>>[];
+    for (final entry in activeHardeningCandidates.entries) {
+      final decisionEntry = hardeningDecisionsByCandidate[entry.key];
+      hardeningQueueEntries.add({
+        'hardening_candidate_ref': entry.key,
+        'policy_affecting_reason':
+            entry.value['policy_affecting_observation']?.toString() ?? '',
+        'review_state':
+            decisionEntry?.value['reviewer_decision']?.toString() ?? 'pending',
+        'latest_review_decision_ref': decisionEntry?.key,
+        'task_family': entry.value['task_family']?.toString() ?? 'unknown',
+        'task_family_source':
+            entry.value['task_family_source']?.toString() ?? 'task_type',
+      });
+    }
+    for (final entry in hardeningDecisionsByCandidate.entries) {
+      if (activeHardeningCandidates.containsKey(entry.key)) {
+        continue;
+      }
+      final candidateFile = _resolveFileWithinRoot(entry.key);
+      Map<String, dynamic>? candidateContext;
+      if (candidateFile.existsSync()) {
+        candidateContext = _asMap(
+          _loadYamlValue(candidateFile),
+          context: candidateFile.path,
+        );
+      }
+      hardeningQueueEntries.add({
+        'hardening_candidate_ref': entry.key,
+        'policy_affecting_reason':
+            candidateContext?['policy_affecting_observation']?.toString() ??
+                entry.value.value['decision_reason']?.toString() ??
+                '',
+        'review_state':
+            entry.value.value['reviewer_decision']?.toString() ?? 'pending',
+        'latest_review_decision_ref': entry.value.key,
+        'task_family':
+            candidateContext?['task_family']?.toString() ?? 'unknown',
+        'task_family_source':
+            candidateContext?['task_family_source']?.toString() ?? 'task_type',
+      });
+    }
+    hardeningQueueEntries.sort(
+      (left, right) => left['hardening_candidate_ref']
+          .toString()
+          .compareTo(right['hardening_candidate_ref'].toString()),
+    );
+    final hardeningQueue = {
+      'pending_hardening_entries': hardeningQueueEntries,
+      'queue_generated_at': DateTime.now().toUtc().toIso8601String(),
+      'queue_sequence': activeHardeningCandidates.length,
+    };
+
+    final latestApprovedMemoryRefsByFamily = <String, Object?>{};
+    for (final entry in approvedMemories.entries) {
+      final family = entry.value['task_family']?.toString();
+      final familySource =
+          entry.value['task_family_source']?.toString() ?? 'task_type';
+      if (family == null || family.isEmpty) {
+        continue;
+      }
+      final familyKey = _familySourceKey(family, familySource);
+      final freshnessMarker = entry.value['freshness_marker'] is Map<String, dynamic>
+          ? entry.value['freshness_marker'] as Map<String, dynamic>
+          : entry.value['freshness_marker'] is Map
+              ? Map<String, dynamic>.from(entry.value['freshness_marker'] as Map)
+              : const <String, dynamic>{};
+      final recordedAt = freshnessMarker['refreshed_at']?.toString() ??
+          File(p.join(root.path, entry.key))
+              .statSync()
+              .modified
+              .toUtc()
+              .toIso8601String();
+      final existing =
+          latestApprovedMemoryRefsByFamily[familyKey] as Map<String, Object?>?;
+      if (existing == null ||
+          recordedAt.compareTo(existing['recorded_at']?.toString() ?? '') >= 0) {
+        latestApprovedMemoryRefsByFamily[familyKey] = {
+          'ref': entry.key,
+          'recorded_at': recordedAt,
+          'lookup_key': familyKey,
+          'task_family': family,
+          'task_family_source': familySource,
+          if (freshnessMarker['freshness_sequence'] != null)
+            'sequence_marker':
+                (freshnessMarker['freshness_sequence'] as num).toInt(),
+        };
+      }
+    }
+
+    final latestConfirmedSuccessRefsByFamily = <String, Object?>{};
+    final latestFailureRefsByFamily = <String, Object?>{};
+    for (final entry in userOutcomeFeedbacks.entries) {
+      final family = entry.value['task_family']?.toString();
+      final familySource =
+          entry.value['task_family_source']?.toString() ?? 'task_type';
+      if (family == null || family.isEmpty) {
+        continue;
+      }
+      final familyKey = _familySourceKey(family, familySource);
+      final recordedAt = _feedbackTimestamp(entry.value, entry.key);
+      final classification =
+          entry.value['feedback_classification']?.toString() ?? 'unresolved';
+      if (classification == 'accepted') {
+        final existing =
+            latestConfirmedSuccessRefsByFamily[familyKey]
+                as Map<String, Object?>?;
+        if (existing == null ||
+            recordedAt.compareTo(existing['recorded_at']?.toString() ?? '') >= 0) {
+          latestConfirmedSuccessRefsByFamily[familyKey] = {
+            'ref': entry.key,
+            'recorded_at': recordedAt,
+            'lookup_key': familyKey,
+            'task_family': family,
+            'task_family_source': familySource,
+          };
+        }
+      }
+      if (classification == 'corrected') {
+        final existing =
+            latestFailureRefsByFamily[familyKey] as Map<String, Object?>?;
+        if (existing == null ||
+            recordedAt.compareTo(existing['recorded_at']?.toString() ?? '') >= 0) {
+          latestFailureRefsByFamily[familyKey] = {
+            'ref': entry.key,
+            'recorded_at': recordedAt,
+            'lookup_key': familyKey,
+            'task_family': family,
+            'task_family_source': familySource,
+          };
+        }
+      }
+    }
+    for (final entry in activeQualityCandidates.entries) {
+      final family = entry.value['task_family']?.toString();
+      final familySource =
+          entry.value['task_family_source']?.toString() ?? 'task_type';
+      if (family == null || family.isEmpty) {
+        continue;
+      }
+      final familyKey = _familySourceKey(family, familySource);
+      final userOutcome =
+          _readMap(entry.value, 'user_outcome_signal')['status']?.toString() ??
+              'unavailable';
+      final evaluatorSupport = _readMap(entry.value, 'evaluator_support_signal');
+      final terminalOutcome =
+          evaluatorSupport['terminal_outcome_class']?.toString() ?? 'unknown';
+      final recordedAt = qualityCandidateTimes[entry.key] ?? '';
+      if (userOutcome == 'confirmed' &&
+          terminalOutcome == 'passed') {
+        final existing =
+            latestConfirmedSuccessRefsByFamily[familyKey]
+                as Map<String, Object?>?;
+        if (existing == null ||
+            recordedAt.compareTo(existing['recorded_at']?.toString() ?? '') >= 0) {
+          latestConfirmedSuccessRefsByFamily[familyKey] = {
+            'ref': entry.key,
+            'recorded_at': recordedAt,
+            'lookup_key': familyKey,
+            'task_family': family,
+            'task_family_source': familySource,
+          };
+        }
+      }
+    }
+
+    final latestReviewDecisionRefsByFamily = <String, Object?>{};
+    final latestProvisionalCandidateDispositionsByFamily = <String, Object?>{};
+    for (final entry in reviewDecisionsByCandidate.entries) {
+      final candidateMap = qualityCandidates[entry.key];
+      final family = candidateMap?['task_family']?.toString();
+      final familySource =
+          candidateMap?['task_family_source']?.toString() ?? 'task_type';
+      if (family == null || family.isEmpty) {
+        continue;
+      }
+      final familyKey = _familySourceKey(family, familySource);
+      final decisionTimestamp =
+          entry.value.value['decision_timestamp']?.toString() ?? '';
+      final existing =
+          latestReviewDecisionRefsByFamily[familyKey] as Map<String, Object?>?;
+      if (existing == null ||
+          decisionTimestamp.compareTo(existing['recorded_at']?.toString() ?? '') >=
+              0) {
+        latestReviewDecisionRefsByFamily[familyKey] = {
+          'ref': entry.value.key,
+          'recorded_at': decisionTimestamp,
+          'lookup_key': familyKey,
+          'task_family': family,
+          'task_family_source': familySource,
+        };
+      }
+      final candidateStatusAtReview =
+          entry.value.value['candidate_user_outcome_status_at_review']
+              ?.toString() ??
+          'unavailable';
+      if (candidateStatusAtReview != 'confirmed') {
+        final existing =
+            latestProvisionalCandidateDispositionsByFamily[familyKey]
+                as Map<String, Object?>?;
+        if (existing == null ||
+            decisionTimestamp.compareTo(existing['recorded_at']?.toString() ?? '') >=
+                0) {
+          latestProvisionalCandidateDispositionsByFamily[familyKey] = {
+            'ref': entry.value.key,
+            'candidate_ref': entry.key,
+            'recorded_at': decisionTimestamp,
+            'disposition':
+                entry.value.value['reviewer_decision']?.toString() ?? 'pending',
+            'lookup_key': familyKey,
+            'task_family': family,
+            'task_family_source': familySource,
+          };
+        }
+      }
+    }
+    for (final group in families.values) {
+      for (final disposition in group['reviewable_candidate_dispositions']
+              as List<Map<String, Object?>>? ??
+          const <Map<String, Object?>>[]) {
+        if (disposition['disposition_state'] != 'expired') {
+          continue;
+        }
+        final candidateRef = disposition['candidate_ref']?.toString() ?? '';
+        final candidateMap = activeQualityCandidates[candidateRef];
+        final family = candidateMap?['task_family']?.toString();
+        final familySource =
+            candidateMap?['task_family_source']?.toString() ?? 'task_type';
+        final recordedAt =
+            disposition['latest_review_decision_timestamp']?.toString() ?? '';
+        if (family == null || family.isEmpty || recordedAt.isEmpty) {
+          continue;
+        }
+        final familyKey = _familySourceKey(family, familySource);
+        final existing =
+            latestProvisionalCandidateDispositionsByFamily[familyKey]
+                as Map<String, Object?>?;
+        if (existing == null ||
+            recordedAt.compareTo(existing['recorded_at']?.toString() ?? '') >= 0) {
+          latestProvisionalCandidateDispositionsByFamily[familyKey] = {
+            'ref': disposition['latest_review_decision_ref']?.toString() ??
+                candidateRef,
+            'candidate_ref': candidateRef,
+            'recorded_at': recordedAt,
+            'disposition': 'expired',
+            'lookup_key': familyKey,
+            'task_family': family,
+            'task_family_source': familySource,
+          };
+        }
+      }
+    }
+
+    final familyEvidenceIndex = {
+      'latest_approved_memory_refs_by_family': latestApprovedMemoryRefsByFamily,
+      'latest_confirmed_success_refs_by_family':
+          latestConfirmedSuccessRefsByFamily,
+      'latest_failure_refs_by_family': latestFailureRefsByFamily,
+      'latest_review_decision_refs_by_family': latestReviewDecisionRefsByFamily,
+      'latest_provisional_candidate_dispositions_by_family':
+          latestProvisionalCandidateDispositionsByFamily,
+      'index_generated_at': DateTime.now().toUtc().toIso8601String(),
+      'index_sequence': activeQualityCandidates.length + approvedMemories.length,
+    };
+
+    final reviewQueueFile = File(p.join(learningDirectory.path, 'review_queue.yaml'));
+    await reviewQueueFile.writeAsString(_toYaml(reviewQueue));
+    await validateArtifact(
+      filePath: p.relative(reviewQueueFile.path, from: root.path),
+      schemaName: 'learning_review_queue',
+    );
+
+    final hardeningQueueFile = File(
+      p.join(learningDirectory.path, 'hardening_queue.yaml'),
+    );
+    await hardeningQueueFile.writeAsString(_toYaml(hardeningQueue));
+    await validateArtifact(
+      filePath: p.relative(hardeningQueueFile.path, from: root.path),
+      schemaName: 'hardening_review_queue',
+    );
+
+    final familyEvidenceIndexFile = File(
+      p.join(learningDirectory.path, 'family_evidence_index.yaml'),
+    );
+    await familyEvidenceIndexFile.writeAsString(_toYaml(familyEvidenceIndex));
+    await validateArtifact(
+      filePath: p.relative(familyEvidenceIndexFile.path, from: root.path),
+      schemaName: 'family_evidence_index',
+    );
+  }
+
+  bool _isTerminalOutcomeClass(String status) {
+    return switch (status) {
+      'passed' || 'blocked_environment' || 'split_required' ||
+      'evolution_exhausted' || 'revise_exhausted' || 'rejected' => true,
+      _ => false,
+    };
+  }
+
+  bool _isTerminalFailureOutcomeClass(String status) {
+    return _isTerminalOutcomeClass(status) && status != 'passed';
+  }
+
   String _buildCodexExecutionPrompt({
     required String actorName,
     required String actorBriefPath,
@@ -3955,6 +6493,8 @@ class ResolvedWorkflow {
   ResolvedWorkflow({
     required this.taskId,
     required this.taskType,
+    required this.taskFamily,
+    required this.taskFamilySource,
     required this.projectRoot,
     required this.actors,
     required this.rubricPath,
@@ -3973,6 +6513,8 @@ class ResolvedWorkflow {
 
   final String taskId;
   final String taskType;
+  final String taskFamily;
+  final String taskFamilySource;
   final String projectRoot;
   final List<String> actors;
   final String rubricPath;
@@ -3992,6 +6534,8 @@ class ResolvedWorkflow {
     return {
       'taskId': taskId,
       'taskType': taskType,
+      'taskFamily': taskFamily,
+      'taskFamilySource': taskFamilySource,
       'projectRoot': projectRoot,
       'actors': actors,
       'rubricPath': rubricPath,
@@ -4013,6 +6557,8 @@ class ResolvedWorkflow {
     return ResolvedWorkflow(
       taskId: _readString(map, 'taskId'),
       taskType: _readString(map, 'taskType'),
+      taskFamily: map['taskFamily']?.toString() ?? _readString(map, 'taskType'),
+      taskFamilySource: map['taskFamilySource']?.toString() ?? 'task_type',
       projectRoot: _readString(map, 'projectRoot'),
       actors: _readStringList(map, 'actors'),
       rubricPath: _readString(map, 'rubricPath'),
@@ -4062,6 +6608,8 @@ class ExecutionPlan {
 class HarnessState {
   HarnessState({
     required this.taskId,
+    required this.taskFamily,
+    required this.taskFamilySource,
     required this.status,
     required this.currentActor,
     required this.completedActors,
@@ -4085,6 +6633,8 @@ class HarnessState {
   factory HarnessState.fromJson(Map<String, dynamic> map) {
     return HarnessState(
       taskId: _readString(map, 'taskId'),
+      taskFamily: map['taskFamily']?.toString() ?? map['taskType']?.toString() ?? 'unknown',
+      taskFamilySource: map['taskFamilySource']?.toString() ?? 'task_type',
       status: _readString(map, 'status'),
       currentActor: map['currentActor']?.toString(),
       completedActors: _readStringList(map, 'completedActors'),
@@ -4119,6 +6669,8 @@ class HarnessState {
   }
 
   final String taskId;
+  final String taskFamily;
+  final String taskFamilySource;
   final String status;
   final String? currentActor;
   final List<String> completedActors;
@@ -4162,6 +6714,8 @@ class HarnessState {
   }) {
     return HarnessState(
       taskId: taskId,
+      taskFamily: taskFamily,
+      taskFamilySource: taskFamilySource,
       status: status ?? this.status,
       currentActor: clearCurrentActor ? null : (currentActor ?? this.currentActor),
       completedActors: completedActors ?? this.completedActors,
@@ -4201,6 +6755,8 @@ class HarnessState {
   Map<String, Object?> toJson() {
     return {
       'taskId': taskId,
+      'taskFamily': taskFamily,
+      'taskFamilySource': taskFamilySource,
       'status': status,
       'currentActor': currentActor,
       'completedActors': completedActors,
@@ -4285,44 +6841,131 @@ class SchemaValidator {
       return errors;
     }
 
-    final expectedType = nodeSchema['type'];
-    if (expectedType case 'object') {
-      if (value is! Map<String, dynamic>) {
-        errors.add('$path expected object');
-        return errors;
+    final allOf = nodeSchema['allOf'];
+    if (allOf is List) {
+      for (final branch in allOf.whereType<Map>()) {
+        errors.addAll(
+          _validateNode(Map<String, dynamic>.from(branch), value, path: path),
+        );
       }
+    }
+
+    final conditional = nodeSchema['if'];
+    if (conditional is Map) {
+      final matchesCondition = _validateNode(
+        Map<String, dynamic>.from(conditional),
+        value,
+        path: path,
+      ).isEmpty;
+      if (matchesCondition && nodeSchema['then'] is Map) {
+        errors.addAll(
+          _validateNode(
+            Map<String, dynamic>.from(nodeSchema['then'] as Map),
+            value,
+            path: path,
+          ),
+        );
+      } else if (!matchesCondition && nodeSchema['else'] is Map) {
+        errors.addAll(
+          _validateNode(
+            Map<String, dynamic>.from(nodeSchema['else'] as Map),
+            value,
+            path: path,
+          ),
+        );
+      }
+    }
+
+    final constValue = nodeSchema['const'];
+    if (nodeSchema.containsKey('const') && !_schemaLiteralEquals(value, constValue)) {
+      errors.add('$path expected constant value $constValue');
+    }
+
+    final expectedType = nodeSchema['type'];
+    final treatsAsObject =
+        expectedType == 'object' ||
+        nodeSchema.containsKey('properties') ||
+        nodeSchema.containsKey('required') ||
+        nodeSchema.containsKey('additionalProperties');
+    final treatsAsArray =
+        expectedType == 'array' ||
+        nodeSchema.containsKey('items') ||
+        nodeSchema.containsKey('minItems');
+
+    if (expectedType != null && !_matchesSchemaType(expectedType, value)) {
+      final expectedLabel = expectedType is List
+          ? expectedType.join('|')
+          : expectedType.toString();
+      errors.add('$path expected $expectedLabel');
+      return errors;
+    }
+
+    if (treatsAsObject) {
+      if (value is! Map<String, dynamic>) {
+        if (value is! Map) {
+          errors.add('$path expected object');
+          return errors;
+        }
+      }
+      final objectValue = value is Map<String, dynamic>
+          ? value
+          : Map<String, dynamic>.from(value as Map);
 
       final requiredFields = (nodeSchema['required'] as List?)
               ?.whereType<String>()
               .toList(growable: false) ??
           const <String>[];
       for (final field in requiredFields) {
-        if (!value.containsKey(field)) {
+        if (!objectValue.containsKey(field)) {
           errors.add('$path missing required field `$field`');
         }
       }
 
       final properties = nodeSchema['properties'];
+      final declaredProperties = <String>{};
       if (properties is Map) {
         final propertyMap = Map<String, dynamic>.from(properties);
+        declaredProperties.addAll(propertyMap.keys);
         for (final entry in propertyMap.entries) {
-          if (!value.containsKey(entry.key)) {
+          if (!objectValue.containsKey(entry.key)) {
             continue;
           }
           final childSchema = Map<String, dynamic>.from(entry.value as Map);
           errors.addAll(
             _validateNode(
               childSchema,
-              value[entry.key],
+              objectValue[entry.key],
               path: '$path.${entry.key}',
             ),
           );
         }
       }
-    } else if (expectedType case 'array') {
+
+      final additionalProperties = nodeSchema['additionalProperties'];
+      for (final entry in objectValue.entries) {
+        if (declaredProperties.contains(entry.key)) {
+          continue;
+        }
+        if (additionalProperties == false) {
+          errors.add('$path contains unsupported field `${entry.key}`');
+        } else if (additionalProperties is Map) {
+          errors.addAll(
+            _validateNode(
+              Map<String, dynamic>.from(additionalProperties),
+              entry.value,
+              path: '$path.${entry.key}',
+            ),
+          );
+        }
+      }
+    } else if (treatsAsArray) {
       if (value is! List) {
         errors.add('$path expected array');
         return errors;
+      }
+      final minItems = nodeSchema['minItems'];
+      if (minItems is int && value.length < minItems) {
+        errors.add('$path expected at least $minItems item(s)');
       }
       final items = nodeSchema['items'];
       if (items is Map) {
@@ -4336,21 +6979,6 @@ class SchemaValidator {
             ),
           );
         }
-      }
-    } else if (expectedType case 'string') {
-      if (value is! String) {
-        errors.add('$path expected string');
-        return errors;
-      }
-    } else if (expectedType case 'integer') {
-      if (value is! int) {
-        errors.add('$path expected integer');
-        return errors;
-      }
-    } else if (expectedType case 'number') {
-      if (value is! num) {
-        errors.add('$path expected number');
-        return errors;
       }
     }
 
@@ -4370,6 +6998,47 @@ class SchemaValidator {
     }
 
     return errors;
+  }
+
+  bool _matchesSchemaType(dynamic expectedType, dynamic value) {
+    if (expectedType is List) {
+      return expectedType.any((item) => _matchesSchemaType(item, value));
+    }
+    return switch (expectedType) {
+      'object' => value is Map,
+      'array' => value is List,
+      'string' => value is String,
+      'integer' => value is int,
+      'number' => value is num,
+      'null' => value == null,
+      _ => true,
+    };
+  }
+
+  bool _schemaLiteralEquals(dynamic left, dynamic right) {
+    if (left is Map && right is Map) {
+      if (left.length != right.length) {
+        return false;
+      }
+      for (final key in left.keys) {
+        if (!right.containsKey(key) || !_schemaLiteralEquals(left[key], right[key])) {
+          return false;
+        }
+      }
+      return true;
+    }
+    if (left is List && right is List) {
+      if (left.length != right.length) {
+        return false;
+      }
+      for (var index = 0; index < left.length; index++) {
+        if (!_schemaLiteralEquals(left[index], right[index])) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return left == right;
   }
 }
 
@@ -4489,6 +7158,19 @@ bool _listsEqual(List<String> left, List<String> right) {
     }
   }
   return true;
+}
+
+List<String> _mergeDistinctStrings(
+  Iterable<String> left,
+  Iterable<String> right,
+) {
+  final merged = <String>{};
+  for (final value in [...left, ...right]) {
+    if (value.isNotEmpty) {
+      merged.add(value);
+    }
+  }
+  return merged.toList()..sort();
 }
 
 String _shellQuote(String value) {

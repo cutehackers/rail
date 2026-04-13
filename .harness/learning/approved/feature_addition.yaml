@@ -1,0 +1,64 @@
+task_family: 'feature_addition'
+task_family_source: 'task_type'
+approved_observation: 'Promote this reviewed same-family baseline observation into approved family memory so later feature_addition runs can reuse it as bounded guidance.'
+applicability_conditions:
+  - 'Explicit feature_addition::task_type family selection kept the baseline observation reviewable.'
+  - 'No approved_memory_hints were injected before review, so the baseline outcome reflects live-request execution only.'
+  - 'No runtime context rebuild was required for the baseline run.'
+evidence_basis:
+  - '.harness/artifacts/2026-04-10-quality-learning-candidate/evaluation_result.yaml'
+  - '.harness/artifacts/2026-04-10-quality-learning-candidate/execution_report.yaml'
+  - '.harness/artifacts/2026-04-10-quality-learning-candidate/request.yaml'
+  - '.harness/learning/feedback/feature-addition-confirmed.yaml'
+  - '.harness/requests/quality-learning-feature-family-baseline.yaml'
+  - '.harness/requests/quality-learning-feature-family-followup.yaml'
+guardrail_note: 'Generator revisions=1, context rebuilds=0, validation tightenings=0. | Review predicate: intervention_cost_does_not_explain_improvement. The reviewed candidate stayed bounded to the same feature_addition family and the accepted user outcome is direct, so the later improvement is not explained by review-time intervention cost.'
+request_compatibility:
+  required_context_features:
+    - 'quality-learning'
+  goal_must_include_any:
+    - 'approved-memory'
+    - 'baseline'
+    - 'family'
+    - 'feature-addition'
+  goal_must_exclude_any:
+    - 'policy override'
+    - 'override supervisor policy'
+  constraint_must_include_any:
+    - 'approved'
+    - 'bounded'
+    - 'keep'
+    - 'memory'
+  constraint_must_exclude_any:
+    - 'policy override'
+repository_compatibility:
+  required_paths_exist:
+    - '.harness/templates/approved_family_memory.schema.yaml'
+    - '.harness/templates/context_pack.schema.yaml'
+    - 'bin/rail.dart'
+  required_paths_absent: []
+latest_family_evidence_expectations:
+  lookup_key: 'feature_addition::task_type'
+  baseline_approved_memory_ref: '.harness/learning/approved/feature_addition.yaml'
+  required_latest_success_ref: '.harness/learning/feedback/feature-addition-confirmed.yaml'
+  required_latest_failure_ref: null
+  forbid_any_latest_failure: true
+freshness_marker:
+  contract_version: 1
+  policy_version: 1
+  memory_schema_version: 3
+  repository_assumptions_ref: '.harness/artifacts/2026-04-10-quality-learning-candidate/request.yaml'
+  repository_state_ref: '.harness/artifacts/2026-04-10-quality-learning-candidate/state.json'
+  refreshed_at: '2026-04-13T02:24:00Z'
+  freshness_sequence: 1
+disposition_history:
+  -
+    disposition: 'approved'
+    decided_at: '2026-04-13T02:24:00Z'
+    decision_ref: '.harness/learning/reviews/feature-addition-promote.yaml'
+    reviewer_identity: 'reviewer-quality-learning'
+    reason: 'Confirmed direct user outcome and bounded same-family evidence justify promoting the feature_addition observation into approved family memory.'
+originating_candidate_refs:
+  - '.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml'
+reviewed_user_outcome_feedback_refs:
+  - '.harness/learning/feedback/feature-addition-confirmed.yaml'

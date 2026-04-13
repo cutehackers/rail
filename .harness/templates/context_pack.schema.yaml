@@ -38,3 +38,47 @@ properties:
     items:
       type: string
 
+  approved_memory_hints:
+    type: array
+    maxItems: 4
+    items:
+      type: object
+      required:
+        - text
+        - provenance
+      properties:
+        text:
+          type: string
+          maxLength: 240
+        provenance:
+          type: object
+          required:
+            - considered_ref
+            - review_decision_ref
+            - task_family
+            - task_family_source
+            - disposition
+            - current_state_refresh_ref
+          properties:
+            considered_ref:
+              type: string
+            review_decision_ref:
+              type: string
+            task_family:
+              type: string
+            task_family_source:
+              type: string
+            disposition:
+              type: string
+            current_state_refresh_ref:
+              type: string
+            current_state_refresh_generated_at:
+              type:
+                - string
+                - 'null'
+            originating_candidate_refs:
+              type: array
+              items:
+                type: string
+          additionalProperties: false
+      additionalProperties: false

@@ -1,0 +1,60 @@
+type: object
+required:
+  - originating_run_artifact_identity
+  - task_family
+  - task_family_source
+  - feedback_classification
+  - feedback_summary
+  - submitted_at
+  - evidence_refs
+properties:
+  originating_run_artifact_identity:
+    type: object
+    required:
+      - run_ref
+      - artifact_ref
+    properties:
+      run_ref:
+        type: string
+      artifact_ref:
+        type: string
+    additionalProperties: false
+
+  candidate_ref_hint:
+    type: string
+
+  task_family:
+    type: string
+
+  task_family_source:
+    type: string
+
+  feedback_classification:
+    type: string
+    enum:
+      - accepted
+      - corrected
+      - unresolved
+
+  feedback_summary:
+    type: string
+
+  submitted_at:
+    type: string
+
+  evidence_refs:
+    type: object
+    required:
+      - run_refs
+      - follow_up_refs
+    properties:
+      run_refs:
+        type: array
+        items:
+          type: string
+      follow_up_refs:
+        type: array
+        items:
+          type: string
+    additionalProperties: false
+additionalProperties: false

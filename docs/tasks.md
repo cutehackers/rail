@@ -230,14 +230,15 @@ Closure note:
 
 ---
 
-## Task 6: Bound self-evolution loops more clearly
+## Task 6: Make quality learning review-only and reviewable
 
 Status: complete at the contract level on 2026-04-10
 
 Why this matters:
 
-- launch requires self-evolution to improve quality, not create churn
-- current budgets exist, but the stopping story can still be sharper
+- long-term quality learning must improve outcomes without silently changing runtime behavior
+- review-only candidate accumulation is safer than hidden adaptation
+- policy-affecting patterns need separate hardening surfacing instead of becoming reusable memory by default
 
 Primary files:
 
@@ -251,16 +252,28 @@ Steps:
 - [x] ensure bounded retry transitions terminate clearly
 - [x] make retry exhaustion visible in `terminal_summary.md`
 - [x] verify that repeated retries do not continue silently beyond budget
+- [x] surface multi-candidate runtime emission for review instead of a single hidden memory write
+- [x] surface hardening candidates separately when a pattern may affect policy rather than family learning
+- [x] require explicit human review decisions before promotion into approved memory
+- [x] allow approved-memory reuse only within the same family
+- [x] bound same-family guidance injection and require provenance on reused evidence
 
 Done when:
 
 - each loop has a visible stop condition
 - exhausted loops produce an explicit, reviewable final state
+- runtime emits reviewable candidates rather than silently adapting from unreviewed memory
+- policy-affecting patterns surface to hardening review without becoming reusable family memory
+- approved-memory reuse is same-family only and provenance-backed
+- guidance injection stays bounded and traceable to its source evidence
 
 Evidence to record:
 
-- one `evolution_exhausted` artifact
-- one `revise_exhausted` or equivalent bounded-stop artifact
+- `.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/01.yaml`
+- `.harness/learning/approved/feature_addition.yaml`
+- `.harness/learning/review_queue.yaml`
+- `.harness/learning/hardening_queue.yaml`
+- `.harness/learning/family_evidence_index.yaml`
 
 Closure note:
 
@@ -268,6 +281,8 @@ Closure note:
 - supervisor policy now makes those stop conditions explicit instead of implicit
 - runtime explicitly surfaces a validation-tightening no-op when narrowing fails
 - terminal summary and supervisor trace already expose the exhausted state and remaining budgets
+- long-term quality improvement is now defined as reviewable candidate accumulation, explicit review decisions, approved-memory reuse with provenance, separate hardening-candidate escalation for policy changes, and bounded same-family guidance injection instead of hidden adaptation
+- no reviewed artifact path may be treated as reusable memory until it appears in the approved family memory file with provenance intact
 
 ---
 
@@ -346,6 +361,8 @@ The `rail` harness is documented launch-ready for the core supervisor decision p
 - self-evolution stop conditions are explicit in both runtime behavior and supervisor policy
 - current-state context refresh is visible and bounded before another corrective cycle proceeds
 - guardrail cost and guardrail value are reviewable from checked-in artifacts
+- quality learning is review-only, candidate-based, and provenance-backed; policy-affecting patterns stay in the hardening path unless a human explicitly promotes them
+- same-family approved-memory reuse is bounded and traceable instead of being inferred from runtime adaptation
 
 Intentional exclusion:
 
@@ -353,7 +370,7 @@ Intentional exclusion:
 
 Next subproject:
 
-- prove long-term quality improvement over time; this cycle only establishes the conservative gate, bounded refresh, and reviewable guardrail signals
+- continue review-only quality learning: accumulate candidates, route policy-affecting patterns to hardening, and promote only after explicit human review decisions with provenance
 
 ---
 

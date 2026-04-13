@@ -1,0 +1,13 @@
+candidate_ref: '.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml'
+candidate_user_outcome_status_at_review: 'confirmed'
+reviewer_decision: 'promote'
+reviewer_identity: 'reviewer-quality-learning'
+decision_timestamp: '2026-04-13T02:24:00Z'
+decision_reason: 'Confirmed direct user outcome and bounded same-family evidence justify promoting the feature_addition observation into approved family memory.'
+considered_user_outcome_feedback_refs:
+  - '.harness/learning/feedback/feature-addition-confirmed.yaml'
+resulting_approved_memory_ref: '.harness/learning/approved/feature_addition.yaml'
+guardrail_cost_predicate:
+  assessment: 'intervention_cost_does_not_explain_improvement'
+  rationale: 'The reviewed candidate stayed bounded to the same feature_addition family and the accepted user outcome is direct, so the later improvement is not explained by review-time intervention cost.'
+  excessive_intervention_cost_refs: []

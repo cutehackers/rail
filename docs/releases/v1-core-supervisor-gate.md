@@ -63,6 +63,7 @@ Production release requires all of the following:
 dart analyze
 dart test
 dart compile exe bin/rail.dart -o build/rail
+./tool/v1_release_gate.sh
 ```
 
 And:
@@ -73,6 +74,10 @@ And:
   - fixtures live under `test/fixtures/standard_route/`
 - terminal artifacts remain readable without raw actor log inspection
 - no deferred `v2` field or flow is required for the `v1` path
+
+The canonical local release command is `./tool/v1_release_gate.sh`.
+
+The canonical CI gate is `.github/workflows/v1-release-gate.yml`.
 
 ## Operational Notes
 

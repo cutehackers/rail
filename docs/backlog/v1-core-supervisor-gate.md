@@ -2,13 +2,16 @@
 
 ## Open Release Blockers
 
-- add CI for the `v1` production release gate
-- codify the release gate so analyze, test, compile, and smoke run together
+- none
+
+The `v1` release gate is now codified in:
+
+- `./tool/v1_release_gate.sh`
+- `.github/workflows/v1-release-gate.yml`
 
 ## Verification Gaps
 
-- no GitHub Actions release workflow yet
-- no single automated release command or workflow runs compile plus fresh smoke together
+- none for the `v1` release contract
 
 ## Done Criteria
 

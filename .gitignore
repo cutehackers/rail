@@ -1,8 +1,8 @@
 .dart_tool/
 build/
 pubspec.lock
+.worktrees/
 
 .harness/artifacts/
 .harness/requests/
 .harness/tmp/
-

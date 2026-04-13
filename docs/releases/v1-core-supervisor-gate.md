@@ -69,6 +69,8 @@ And:
 
 - fresh smoke verification succeeds with `run -> execute`
 - representative standard route verification succeeds against current schemas
+  - covered by `test/runtime/standard_route_fixtures_test.dart`
+  - fixtures live under `test/fixtures/standard_route/`
 - terminal artifacts remain readable without raw actor log inspection
 - no deferred `v2` field or flow is required for the `v1` path
 

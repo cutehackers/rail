@@ -1,0 +1,11 @@
+task_type: safe_refactor
+goal: refresh stale repository context before the next generation step
+context:
+  feature: harness
+constraints: []
+definition_of_done:
+  - current repository context is refreshed
+  - follow-up generation is still possible
+  - analyze remains runnable
+risk_tolerance: low
+validation_profile: standard

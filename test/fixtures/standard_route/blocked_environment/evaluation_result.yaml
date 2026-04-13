@@ -1,0 +1,11 @@
+decision: revise
+scores:
+  requirements: 0.3
+  architecture: 0.8
+  regression_risk: 0.1
+quality_confidence: low
+findings:
+  - Validation could not proceed because the environment denied required access.
+reason_codes:
+  - environment_permission_denied
+next_action: block_environment

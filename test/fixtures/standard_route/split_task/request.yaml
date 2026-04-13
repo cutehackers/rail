@@ -1,0 +1,11 @@
+task_type: feature_addition
+goal: split an oversized change request into independent tasks
+context:
+  feature: harness
+constraints: []
+definition_of_done:
+  - the oversized request is broken into smaller tasks
+  - each resulting task has a clear scope
+  - analyze remains runnable
+risk_tolerance: low
+validation_profile: standard

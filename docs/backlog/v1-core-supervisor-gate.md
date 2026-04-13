@@ -2,20 +2,13 @@
 
 ## Open Release Blockers
 
-- fix schema drift between the live `v1` execution path and checked contracts
-- add automated tests for request validation, routing, terminal reporting, and smoke execution
-- eliminate analyzer warnings and dead code from the release path
-- refactor `bin/rail.dart` into focused modules under `lib/src/`
-- refresh stale checked-in smoke and standard evidence
 - add CI for the `v1` production release gate
-- remove repository hygiene blockers such as `bin/rail.dart.rej`
+- codify the release gate so analyze, test, compile, and smoke run together
 
 ## Verification Gaps
 
-- no `package:test` infrastructure yet
-- no `analysis_options.yaml` yet
 - no GitHub Actions release workflow yet
-- current smoke execution is not trustworthy until fresh `run -> execute` passes under the `v1` contract
+- no single automated release command or workflow runs compile plus fresh smoke together
 
 ## Done Criteria
 

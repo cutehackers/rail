@@ -1,0 +1,11 @@
+decision: revise
+scores:
+  requirements: 0.5
+  architecture: 0.9
+  regression_risk: 0.4
+quality_confidence: low
+findings:
+  - Validation scope was too broad to prove the requested behavior safely.
+reason_codes:
+  - validation_scope_missing_target
+next_action: tighten_validation

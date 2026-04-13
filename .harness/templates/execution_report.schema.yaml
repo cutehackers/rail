@@ -5,7 +5,6 @@ required:
   - tests
   - failure_details
   - logs
-  - approved_memory_consideration
 
 properties:
   format:
@@ -87,9 +86,11 @@ properties:
       last_intervention:
         type: string
       quality_confidence:
-        type: number
-        minimum: 0
-        maximum: 1
+        type: string
+        enum:
+          - high
+          - medium
+          - low
       outcome:
         type: string
 

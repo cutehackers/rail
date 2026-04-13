@@ -256,6 +256,7 @@ class HarnessRunner {
   HarnessRunner(this.root);
 
   final Directory root;
+  static const bool _v2FeaturesEnabled = false;
   late final String _rootCanonicalPath = Directory(
     root.path,
   ).resolveSymbolicLinksSync();
@@ -869,11 +870,13 @@ class HarnessRunner {
         final outputPath = _artifactFilePath(artifactDirectory.path, outputName);
         await File(outputPath).writeAsString(_placeholderContent(outputName));
       }
-      await _synchronizeApprovedMemoryArtifacts(
-        artifactDirectory: artifactDirectory,
-        userRequest: userRequest,
-        projectRoot: projectDirectory.path,
-      );
+      if (_v2FeaturesEnabled) {
+        await _synchronizeApprovedMemoryArtifacts(
+          artifactDirectory: artifactDirectory,
+          userRequest: userRequest,
+          projectRoot: projectDirectory.path,
+        );
+      }
     }
 
     await File(
@@ -913,13 +916,15 @@ class HarnessRunner {
       }
     }
 
-    await _refreshLearningArtifacts(
-      artifactDirectory: artifactDirectory,
-      userRequest: userRequest,
-      state: HarnessState.fromJson(
-        _readJsonFile(p.join(artifactDirectory.path, 'state.json')),
-      ),
-    );
+    if (_v2FeaturesEnabled) {
+      await _refreshLearningArtifacts(
+        artifactDirectory: artifactDirectory,
+        userRequest: userRequest,
+        state: HarnessState.fromJson(
+          _readJsonFile(p.join(artifactDirectory.path, 'state.json')),
+        ),
+      );
+    }
 
     return artifactDirectory.path;
   }
@@ -1141,11 +1146,13 @@ class HarnessRunner {
               artifactDirectory: artifactDirectory,
               state: currentState,
             );
-            await _refreshLearningArtifacts(
-              artifactDirectory: artifactDirectory,
-              userRequest: userRequest,
-              state: currentState,
-            );
+            if (_v2FeaturesEnabled) {
+              await _refreshLearningArtifacts(
+                artifactDirectory: artifactDirectory,
+                userRequest: userRequest,
+                state: currentState,
+              );
+            }
             break;
           }
           continue;
@@ -1217,7 +1224,8 @@ class HarnessRunner {
           );
         }
         await File(outputPath).writeAsString(_toYaml(responseObject));
-        if (schemaName == 'context_pack' || schemaName == 'execution_report') {
+        if (_v2FeaturesEnabled &&
+            (schemaName == 'context_pack' || schemaName == 'execution_report')) {
           await _synchronizeApprovedMemoryArtifacts(
             artifactDirectory: artifactDirectory,
             userRequest: userRequest,
@@ -1255,11 +1263,13 @@ class HarnessRunner {
           artifactDirectory: artifactDirectory,
           state: currentState,
         );
-        await _refreshLearningArtifacts(
-          artifactDirectory: artifactDirectory,
-          userRequest: userRequest,
-          state: currentState,
-        );
+        if (_v2FeaturesEnabled) {
+          await _refreshLearningArtifacts(
+            artifactDirectory: artifactDirectory,
+            userRequest: userRequest,
+            state: currentState,
+          );
+        }
         break;
       }
     }
@@ -1316,11 +1326,13 @@ class HarnessRunner {
         artifactDirectory: artifactDirectory,
         state: nextState,
       );
-      await _refreshLearningArtifacts(
-        artifactDirectory: artifactDirectory,
-        userRequest: userRequest,
-        state: nextState,
-      );
+      if (_v2FeaturesEnabled) {
+        await _refreshLearningArtifacts(
+          artifactDirectory: artifactDirectory,
+          userRequest: userRequest,
+          state: nextState,
+        );
+      }
     }
     return _formatExecutionSummary(
       artifactDirectory: artifactDirectory,
@@ -3738,6 +3750,7 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
         'architecture': 1,
         'regression_risk': pass ? 1 : 0.5,
       },
+      'quality_confidence': pass ? 'high' : 'low',
       'findings': pass
           ? <String>[
               'Smoke-profile actor chain completed with schema-valid artifacts and passing smoke validation commands.',

@@ -14,6 +14,7 @@ void main() {
 
     expect(exitCode, 0);
     expect(stdoutBuffer.toString(), contains('route-evaluation'));
+    expect(stdoutBuffer.toString(), contains('integrate'));
     expect(stdoutBuffer.toString(), isNot(contains('apply-learning-review')));
     expect(
       stdoutBuffer.toString(),

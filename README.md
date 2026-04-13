@@ -102,12 +102,20 @@ dart run bin/rail.dart execute \
   --artifact .harness/artifacts/profile-refresh-fix
 ```
 
+If the run has already passed and you want a merge-ready handoff summary, run the explicit post-pass integrator. This step is outside the `v1` release gate.
+
+```bash
+dart run bin/rail.dart integrate \
+  --artifact .harness/artifacts/profile-refresh-fix
+```
+
 Useful variations:
 
 - start from a template with `dart run bin/rail.dart init-request`
 - narrow standard validation with `--validation-root` and `--validation-target`
 - use `--validation-profile smoke` for smoke-only executor validation
 - inspect the next bounded action with `dart run bin/rail.dart route-evaluation --artifact <path>`
+- produce a post-pass handoff summary with `dart run bin/rail.dart integrate --artifact <path>`
 
 `run` records the target repo path in the artifact workflow, so `execute` can usually omit `--project-root`.
 

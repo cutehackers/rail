@@ -110,6 +110,14 @@ class RailCli {
         );
         out.writeln(result);
         return 0;
+      case 'integrate':
+        final tail = args.skip(1).toList();
+        final result = await runner.integrate(
+          artifactPath: _readRequiredOption(tail, '--artifact', usageSink: err),
+          projectRoot: _readOption(tail, '--project-root'),
+        );
+        out.writeln(result);
+        return 0;
       case 'help':
         _printUsage(out);
         return 0;
@@ -141,6 +149,9 @@ void writeUsage(StringSink sink) {
     '  dart run bin/rail.dart execute --artifact <path> [--project-root <path>] [--through <actor>]',
   );
   sink.writeln('  dart run bin/rail.dart route-evaluation --artifact <path>');
+  sink.writeln(
+    '  dart run bin/rail.dart integrate --artifact <path> [--project-root <path>]',
+  );
 }
 
 Directory _resolveScriptRoot() {

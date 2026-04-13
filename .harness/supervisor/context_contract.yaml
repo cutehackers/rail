@@ -58,6 +58,15 @@ actor_flow_schema:
     out:
       - evaluation_result_yaml_matching_schema_with_reason_codes_and_next_action
 
+  integrator:
+    in:
+      - user_request
+      - implementation_result
+      - execution_report
+      - evaluation_result
+    out:
+      - integration_result
+
 workflow_semantics:
   task_family_binding:
     authoritative_input: task_type

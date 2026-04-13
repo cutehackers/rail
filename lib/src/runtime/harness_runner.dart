@@ -1102,6 +1102,160 @@ class HarnessRunner {
     );
   }
 
+  Future<String> integrate({
+    required String artifactPath,
+    String? projectRoot,
+  }) async {
+    final artifactDirectory = Directory(
+      p.isAbsolute(artifactPath)
+          ? p.normalize(artifactPath)
+          : p.normalize(p.join(root.path, artifactPath)),
+    );
+    _assertPathWithinRoot(artifactDirectory.path, isDirectory: true);
+    if (!artifactDirectory.existsSync()) {
+      throw ArgumentError('Artifact directory not found: $artifactPath');
+    }
+
+    final workflow = ResolvedWorkflow.fromJson(
+      _readJsonFile(p.join(artifactDirectory.path, 'resolved_workflow.json')),
+    );
+    final state = HarnessState.fromJson(
+      _readJsonFile(p.join(artifactDirectory.path, 'state.json')),
+    );
+    final evaluationPath = p.join(artifactDirectory.path, 'evaluation_result.yaml');
+    final evaluation = _asMap(
+      _loadYamlValue(File(evaluationPath)),
+      context: evaluationPath,
+    );
+    final decision = _readString(evaluation, 'decision');
+    if (decision != 'pass') {
+      throw StateError(
+        'Integrator requires evaluator decision `pass`, but found `$decision`.',
+      );
+    }
+    if (state.status != 'passed' && state.status != 'awaiting_integrator') {
+      throw StateError(
+        'Integrator requires a terminal passed state, but found `${state.status}`.',
+      );
+    }
+
+    final effectiveProjectRoot = projectRoot ?? workflow.projectRoot;
+    final projectDirectory = _resolveProjectDirectory(effectiveProjectRoot);
+
+    final executionPlan = ExecutionPlan.fromJson(
+      _readJsonFile(p.join(artifactDirectory.path, 'execution_plan.json')),
+    );
+    final contextContract = ContextContract.fromMap(
+      _loadYamlMap('.harness/supervisor/context_contract.yaml'),
+    );
+    final actorName = 'integrator';
+    final actorIndex = workflow.actors.length;
+    final runsDirectory = Directory(p.join(artifactDirectory.path, 'runs'));
+    await runsDirectory.create(recursive: true);
+    final actorBriefDirectory = Directory(
+      p.join(artifactDirectory.path, 'actor_briefs'),
+    );
+    await actorBriefDirectory.create(recursive: true);
+
+    final actorDoc = File(p.join(root.path, '.harness', 'actors', '$actorName.md'));
+    final actorInstructions = actorDoc.existsSync()
+        ? await actorDoc.readAsString()
+        : 'Actor instructions not found.';
+    final actorBriefPath = p.join(
+      actorBriefDirectory.path,
+      '${(actorIndex + 1).toString().padLeft(2, '0')}_$actorName.md',
+    );
+    await File(actorBriefPath).writeAsString(
+      _buildActorBrief(
+        actorName: actorName,
+        actorInstructions: actorInstructions,
+        workflow: workflow,
+        executionPlan: executionPlan,
+        actorContract: contextContract.contractFor(actorName),
+        artifactDirectory: artifactDirectory,
+        materializedInputs: _materializedInputsForArtifact(),
+      ),
+    );
+
+    final schemaName = _schemaNameForActor(actorName)!;
+    final outputPath = _artifactFilePath(
+      artifactDirectory.path,
+      _canonicalOutputForActor(actorName)!,
+    );
+    final logPath = p.join(
+      runsDirectory.path,
+      '${(actorIndex + 1).toString().padLeft(2, '0')}_$actorName-last-message.txt',
+    );
+    final schemaPath = await _materializeOutputSchema(
+      schemaName: schemaName,
+      runsDirectory: runsDirectory,
+      actorIndex: actorIndex,
+      actorName: actorName,
+    );
+    final actorWorkingDirectory = _actorWorkingDirectory(
+      actorName: actorName,
+      artifactDirectory: artifactDirectory,
+      projectRoot: projectDirectory.path,
+    );
+    final prompt = _buildCodexExecutionPrompt(
+      actorName: actorName,
+      actorBriefPath: actorBriefPath,
+      artifactDirectory: artifactDirectory.path,
+      projectRoot: projectDirectory.path,
+      actorWorkingDirectory: actorWorkingDirectory,
+      outputPath: outputPath,
+      returnsStructuredOutput: true,
+    );
+
+    final result = await _runCommand(
+      'codex',
+      [
+        'exec',
+        '--full-auto',
+        '--ephemeral',
+        '--color',
+        'never',
+        '--skip-git-repo-check',
+        '-c',
+        'reasoning_effort="low"',
+        '-c',
+        'sandbox_mode="danger-full-access"',
+        '-c',
+        'approval_policy="never"',
+        '--output-schema',
+        schemaPath,
+        '--output-last-message',
+        logPath,
+        prompt,
+      ],
+      workingDirectory: actorWorkingDirectory,
+      timeout: const Duration(minutes: 5),
+    );
+
+    if (result.exitCode != 0) {
+      final timeoutMessage = result.exitCode == -1
+          ? 'Timed out while executing actor `$actorName`.'
+          : 'Actor `$actorName` failed with exit code ${result.exitCode}.';
+      throw StateError(
+        '$timeoutMessage\n${result.stderr.isEmpty ? result.stdout : result.stderr}',
+      );
+    }
+
+    final responseObject = _decodeStructuredResponse(
+      filePath: logPath,
+      fallbackText: result.stdout,
+    );
+    await File(outputPath).writeAsString(_toYaml(responseObject));
+    await validateArtifact(
+      filePath: p.relative(outputPath, from: root.path),
+      schemaName: schemaName,
+    );
+
+    final artifactLabel = p.relative(artifactDirectory.path, from: root.path);
+    final outputLabel = p.relative(outputPath, from: root.path);
+    return 'Harness integration completed at $artifactLabel (decision=pass preserved, output=$outputLabel)';
+  }
+
   String _formatExecutionSummary({
     required Directory artifactDirectory,
     required HarnessState state,
@@ -1114,6 +1268,7 @@ class HarnessRunner {
         : state.lastReasonCodes.join(', ');
     final outcome = switch (state.status) {
       'passed' => 'passed cleanly',
+      'awaiting_integrator' => 'awaiting explicit post-pass integration',
       'blocked_environment' => 'blocked by environment',
       'split_required' => 'requires task split',
       'evolution_exhausted' => 'stopped after exhausted evolution budget',

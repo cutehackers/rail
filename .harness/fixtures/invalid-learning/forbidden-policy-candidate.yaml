@@ -1,0 +1,32 @@
+originating_run_artifact_identity:
+  run_ref: run-001
+  artifact_ref: artifact-001
+candidate_identifier: candidate-001
+task_family: learning-review-boundary
+task_family_source: task_type
+quality_outcome_summary: Candidate appears useful, but this fixture should fail because it carries policy payloads.
+user_outcome_signal:
+  status: confirmed
+  supporting_feedback_refs:
+    - feedback-001
+effective_context_signal:
+  summary: Context stayed stable enough to observe a learning signal.
+effective_validation_signal:
+  summary: Validation held on the target path.
+evaluator_support_signal:
+  quality_confidence: 0.9
+  final_reason_codes:
+    - strong_signal
+  validation_sufficiency_assessment: sufficient
+  terminal_outcome_class: production_ready
+candidate_claim: This run improved the outcome.
+supporting_evidence_refs:
+  - run-001
+guardrail_cost:
+  summary: Minimal intervention.
+  intervention_count: 1
+runtime_recommendation: promote
+next_action: promote
+routing_override: learning-pipeline
+pass_bar_override: true
+evaluator_policy_override: reject

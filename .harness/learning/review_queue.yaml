@@ -1,0 +1,21 @@
+pending_candidate_groups:
+- task_family: feature_addition
+  task_family_source: task_type
+  direct_user_outcome_status: accepted
+  last_disposition_state: promote
+  latest_review_decision_ref: .harness/learning/reviews/feature-addition-promote.yaml
+  pending_candidate_refs: []
+  appended_user_outcome_feedback_refs:
+  - .harness/learning/feedback/feature-addition-confirmed.yaml
+  reviewable_candidate_dispositions:
+  - candidate_ref: .harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml
+    user_outcome_status: confirmed
+    appended_user_outcome_feedback_refs:
+    - .harness/learning/feedback/feature-addition-confirmed.yaml
+    disposition_state: promote
+    latest_review_decision_ref: .harness/learning/reviews/feature-addition-promote.yaml
+    latest_review_decision_timestamp: '2026-04-13T02:24:00Z'
+    review_window_status: reviewed
+  latest_review_decision_timestamp: '2026-04-13T02:24:00Z'
+queue_generated_at: '2026-04-13T02:42:46.764168Z'
+queue_sequence: 5

@@ -1,0 +1,13 @@
+candidate_ref: '.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml'
+candidate_user_outcome_status_at_review: 'confirmed'
+reviewer_decision: 'reject'
+reviewer_identity: 'reviewer-quality-learning'
+decision_timestamp: '2026-04-13T02:21:00Z'
+decision_reason: 'Initial rejection fixture for the same feature_addition candidate before broader evidence was considered.'
+considered_user_outcome_feedback_refs:
+  - '.harness/learning/feedback/feature-addition-confirmed.yaml'
+guardrail_cost_predicate:
+  assessment: 'intervention_cost_explains_apparent_improvement'
+  rationale: 'This earlier rejection fixture records the stricter review posture before the approved-memory story was finalized.'
+  excessive_intervention_cost_refs:
+    - 'state.generatorRevisionsUsed'

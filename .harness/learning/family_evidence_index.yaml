@@ -1,0 +1,26 @@
+latest_approved_memory_refs_by_family:
+  feature_addition::task_type:
+    ref: .harness/learning/approved/feature_addition.yaml
+    recorded_at: '2026-04-13T02:24:00Z'
+    lookup_key: feature_addition::task_type
+    task_family: feature_addition
+    task_family_source: task_type
+    sequence_marker: 1
+latest_confirmed_success_refs_by_family:
+  feature_addition::task_type:
+    ref: .harness/learning/feedback/feature-addition-confirmed.yaml
+    recorded_at: '2026-04-13T02:20:00Z'
+    lookup_key: feature_addition::task_type
+    task_family: feature_addition
+    task_family_source: task_type
+latest_failure_refs_by_family: {}
+latest_review_decision_refs_by_family:
+  feature_addition::task_type:
+    ref: .harness/learning/reviews/feature-addition-promote.yaml
+    recorded_at: '2026-04-13T02:24:00Z'
+    lookup_key: feature_addition::task_type
+    task_family: feature_addition
+    task_family_source: task_type
+latest_provisional_candidate_dispositions_by_family: {}
+index_generated_at: '2026-04-13T02:42:46.764168Z'
+index_sequence: 6

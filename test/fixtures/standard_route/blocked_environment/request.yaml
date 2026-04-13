@@ -1,0 +1,11 @@
+task_type: bug_fix
+goal: stop when the environment blocks credible validation
+context:
+  feature: harness
+constraints: []
+definition_of_done:
+  - environment blockers are surfaced clearly
+  - no ambiguous pass is allowed
+  - analyze remains runnable when the environment recovers
+risk_tolerance: low
+validation_profile: standard

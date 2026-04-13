@@ -1,0 +1,44 @@
+task_family: feature_addition
+task_family_source: task_type
+approved_observation: This fixture should be quarantined because the latest family evidence no longer matches the reviewed success baseline it expects.
+applicability_conditions:
+  - Fixture exercises latest-family-evidence conflict handling.
+evidence_basis:
+  - fixture-latest-evidence-conflict
+guardrail_note: Approved memory must defer when the indexed latest family evidence diverges from its reviewed baseline.
+request_compatibility:
+  required_context_features:
+    - quality-learning
+  goal_must_include_any:
+    - approved-memory
+  goal_must_exclude_any: []
+  constraint_must_include_any:
+    - bounded
+  constraint_must_exclude_any: []
+repository_compatibility:
+  required_paths_exist:
+    - bin/rail.dart
+  required_paths_absent: []
+latest_family_evidence_expectations:
+  lookup_key: feature_addition::task_type
+  baseline_approved_memory_ref: .harness/learning/approved/feature_addition.yaml
+  required_latest_success_ref: .harness/learning/feedback/feature-addition-success-missing.yaml
+  required_latest_failure_ref: null
+  forbid_any_latest_failure: false
+freshness_marker:
+  contract_version: 1
+  policy_version: 1
+  memory_schema_version: 3
+  repository_assumptions_ref: fixture-latest-evidence-conflict
+  repository_state_ref: fixture-latest-evidence-conflict
+  refreshed_at: '2026-04-13T10:09:00Z'
+  freshness_sequence: 1
+disposition_history:
+  - disposition: approved
+    decided_at: '2026-04-13T10:09:00Z'
+    decision_ref: fixture-latest-evidence-conflict
+    reviewer_identity: fixture
+    reason: Intentional latest-evidence conflict fixture.
+originating_candidate_refs:
+  - fixture-latest-evidence-conflict-candidate
+reviewed_user_outcome_feedback_refs: []

@@ -1,0 +1,11 @@
+task_type: test_repair
+goal: restore rail bootstrap smoke in a tracked fixture
+context:
+  feature: harness
+constraints: []
+definition_of_done:
+  - requested behavior is restored
+  - verification is runnable
+  - analyze passes
+risk_tolerance: low
+validation_profile: smoke

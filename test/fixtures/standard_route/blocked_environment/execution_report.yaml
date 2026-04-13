@@ -1,0 +1,11 @@
+format: fail
+analyze: fail
+tests:
+  total: 1
+  passed: 0
+  failed: 1
+failure_details:
+  - Permission denied while reading the target workspace.
+logs:
+  - chmod denied
+  - analyzer could not inspect target files

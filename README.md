@@ -2,6 +2,44 @@
 
 `rail` is a standalone harness control-plane repository.
 
+## Supported in V1
+
+`v1` is the production release for the core supervisor gate. It supports:
+
+- request composition and validation
+- workflow bootstrap against external `--project-root`
+- sequential execution of:
+  - `planner`
+  - `context_builder`
+  - `generator`
+  - `executor`
+  - `evaluator`
+- a bounded corrective loop driven by evaluator actions
+- deterministic routing for:
+  - `rebuild_context`
+  - `revise_generator`
+  - `tighten_validation`
+  - `split_task`
+  - `block_environment`
+  - `pass`
+- terminal artifacts:
+  - `state.json`
+  - `supervisor_trace.md`
+  - `terminal_summary.md`
+
+## Deferred to V2
+
+The following are explicitly out of the `v1` production release:
+
+- `integrator`
+- `apply-user-outcome-feedback`
+- `apply-learning-review`
+- `apply-hardening-review`
+- approved-memory, review-queue, and hardening-queue operations
+- quality-improvement-over-time workflows
+
+See [docs/releases/v1-core-supervisor-gate.md](/Users/junhyounglee/workspace/rail/.worktrees/v1-core-supervisor-gate/docs/releases/v1-core-supervisor-gate.md) for the release contract and [docs/backlog/v2-integrator-and-learning.md](/Users/junhyounglee/workspace/rail/.worktrees/v1-core-supervisor-gate/docs/backlog/v2-integrator-and-learning.md) for deferred work.
+
 It owns:
 
 - the harness runtime CLI
@@ -56,7 +94,7 @@ You can replace the symlink with your own installer later. The important point i
 
 ## Current scope
 
-The runtime supports:
+The `v1` runtime supports:
 
 - request composition and validation
 - artifact bootstrap
@@ -68,8 +106,10 @@ The runtime supports:
 - request-level validation roots and targets for narrowing standard-profile executor scope
 - supervisor action loops that can route from evaluator back to generator, context_builder, or executor with bounded budgets
 
-The runtime does not yet provide:
+The `v1` runtime does not yet provide:
 
 - parallel actor orchestration
 - project-specific adapters beyond the default Flutter + Riverpod profile
+- `integrator`
+- quality-learning review and apply flows
 - hardened end-to-end validation across all task types

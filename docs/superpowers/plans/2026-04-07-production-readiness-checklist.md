@@ -28,6 +28,7 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
 - [x] Terminal summary evidence exists for `passed`, `blocked_environment`, and `split_required`
 - [x] Fresh hardening evidence recorded for conservative-pass weak proof, current-state context refresh, and exhausted refusal behavior
 - [x] Launch gate wording now distinguishes a conservative pass policy, bounded context refresh, reviewable guardrail cost/value, and bounded refusal as a production-quality outcome
+- [x] Long-term quality improvement is now defined as reviewable candidate accumulation, explicit review decisions, approved-memory reuse with provenance, separate hardening-candidate escalation for policy changes, and bounded same-family guidance injection instead of hidden adaptation
 
 ## Evidence
 
@@ -43,6 +44,12 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-passed/terminal_summary.md`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-blocked/terminal_summary.md`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-split/terminal_summary.md`
+- Quality learning review artifacts:
+  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/01.yaml`
+  - `/Users/junhyounglee/workspace/rail/.harness/learning/review_queue.yaml`
+  - `/Users/junhyounglee/workspace/rail/.harness/learning/hardening_queue.yaml`
+  - `/Users/junhyounglee/workspace/rail/.harness/learning/approved/feature_addition.yaml`
+  - `/Users/junhyounglee/workspace/rail/.harness/learning/family_evidence_index.yaml`
 - Conservative-pass hardening evidence:
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/state.json`
   - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/evaluation_result.yaml`
@@ -81,6 +88,7 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
 - The gate is conservative in both runtime and docs: weakly evidenced passes are refused, and bounded refusal is a valid production-quality result when evidence stays insufficient
 - `context_refresh` is visible in runtime traces and bounded by retry budgets, so reviewers can see when the system re-grounded itself before another correction
 - guardrail cost and guardrail value are reviewable from `supervisor_trace.md` and `terminal_summary.md` artifacts
+- quality-learning runtime is review-only: it emits multiple reviewable candidates, keeps policy-affecting patterns in a separate hardening path, and only reuses approved memory within the same family with provenance intact
+- bounded guidance injection is now explicit and traceable, so runtime adaptation is not inferred from unreviewed memory writes
 - `integrator` remains outside the core gate unless fresh `integration_result` evidence is added
 - post-`integrator` completion is outside the core terminal-summary claim for this launch pass
-- the next follow-on subproject is long-term quality-improvement-over-time proof; this cycle only establishes the conservative gate, bounded refresh, and reviewable guardrail signals

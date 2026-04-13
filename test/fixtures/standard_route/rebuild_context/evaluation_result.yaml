@@ -1,0 +1,11 @@
+decision: revise
+scores:
+  requirements: 0.6
+  architecture: 0.8
+  regression_risk: 0.3
+quality_confidence: low
+findings:
+  - Current repository grounding is stale after conflicting executor evidence.
+reason_codes:
+  - context_stale_grounding
+next_action: rebuild_context

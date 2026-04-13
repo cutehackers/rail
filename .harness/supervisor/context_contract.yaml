@@ -1,4 +1,5 @@
 version: 1
+contract_version: 1
 
 input:
   required_fields:
@@ -57,21 +58,15 @@ actor_flow_schema:
     out:
       - evaluation_result_yaml_matching_schema_with_reason_codes_and_next_action
 
-  integrator:
-    in:
-      - user_request
-      - implementation_result
-      - execution_report
-      - evaluation_result
-    out:
-      - integration_result
-
 workflow_semantics:
+  task_family_binding:
+    authoritative_input: task_type
+    derived_family_field: task_family
+    task_type_is_authoritative_task_family: true
+    task_family_must_match_task_type: true
+
   evaluator_pass_controls_supervisor_decision: true
   evaluator_is_the_conservative_production_gate: true
-  integrator_role: post_pass_handoff_only
-  integrator_must_not_change_supervisor_decision: true
-  integrator_runs_after_pass_when_present: true
   corrective_actions_are_quality_interventions: true
   another_corrective_cycle_requires_current_state_refresh_before_next_generator_attempt: true
   launch_scope:
@@ -81,12 +76,16 @@ workflow_semantics:
       - generator
       - executor
       - evaluator
-    post_pass_handoff:
-      - integrator
+  deferred_to_v2:
+    - integrator
+    - quality_learning_candidate
+    - hardening_candidate
+    - approved_family_memory
+    - learning_review_queue
+    - hardening_review_queue
 
 termination:
   conditions:
     - evaluator_decision == reject
     - retries_exhausted == true
-    - evaluator_decision == pass_and_workflow_has_no_integrator
-    - integrator_completed_after_evaluator_pass == true
+    - evaluator_decision == pass

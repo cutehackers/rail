@@ -14,7 +14,6 @@ routes:
       - generator
       - executor
       - evaluator
-      - integrator
 
   safe_refactor:
     actors:
@@ -23,7 +22,6 @@ routes:
       - generator
       - executor
       - evaluator
-      - integrator
 
   test_repair:
     actors:

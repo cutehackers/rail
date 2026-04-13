@@ -1,0 +1,44 @@
+task_family: feature_addition
+task_family_source: context.feature
+approved_observation: This fixture should never be reused because the family source no longer matches the authoritative task_type binding.
+applicability_conditions:
+  - Fixture exercises task_family_source mismatch handling.
+evidence_basis:
+  - fixture-source-mismatch
+guardrail_note: Source mismatches must drop reuse before any guidance injection happens.
+request_compatibility:
+  required_context_features:
+    - quality-learning
+  goal_must_include_any:
+    - approved-memory
+  goal_must_exclude_any: []
+  constraint_must_include_any:
+    - bounded
+  constraint_must_exclude_any: []
+repository_compatibility:
+  required_paths_exist:
+    - bin/rail.dart
+  required_paths_absent: []
+latest_family_evidence_expectations:
+  lookup_key: feature_addition::context.feature
+  baseline_approved_memory_ref: .harness/learning/approved/feature_addition.yaml
+  required_latest_success_ref: null
+  required_latest_failure_ref: null
+  forbid_any_latest_failure: false
+freshness_marker:
+  contract_version: 1
+  policy_version: 1
+  memory_schema_version: 3
+  repository_assumptions_ref: fixture-source-mismatch
+  repository_state_ref: fixture-source-mismatch
+  refreshed_at: '2026-04-13T10:05:00Z'
+  freshness_sequence: 1
+disposition_history:
+  - disposition: approved
+    decided_at: '2026-04-13T10:05:00Z'
+    decision_ref: fixture-source-mismatch
+    reviewer_identity: fixture
+    reason: Intentional source mismatch fixture.
+originating_candidate_refs:
+  - fixture-source-mismatch-candidate
+reviewed_user_outcome_feedback_refs: []

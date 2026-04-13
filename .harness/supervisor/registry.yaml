@@ -27,7 +27,6 @@ task_registry:
       - generator
       - executor
       - evaluator
-      - integrator
     retry:
       generator_max_retry: 2
       evaluator_recheck: true
@@ -37,7 +36,6 @@ task_registry:
       - implementation_result
       - execution_report
       - evaluation_result
-      - integration_result
 
   safe_refactor:
     rubric: .harness/rubrics/safe_refactor.yaml
@@ -47,7 +45,6 @@ task_registry:
       - generator
       - executor
       - evaluator
-      - integrator
     retry:
       generator_max_retry: 1
       evaluator_recheck: true
@@ -57,7 +54,6 @@ task_registry:
       - implementation_result
       - execution_report
       - evaluation_result
-      - integration_result
 
   test_repair:
     rubric: .harness/rubrics/test_repair.yaml

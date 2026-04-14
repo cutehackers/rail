@@ -4,7 +4,7 @@
 
 The application under change does not live in this repository. `rail` operates on a target repo passed through `--project-root`.
 
-See [docs/releases/v1-core-supervisor-gate.md](docs/releases/v1-core-supervisor-gate.md) for the release contract and [docs/backlog/v2-integrator-and-learning.md](docs/backlog/v2-integrator-and-learning.md) for the deferred `v2` backlog.
+See [docs/releases/v1-core-supervisor-gate.md](docs/releases/v1-core-supervisor-gate.md) for the `v1` release contract, [docs/releases/v2-integrator-and-learning-gate.md](docs/releases/v2-integrator-and-learning-gate.md) for the `v2` gate, and [docs/backlog/v2-integrator-and-learning.md](docs/backlog/v2-integrator-and-learning.md) for the deferred backlog.
 
 ## Install
 
@@ -59,7 +59,7 @@ In practice, the skill will:
 Example Codex prompt:
 
 ```text
-Use the Rail skill from /Users/junhyounglee/workspace/rail.
+Use the Rail skill from your local Rail checkout.
 Target repo: /absolute/path/to/target-repo
 Task: Fix the intermittent profile refresh loading issue.
 Constraint: Do not change the API contract.
@@ -119,6 +119,56 @@ Useful variations:
 
 `run` records the target repo path in the artifact workflow, so `execute` can usually omit `--project-root`.
 
+## V2 Review Workflow
+
+`v2` adds explicit file-based learning review commands. The operator flow is:
+
+1. generate a schema-valid draft from an artifact or candidate
+2. edit the generated YAML with real reviewer intent
+3. apply the reviewed file back into the learning store
+
+Draft commands:
+
+```bash
+dart run bin/rail.dart init-user-outcome-feedback \
+  --artifact .harness/artifacts/profile-refresh-fix
+
+dart run bin/rail.dart init-learning-review \
+  --candidate .harness/artifacts/profile-refresh-fix/quality_learning_candidates/<candidate>.yaml
+
+dart run bin/rail.dart init-hardening-review \
+  --candidate .harness/artifacts/profile-refresh-fix/hardening_candidates/<candidate>.yaml
+```
+
+Default draft locations:
+
+- user outcome feedback: `.harness/learning/feedback/`
+- learning review drafts: `.harness/learning/reviews/`
+- hardening review drafts: `.harness/learning/hardening-reviews/`
+
+Rail-derived state lives alongside those drafts and is not edited by hand:
+
+- queue snapshots: `.harness/learning/review_queue.yaml` and `.harness/learning/hardening_queue.yaml`
+- family evidence snapshot: `.harness/learning/family_evidence_index.yaml`
+- approved memory: `.harness/learning/approved/<task_family>.yaml`
+
+Apply commands:
+
+```bash
+dart run bin/rail.dart apply-user-outcome-feedback \
+  --file .harness/learning/feedback/<draft>.yaml
+
+dart run bin/rail.dart apply-learning-review \
+  --file .harness/learning/reviews/<draft>.yaml
+
+dart run bin/rail.dart apply-hardening-review \
+  --file .harness/learning/hardening-reviews/<draft>.yaml
+```
+
+`--file` is the canonical apply flag. `--feedback` and `--decision` remain accepted as compatibility aliases.
+
+When a same-family review is promoted, rail overwrites the single active approved file for that family. Previous approved content stays in git history; there are no archive files for older baselines.
+
 ## Skill Installation
 
 This repo includes a repo-owned skill at `skills/rail/SKILL.md`.
@@ -153,11 +203,16 @@ The `v1` runtime supports:
 - deterministic smoke fast-path execution for planner/context_builder/generator/executor/evaluator
 - request-level validation roots and targets for narrowing standard-profile executor scope
 - supervisor action loops that can route from evaluator back to generator, context_builder, or executor with bounded budgets
+- review drafts are operator-authored, while queue, evidence, and approved-memory files are rail-derived snapshots
+- approved memory is same-family only, with one active approved file per family
+- pending review backlog is allowed, but broken derived state is not
 
-The `v1` runtime does not yet provide:
+The `v1` scope is intentionally constrained and does not treat these as in-gate:
 
 - parallel actor orchestration
 - project-specific adapters beyond the default Flutter + Riverpod profile
 - `integrator`
 - quality-learning review and apply flows
 - hardened end-to-end validation across all task types
+
+The `v2` operator surface now includes explicit file-based `init-*` and `apply-*` learning workflows. Operators edit the draft and decision files; rail regenerates the queue and evidence snapshots, and updates approved memory only on `promote` at `.harness/learning/approved/<task_family>.yaml`.

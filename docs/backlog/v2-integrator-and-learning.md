@@ -16,6 +16,8 @@ Its job is to add post-pass integration and review-driven quality learning witho
 - review queue and hardening queue lifecycle management
 - quality-improvement-over-time operating model
 
+The backlog is non-blocking by itself. Pending review items are acceptable while the rail-derived snapshots remain valid; broken derived state is a gate problem, not a backlog problem.
+
 ## Entry Conditions
 
 Start `v2` only after `v1` is released and stable:
@@ -50,6 +52,10 @@ Done when:
 - its inputs and outputs are explicit
 - checked-in evidence exists for at least one representative `integration_result`
 
+Status:
+
+- completed in the current `v2` branch baseline
+
 ### Workstream 2: Review-Driven Learning Flows
 
 Goal:
@@ -68,6 +74,24 @@ Done when:
 - `apply-user-outcome-feedback`, `apply-learning-review`, and `apply-hardening-review` have clear command contracts
 - reviewed artifacts are separate from reusable artifacts
 - policy-affecting changes route to hardening instead of leaking into family memory
+- operator-authored inputs stay in `.harness/learning/feedback/`, `.harness/learning/reviews/`, and `.harness/learning/hardening-reviews/`
+- rail-derived outputs stay in `.harness/learning/review_queue.yaml`, `.harness/learning/hardening_queue.yaml`, `.harness/learning/family_evidence_index.yaml`, and `.harness/learning/approved/*.yaml`
+
+Current shape:
+
+- file-based draft generation:
+  - `init-user-outcome-feedback --artifact <artifact-dir>`
+  - `init-learning-review --candidate <quality-candidate-ref>`
+  - `init-hardening-review --candidate <hardening-candidate-ref>`
+- file-based apply commands:
+  - `apply-user-outcome-feedback --file <path>`
+  - `apply-learning-review --file <path>`
+  - `apply-hardening-review --file <path>`
+- default draft directories:
+  - `.harness/learning/feedback/`
+  - `.harness/learning/reviews/`
+  - `.harness/learning/hardening-reviews/`
+- `--file` is canonical; legacy `--feedback` / `--decision` aliases remain accepted for apply commands
 
 ### Workstream 3: Approved-Memory Operations
 
@@ -85,8 +109,11 @@ This work should define:
 Done when:
 
 - approved-memory reuse is same-family only
+- there is one active approved file per family at `.harness/learning/approved/<task_family>.yaml`
+- new same-family approvals overwrite the canonical file and the previous content remains only in git history
 - queue lifecycle is explicit and reviewable
 - no live run depends on unreviewed memory
+- queue and evidence files are rail-derived snapshots, not operator-edited files
 
 ### Workstream 4: Quality Improvement Operating Model
 
@@ -114,6 +141,8 @@ Done when:
 - deferred commands are isolated from the `v1` runtime path
 - learning workflows are review-driven and operationally documented
 - post-pass integration is backed by fresh evidence, not historical launch claims
+- pending backlog does not block release when derived state is coherent
+- broken approved-memory, queue, or family-evidence state fails the gate
 
 ## Non-Goals
 
@@ -124,3 +153,4 @@ Do not:
 - re-couple `integrator` to evaluator pass/fail semantics
 - make approved-memory mandatory for the core gate
 - let learning/apply commands become implicit runtime behavior
+- treat backlog alone as a release blocker when the derived state is still valid

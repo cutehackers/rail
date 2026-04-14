@@ -30,7 +30,11 @@ class RailCli {
         final tail = args.skip(1).toList();
         final goal = _readRequiredOption(tail, '--goal', usageSink: err);
         final outputPath = _readOption(tail, '--output');
-        final taskType = _readRequiredOption(tail, '--task-type', usageSink: err);
+        final taskType = _readRequiredOption(
+          tail,
+          '--task-type',
+          usageSink: err,
+        );
         final feature = _readOption(tail, '--feature');
         final riskTolerance = _readOption(tail, '--risk-tolerance') ?? 'low';
         final priority = _readOption(tail, '--priority') ?? 'medium';
@@ -66,12 +70,20 @@ class RailCli {
         return 0;
       case 'validate-request':
         await runner.validateRequest(
-          _readRequiredOption(args.skip(1).toList(), '--request', usageSink: err),
+          _readRequiredOption(
+            args.skip(1).toList(),
+            '--request',
+            usageSink: err,
+          ),
         );
         return 0;
       case 'validate-artifact':
         await runner.validateArtifact(
-          filePath: _readRequiredOption(args.skip(1).toList(), '--file', usageSink: err),
+          filePath: _readRequiredOption(
+            args.skip(1).toList(),
+            '--file',
+            usageSink: err,
+          ),
           schemaName: _readRequiredOption(
             args.skip(1).toList(),
             '--schema',
@@ -79,11 +91,57 @@ class RailCli {
           ),
         );
         return 0;
+      case 'init-user-outcome-feedback':
+        {
+          final tail = args.skip(1).toList();
+          final outputPath = await runner.initUserOutcomeFeedback(
+            artifactPath: _readRequiredOption(
+              tail,
+              '--artifact',
+              usageSink: err,
+            ),
+            outputPath: _readOption(tail, '--output'),
+          );
+          out.writeln(p.relative(outputPath, from: runner.root.path));
+          return 0;
+        }
+      case 'init-learning-review':
+        {
+          final tail = args.skip(1).toList();
+          final outputPath = await runner.initLearningReview(
+            candidateRef: _readRequiredOption(
+              tail,
+              '--candidate',
+              usageSink: err,
+            ),
+            outputPath: _readOption(tail, '--output'),
+          );
+          out.writeln(p.relative(outputPath, from: runner.root.path));
+          return 0;
+        }
+      case 'init-hardening-review':
+        {
+          final tail = args.skip(1).toList();
+          final outputPath = await runner.initHardeningReview(
+            candidateRef: _readRequiredOption(
+              tail,
+              '--candidate',
+              usageSink: err,
+            ),
+            outputPath: _readOption(tail, '--output'),
+          );
+          out.writeln(p.relative(outputPath, from: runner.root.path));
+          return 0;
+        }
       case 'run':
         final tail = args.skip(1).toList();
         final artifactPath = await runner.run(
           requestPath: _readRequiredOption(tail, '--request', usageSink: err),
-          projectRoot: _readRequiredOption(tail, '--project-root', usageSink: err),
+          projectRoot: _readRequiredOption(
+            tail,
+            '--project-root',
+            usageSink: err,
+          ),
           taskId: _readOption(tail, '--task-id'),
           force: tail.contains('--force'),
         );
@@ -118,6 +176,39 @@ class RailCli {
         );
         out.writeln(result);
         return 0;
+      case 'apply-user-outcome-feedback':
+        {
+          final tail = args.skip(1).toList();
+          await runner.applyUserOutcomeFeedback(
+            feedbackPath:
+                _readOption(tail, '--file') ??
+                _readRequiredOption(tail, '--feedback', usageSink: err),
+          );
+          return 0;
+        }
+      case 'apply-learning-review':
+        {
+          final tail = args.skip(1).toList();
+          await runner.applyLearningReview(
+            decisionPath:
+                _readOption(tail, '--file') ??
+                _readRequiredOption(tail, '--decision', usageSink: err),
+          );
+          return 0;
+        }
+      case 'apply-hardening-review':
+        {
+          final tail = args.skip(1).toList();
+          await runner.applyHardeningReview(
+            decisionPath:
+                _readOption(tail, '--file') ??
+                _readRequiredOption(tail, '--decision', usageSink: err),
+          );
+          return 0;
+        }
+      case 'verify-learning-state':
+        out.writeln(await runner.verifyLearningState());
+        return 0;
       case 'help':
         _printUsage(out);
         return 0;
@@ -143,6 +234,15 @@ void writeUsage(StringSink sink) {
     '  dart run bin/rail.dart validate-artifact --file <path> --schema <request|plan|context_pack|implementation_result|execution_report|evaluation_result|integration_result|quality_learning_candidate|hardening_candidate|approved_family_memory|learning_review_decision|hardening_review_decision|user_outcome_feedback|family_evidence_index|learning_review_queue|hardening_review_queue|quality_improvement_comparison>',
   );
   sink.writeln(
+    '  dart run bin/rail.dart init-user-outcome-feedback --artifact <path> [--output <path>]',
+  );
+  sink.writeln(
+    '  dart run bin/rail.dart init-learning-review --candidate <path> [--output <path>]',
+  );
+  sink.writeln(
+    '  dart run bin/rail.dart init-hardening-review --candidate <path> [--output <path>]',
+  );
+  sink.writeln(
     '  dart run bin/rail.dart run --request <path> --project-root <path> [--task-id <id>] [--force]',
   );
   sink.writeln(
@@ -152,6 +252,16 @@ void writeUsage(StringSink sink) {
   sink.writeln(
     '  dart run bin/rail.dart integrate --artifact <path> [--project-root <path>]',
   );
+  sink.writeln(
+    '  dart run bin/rail.dart apply-user-outcome-feedback --file <path> [--feedback <path>]',
+  );
+  sink.writeln(
+    '  dart run bin/rail.dart apply-learning-review --file <path> [--decision <path>]',
+  );
+  sink.writeln(
+    '  dart run bin/rail.dart apply-hardening-review --file <path> [--decision <path>]',
+  );
+  sink.writeln('  dart run bin/rail.dart verify-learning-state');
 }
 
 Directory _resolveScriptRoot() {

@@ -3,7 +3,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SMOKE_TASK_ID="${RAIL_RELEASE_SMOKE_TASK_ID:-v1-release-smoke-ci}"
+source "$REPO_ROOT/tool/release_gate_common.sh"
+
+SMOKE_TASK_ID="$(
+  rail_validate_smoke_task_id \
+    "${RAIL_RELEASE_SMOKE_TASK_ID:-v1-release-smoke-ci}"
+)"
 
 cd "$REPO_ROOT"
 

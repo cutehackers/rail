@@ -27,6 +27,7 @@ Run from the repository root:
 Optional override:
 
 - `RAIL_RELEASE_SMOKE_TASK_ID=<task-id>` changes the artifact directory name
+- `task-id` must be a safe directory token using only letters, digits, `.`, `_`, or `-`
 
 Default output artifact:
 

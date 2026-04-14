@@ -4603,10 +4603,7 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
     required List<Map<String, Object?>> validationEntries,
     required List<Map<String, Object?>> riskEntries,
   }) {
-    final requestedValue = requestedReleaseReadiness?.toString().trim();
-    final derived = <String>[
-      if (requestedValue == 'blocked') ..._normalizeLooseStringList(requested),
-    ];
+    final derived = <String>[..._normalizeLooseStringList(requested)];
     for (final entry in validationEntries) {
       final status = entry['status']?.toString();
       final checkName = entry['check_name']?.toString() ?? 'unknown';

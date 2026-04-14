@@ -33,42 +33,42 @@ Goal: make harness supervision explicit, bounded, and production-credible for `r
 ## Evidence
 
 - Smoke tighten-validation pass:
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-supervisor-loop-smoke-fixes/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-07-supervisor-loop-smoke-fixes/state.json`
 - Standard blocked-environment routing:
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-env-routing/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-env-routing/evaluation_result.yaml`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-07-standard-env-routing/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-07-standard-env-routing/evaluation_result.yaml`
 - Standard supervisor trace:
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-trace-validation/supervisor_trace.md`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-07-standard-trace-validation/supervisor_trace.md`
 - Terminal outcome summary:
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-terminal-summary/terminal_summary.md`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-passed/terminal_summary.md`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-blocked/terminal_summary.md`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-split/terminal_summary.md`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-07-standard-terminal-summary/terminal_summary.md`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-passed/terminal_summary.md`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-blocked/terminal_summary.md`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-standard-terminal-summary-split/terminal_summary.md`
 - Quality learning review artifacts:
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/01.yaml`
-  - `/Users/junhyounglee/workspace/rail/.harness/learning/review_queue.yaml`
-  - `/Users/junhyounglee/workspace/rail/.harness/learning/hardening_queue.yaml`
-  - `/Users/junhyounglee/workspace/rail/.harness/learning/approved/feature_addition.yaml`
-  - `/Users/junhyounglee/workspace/rail/.harness/learning/family_evidence_index.yaml`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/01.yaml`
+  - `/absolute/path/to/rail/.harness/learning/review_queue.yaml`
+  - `/absolute/path/to/rail/.harness/learning/hardening_queue.yaml`
+  - `/absolute/path/to/rail/.harness/learning/approved/feature_addition.yaml`
+  - `/absolute/path/to/rail/.harness/learning/family_evidence_index.yaml`
 - Conservative-pass hardening evidence:
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/evaluation_result.yaml`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/supervisor_trace.md`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-context-refresh/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-context-refresh/evaluation_result.yaml`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-context-refresh/supervisor_trace.md`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-exhausted/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-exhausted/evaluation_result.yaml`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-conservative-pass-exhausted/terminal_summary.md`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/evaluation_result.yaml`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-conservative-pass-weak-proof/supervisor_trace.md`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-conservative-pass-context-refresh/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-conservative-pass-context-refresh/evaluation_result.yaml`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-conservative-pass-context-refresh/supervisor_trace.md`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-conservative-pass-exhausted/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-conservative-pass-exhausted/evaluation_result.yaml`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-conservative-pass-exhausted/terminal_summary.md`
 - Deterministic standard route checks:
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-validation/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-context/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-implementation/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-07-standard-route-scope/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-evidence/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-validation-requirement/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-coverage/state.json`
-  - `/Users/junhyounglee/workspace/rail/.harness/artifacts/2026-04-10-standard-route-requirements-behavior/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-07-standard-route-validation/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-07-standard-route-context/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-07-standard-route-implementation/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-07-standard-route-scope/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-standard-route-validation-evidence/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-standard-route-validation-requirement/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-standard-route-requirements-coverage/state.json`
+  - `/absolute/path/to/rail/.harness/artifacts/2026-04-10-standard-route-requirements-behavior/state.json`
 
 ## Next production-facing priorities
 

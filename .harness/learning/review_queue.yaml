@@ -1,21 +1,46 @@
 pending_candidate_groups:
-- task_family: feature_addition
-  task_family_source: task_type
-  direct_user_outcome_status: accepted
-  last_disposition_state: promote
-  latest_review_decision_ref: .harness/learning/reviews/feature-addition-promote.yaml
-  pending_candidate_refs: []
-  appended_user_outcome_feedback_refs:
-  - .harness/learning/feedback/feature-addition-confirmed.yaml
-  reviewable_candidate_dispositions:
-  - candidate_ref: .harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml
-    user_outcome_status: confirmed
+  -
+    task_family: 'feature_addition'
+    task_family_source: 'task_type'
+    direct_user_outcome_status: 'accepted'
+    last_disposition_state: 'pending'
+    latest_review_decision_ref: null
+    pending_candidate_refs:
+      - '.harness/artifacts/2026-04-10-approved-memory-quarantine/quality_learning_candidates/quality_feature_addition_overall_034a0f7e.yaml'
+      - '.harness/artifacts/2026-04-10-approved-memory-request-conflict/quality_learning_candidates/quality_feature_addition_overall_c61dfd5c.yaml'
+      - '.harness/artifacts/2026-04-10-approved-memory-reuse/quality_learning_candidates/quality_feature_addition_overall_19825c6e.yaml'
+      - '.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml'
     appended_user_outcome_feedback_refs:
-    - .harness/learning/feedback/feature-addition-confirmed.yaml
-    disposition_state: promote
-    latest_review_decision_ref: .harness/learning/reviews/feature-addition-promote.yaml
-    latest_review_decision_timestamp: '2026-04-13T02:24:00Z'
-    review_window_status: reviewed
-  latest_review_decision_timestamp: '2026-04-13T02:24:00Z'
-queue_generated_at: '2026-04-13T02:42:46.764168Z'
-queue_sequence: 5
+      - '.harness/learning/feedback/feature-addition-confirmed.yaml'
+    reviewable_candidate_dispositions:
+      -
+        candidate_ref: '.harness/artifacts/2026-04-10-approved-memory-quarantine/quality_learning_candidates/quality_feature_addition_overall_034a0f7e.yaml'
+        user_outcome_status: 'unavailable'
+        appended_user_outcome_feedback_refs: []
+        disposition_state: 'pending'
+        latest_review_decision_ref: null
+        review_window_status: 'awaiting_feedback'
+      -
+        candidate_ref: '.harness/artifacts/2026-04-10-approved-memory-request-conflict/quality_learning_candidates/quality_feature_addition_overall_c61dfd5c.yaml'
+        user_outcome_status: 'unavailable'
+        appended_user_outcome_feedback_refs: []
+        disposition_state: 'pending'
+        latest_review_decision_ref: null
+        review_window_status: 'awaiting_feedback'
+      -
+        candidate_ref: '.harness/artifacts/2026-04-10-approved-memory-reuse/quality_learning_candidates/quality_feature_addition_overall_19825c6e.yaml'
+        user_outcome_status: 'unavailable'
+        appended_user_outcome_feedback_refs: []
+        disposition_state: 'pending'
+        latest_review_decision_ref: null
+        review_window_status: 'awaiting_feedback'
+      -
+        candidate_ref: '.harness/artifacts/2026-04-10-quality-learning-candidate/quality_learning_candidates/quality_feature_addition_quality-learning_followup_a1b2c3d4.yaml'
+        user_outcome_status: 'confirmed'
+        appended_user_outcome_feedback_refs:
+          - '.harness/learning/feedback/feature-addition-confirmed.yaml'
+        disposition_state: 'pending'
+        latest_review_decision_ref: null
+        review_window_status: 'ready_for_review'
+queue_generated_at: 'derived:50f81c5d'
+queue_sequence: 4

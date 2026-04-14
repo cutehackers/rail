@@ -13,9 +13,9 @@
 ### Task 1: Define Supervisor Action Contract
 
 **Files:**
-- Modify: `/Users/junhyounglee/workspace/rail/.harness/templates/evaluation_result.schema.yaml`
-- Modify: `/Users/junhyounglee/workspace/rail/.harness/actors/evaluator.md`
-- Modify: `/Users/junhyounglee/workspace/rail/.harness/supervisor/context_contract.yaml`
+- Modify: `/absolute/path/to/rail/.harness/templates/evaluation_result.schema.yaml`
+- Modify: `/absolute/path/to/rail/.harness/actors/evaluator.md`
+- Modify: `/absolute/path/to/rail/.harness/supervisor/context_contract.yaml`
 
 - [ ] Add structured single-value `next_action` for supervisor routing.
 - [ ] Add `reason_codes` so evaluator rationale is machine-readable.
@@ -24,8 +24,8 @@
 ### Task 2: Add Supervisor Loop Budgets
 
 **Files:**
-- Modify: `/Users/junhyounglee/workspace/rail/.harness/supervisor/policy.yaml`
-- Modify: `/Users/junhyounglee/workspace/rail/bin/rail.dart`
+- Modify: `/absolute/path/to/rail/.harness/supervisor/policy.yaml`
+- Modify: `/absolute/path/to/rail/bin/rail.dart`
 
 - [ ] Define per-action loop budgets in policy.
 - [ ] Load those budgets into the runtime workflow model.
@@ -34,7 +34,7 @@
 ### Task 3: Route Evaluator Outcomes Through Supervisor
 
 **Files:**
-- Modify: `/Users/junhyounglee/workspace/rail/bin/rail.dart`
+- Modify: `/absolute/path/to/rail/bin/rail.dart`
 
 - [ ] Replace evaluator-only generator retry logic with action-based routing.
 - [ ] Support `revise_generator`, `rebuild_context`, `tighten_validation`, `split_task`, `block_environment`, `pass`, and `reject`.
@@ -43,7 +43,7 @@
 ### Task 4: Keep Smoke Path Compatible
 
 **Files:**
-- Modify: `/Users/junhyounglee/workspace/rail/bin/rail.dart`
+- Modify: `/absolute/path/to/rail/bin/rail.dart`
 
 - [ ] Update deterministic smoke evaluator output to satisfy the new schema.
 - [ ] Ensure smoke still terminates with `pass` and omitted `next_action`.
@@ -51,9 +51,9 @@
 ### Task 5: Document Runtime Semantics
 
 **Files:**
-- Modify: `/Users/junhyounglee/workspace/rail/README.md`
-- Modify: `/Users/junhyounglee/workspace/rail/skills/rail/SKILL.md`
-- Modify: `/Users/junhyounglee/workspace/rail/docs/superpowers/plans/2026-04-06-rail-bootstrap-followups.md`
+- Modify: `/absolute/path/to/rail/README.md`
+- Modify: `/absolute/path/to/rail/skills/rail/SKILL.md`
+- Modify: `/absolute/path/to/rail/docs/superpowers/plans/2026-04-06-rail-bootstrap-followups.md`
 
 - [ ] Explain that supervisor orchestration is now action-driven.
 - [ ] Document bounded self-evolution loops and what they are for.

@@ -13,13 +13,13 @@
 ### Task 1: Freeze the V1/V2 Product Boundary
 
 **Files:**
-- Modify: [README.md](/Users/junhyounglee/workspace/rail/README.md)
-- Modify: [docs/superpowers/specs/2026-04-13-v1-core-supervisor-gate-release-design.md](/Users/junhyounglee/workspace/rail/docs/superpowers/specs/2026-04-13-v1-core-supervisor-gate-release-design.md)
-- Delete or archive: [docs/tasks.md](/Users/junhyounglee/workspace/rail/docs/tasks.md)
-- Create: [docs/releases/v1-core-supervisor-gate.md](/Users/junhyounglee/workspace/rail/docs/releases/v1-core-supervisor-gate.md)
-- Create: [docs/backlog/v1-core-supervisor-gate.md](/Users/junhyounglee/workspace/rail/docs/backlog/v1-core-supervisor-gate.md)
-- Create: [docs/backlog/v2-integrator-and-learning.md](/Users/junhyounglee/workspace/rail/docs/backlog/v2-integrator-and-learning.md)
-- Create: [docs/archive/launch-history.md](/Users/junhyounglee/workspace/rail/docs/archive/launch-history.md)
+- Modify: [README.md](/absolute/path/to/rail/README.md)
+- Modify: [docs/superpowers/specs/2026-04-13-v1-core-supervisor-gate-release-design.md](/absolute/path/to/rail/docs/superpowers/specs/2026-04-13-v1-core-supervisor-gate-release-design.md)
+- Delete or archive: [docs/tasks.md](/absolute/path/to/rail/docs/tasks.md)
+- Create: [docs/releases/v1-core-supervisor-gate.md](/absolute/path/to/rail/docs/releases/v1-core-supervisor-gate.md)
+- Create: [docs/backlog/v1-core-supervisor-gate.md](/absolute/path/to/rail/docs/backlog/v1-core-supervisor-gate.md)
+- Create: [docs/backlog/v2-integrator-and-learning.md](/absolute/path/to/rail/docs/backlog/v2-integrator-and-learning.md)
+- Create: [docs/archive/launch-history.md](/absolute/path/to/rail/docs/archive/launch-history.md)
 
 - [ ] **Step 1: Write the failing scope test in docs form**
 
@@ -79,12 +79,12 @@ git commit -m "docs: split v1 release scope from deferred v2 work"
 ### Task 2: Add the Verification Foundation for a Real Release Gate
 
 **Files:**
-- Modify: [pubspec.yaml](/Users/junhyounglee/workspace/rail/pubspec.yaml)
-- Create: [analysis_options.yaml](/Users/junhyounglee/workspace/rail/analysis_options.yaml)
-- Create: [test/request/request_validation_test.dart](/Users/junhyounglee/workspace/rail/test/request/request_validation_test.dart)
-- Create: [test/runtime/route_evaluation_test.dart](/Users/junhyounglee/workspace/rail/test/runtime/route_evaluation_test.dart)
-- Create: [test/reporting/terminal_summary_test.dart](/Users/junhyounglee/workspace/rail/test/reporting/terminal_summary_test.dart)
-- Create: [test/fixtures/](/Users/junhyounglee/workspace/rail/test/fixtures)
+- Modify: [pubspec.yaml](/absolute/path/to/rail/pubspec.yaml)
+- Create: [analysis_options.yaml](/absolute/path/to/rail/analysis_options.yaml)
+- Create: [test/request/request_validation_test.dart](/absolute/path/to/rail/test/request/request_validation_test.dart)
+- Create: [test/runtime/route_evaluation_test.dart](/absolute/path/to/rail/test/runtime/route_evaluation_test.dart)
+- Create: [test/reporting/terminal_summary_test.dart](/absolute/path/to/rail/test/reporting/terminal_summary_test.dart)
+- Create: [test/fixtures/](/absolute/path/to/rail/test/fixtures)
 
 - [ ] **Step 1: Add the first failing tests**
 
@@ -151,12 +151,12 @@ git commit -m "test: add v1 release verification foundation"
 ### Task 3: Remove V2 Contract Leakage from the V1 Execution Path
 
 **Files:**
-- Modify: [bin/rail.dart](/Users/junhyounglee/workspace/rail/bin/rail.dart)
-- Modify: [.harness/templates/execution_report.schema.yaml](/Users/junhyounglee/workspace/rail/.harness/templates/execution_report.schema.yaml)
-- Modify: [.harness/templates/context_pack.schema.yaml](/Users/junhyounglee/workspace/rail/.harness/templates/context_pack.schema.yaml)
-- Modify: [.harness/supervisor/registry.yaml](/Users/junhyounglee/workspace/rail/.harness/supervisor/registry.yaml)
-- Modify: [.harness/supervisor/context_contract.yaml](/Users/junhyounglee/workspace/rail/.harness/supervisor/context_contract.yaml)
-- Test: [test/runtime/v1_execution_contract_test.dart](/Users/junhyounglee/workspace/rail/test/runtime/v1_execution_contract_test.dart)
+- Modify: [bin/rail.dart](/absolute/path/to/rail/bin/rail.dart)
+- Modify: [.harness/templates/execution_report.schema.yaml](/absolute/path/to/rail/.harness/templates/execution_report.schema.yaml)
+- Modify: [.harness/templates/context_pack.schema.yaml](/absolute/path/to/rail/.harness/templates/context_pack.schema.yaml)
+- Modify: [.harness/supervisor/registry.yaml](/absolute/path/to/rail/.harness/supervisor/registry.yaml)
+- Modify: [.harness/supervisor/context_contract.yaml](/absolute/path/to/rail/.harness/supervisor/context_contract.yaml)
+- Test: [test/runtime/v1_execution_contract_test.dart](/absolute/path/to/rail/test/runtime/v1_execution_contract_test.dart)
 
 - [ ] **Step 1: Write the failing blocker test**
 
@@ -204,7 +204,7 @@ Run:
 
 ```bash
 dart test test/runtime/v1_execution_contract_test.dart
-dart run bin/rail.dart run --request .harness/requests/rail-bootstrap-smoke.yaml --project-root /Users/junhyounglee/workspace/rail --task-id v1-contract-smoke
+dart run bin/rail.dart run --request .harness/requests/rail-bootstrap-smoke.yaml --project-root /absolute/path/to/rail --task-id v1-contract-smoke
 dart run bin/rail.dart execute --artifact .harness/artifacts/v1-contract-smoke
 ```
 
@@ -222,19 +222,19 @@ git commit -m "fix: isolate v1 execution contracts from deferred v2 features"
 ### Task 4: Refactor `bin/rail.dart` into Maintainable V1 Modules
 
 **Files:**
-- Modify: [bin/rail.dart](/Users/junhyounglee/workspace/rail/bin/rail.dart)
-- Create: [lib/src/cli/rail_cli.dart](/Users/junhyounglee/workspace/rail/lib/src/cli/rail_cli.dart)
-- Create: [lib/src/request/request_service.dart](/Users/junhyounglee/workspace/rail/lib/src/request/request_service.dart)
-- Create: [lib/src/bootstrap/bootstrap_service.dart](/Users/junhyounglee/workspace/rail/lib/src/bootstrap/bootstrap_service.dart)
-- Create: [lib/src/runtime/runtime_service.dart](/Users/junhyounglee/workspace/rail/lib/src/runtime/runtime_service.dart)
-- Create: [lib/src/contracts/schema_validator.dart](/Users/junhyounglee/workspace/rail/lib/src/contracts/schema_validator.dart)
-- Create: [lib/src/contracts/harness_contracts.dart](/Users/junhyounglee/workspace/rail/lib/src/contracts/harness_contracts.dart)
-- Create: [lib/src/reporting/reporting_service.dart](/Users/junhyounglee/workspace/rail/lib/src/reporting/reporting_service.dart)
-- Create: [lib/src/process/process_runner.dart](/Users/junhyounglee/workspace/rail/lib/src/process/process_runner.dart)
-- Create: [lib/src/v2/learning_service.dart](/Users/junhyounglee/workspace/rail/lib/src/v2/learning_service.dart)
-- Create: [lib/src/v2/review_commands.dart](/Users/junhyounglee/workspace/rail/lib/src/v2/review_commands.dart)
-- Test: [test/cli/cli_dispatch_test.dart](/Users/junhyounglee/workspace/rail/test/cli/cli_dispatch_test.dart)
-- Test: [test/runtime/runtime_service_test.dart](/Users/junhyounglee/workspace/rail/test/runtime/runtime_service_test.dart)
+- Modify: [bin/rail.dart](/absolute/path/to/rail/bin/rail.dart)
+- Create: [lib/src/cli/rail_cli.dart](/absolute/path/to/rail/lib/src/cli/rail_cli.dart)
+- Create: [lib/src/request/request_service.dart](/absolute/path/to/rail/lib/src/request/request_service.dart)
+- Create: [lib/src/bootstrap/bootstrap_service.dart](/absolute/path/to/rail/lib/src/bootstrap/bootstrap_service.dart)
+- Create: [lib/src/runtime/runtime_service.dart](/absolute/path/to/rail/lib/src/runtime/runtime_service.dart)
+- Create: [lib/src/contracts/schema_validator.dart](/absolute/path/to/rail/lib/src/contracts/schema_validator.dart)
+- Create: [lib/src/contracts/harness_contracts.dart](/absolute/path/to/rail/lib/src/contracts/harness_contracts.dart)
+- Create: [lib/src/reporting/reporting_service.dart](/absolute/path/to/rail/lib/src/reporting/reporting_service.dart)
+- Create: [lib/src/process/process_runner.dart](/absolute/path/to/rail/lib/src/process/process_runner.dart)
+- Create: [lib/src/v2/learning_service.dart](/absolute/path/to/rail/lib/src/v2/learning_service.dart)
+- Create: [lib/src/v2/review_commands.dart](/absolute/path/to/rail/lib/src/v2/review_commands.dart)
+- Test: [test/cli/cli_dispatch_test.dart](/absolute/path/to/rail/test/cli/cli_dispatch_test.dart)
+- Test: [test/runtime/runtime_service_test.dart](/absolute/path/to/rail/test/runtime/runtime_service_test.dart)
 
 - [ ] **Step 1: Write the failing dispatch test**
 
@@ -322,11 +322,11 @@ git commit -m "refactor: split monolithic runtime into focused v1 modules"
 ### Task 5: Refresh Smoke and Standard Evidence Under the New V1 Gate
 
 **Files:**
-- Modify: [.harness/requests/rail-bootstrap-smoke.yaml](/Users/junhyounglee/workspace/rail/.harness/requests/rail-bootstrap-smoke.yaml)
-- Modify: [.harness/requests/rail-standard-beacon-validation.yaml](/Users/junhyounglee/workspace/rail/.harness/requests/rail-standard-beacon-validation.yaml)
-- Modify or remove stale artifacts under: [.harness/artifacts/](/Users/junhyounglee/workspace/rail/.harness/artifacts)
-- Create: [test/integration/v1_smoke_release_test.dart](/Users/junhyounglee/workspace/rail/test/integration/v1_smoke_release_test.dart)
-- Create: [test/integration/v1_standard_route_test.dart](/Users/junhyounglee/workspace/rail/test/integration/v1_standard_route_test.dart)
+- Modify: [.harness/requests/rail-bootstrap-smoke.yaml](/absolute/path/to/rail/.harness/requests/rail-bootstrap-smoke.yaml)
+- Modify: [.harness/requests/rail-standard-beacon-validation.yaml](/absolute/path/to/rail/.harness/requests/rail-standard-beacon-validation.yaml)
+- Modify or remove stale artifacts under: [.harness/artifacts/](/absolute/path/to/rail/.harness/artifacts)
+- Create: [test/integration/v1_smoke_release_test.dart](/absolute/path/to/rail/test/integration/v1_smoke_release_test.dart)
+- Create: [test/integration/v1_standard_route_test.dart](/absolute/path/to/rail/test/integration/v1_standard_route_test.dart)
 
 - [ ] **Step 1: Write failing integration tests for fresh verification**
 
@@ -383,11 +383,11 @@ git commit -m "test: refresh v1 smoke and standard release evidence"
 ### Task 6: Add Production Release Operations and CI
 
 **Files:**
-- Create: [.github/workflows/v1-release-gate.yml](/Users/junhyounglee/workspace/rail/.github/workflows/v1-release-gate.yml)
-- Modify: [README.md](/Users/junhyounglee/workspace/rail/README.md)
-- Modify: [docs/releases/v1-core-supervisor-gate.md](/Users/junhyounglee/workspace/rail/docs/releases/v1-core-supervisor-gate.md)
-- Modify: [docs/backlog/v1-core-supervisor-gate.md](/Users/junhyounglee/workspace/rail/docs/backlog/v1-core-supervisor-gate.md)
-- Delete: [bin/rail.dart.rej](/Users/junhyounglee/workspace/rail/bin/rail.dart.rej)
+- Create: [.github/workflows/v1-release-gate.yml](/absolute/path/to/rail/.github/workflows/v1-release-gate.yml)
+- Modify: [README.md](/absolute/path/to/rail/README.md)
+- Modify: [docs/releases/v1-core-supervisor-gate.md](/absolute/path/to/rail/docs/releases/v1-core-supervisor-gate.md)
+- Modify: [docs/backlog/v1-core-supervisor-gate.md](/absolute/path/to/rail/docs/backlog/v1-core-supervisor-gate.md)
+- Delete: [bin/rail.dart.rej](/absolute/path/to/rail/bin/rail.dart.rej)
 
 - [ ] **Step 1: Write the failing release checklist test**
 

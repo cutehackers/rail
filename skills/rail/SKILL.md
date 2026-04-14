@@ -1,11 +1,13 @@
 ---
 name: Rail
-description: Bootstrap and execute the Rail harness workflow against a target Flutter/Riverpod repository from a natural-language task request.
+description: Use when bootstrapping and executing the Rail harness workflow against a target application repository from a natural-language task request.
 ---
 
 # Rail
 
-Use this skill from the `Rail` control repository root.
+Use this skill from the local `Rail` control repository root on the current machine.
+
+Do not assume `rail` is installed at a fixed absolute path. Treat the current checkout as the runtime root for `rail` commands.
 
 The target application repository is not this repo. It is passed as `--project-root`.
 
@@ -53,13 +55,15 @@ Defaults:
 
 ## Commands
 
-From `/Users/junhyounglee/workspace/rail`, run:
+From the local `rail` repo root, run:
 
 ```bash
 dart run bin/rail.dart compose-request --goal <goal> --task-type <task_type> ...
 dart run bin/rail.dart validate-request --request <request-file>
 dart run bin/rail.dart run --request <request-file> --project-root <target-repo>
 ```
+
+When you need to refer to paths in explanations or examples, use placeholders such as `<rail-repo-root>` and `/absolute/path/to/target-repo` instead of machine-specific home-directory paths.
 
 Only use `--force` when the user explicitly wants to overwrite an existing artifact.
 

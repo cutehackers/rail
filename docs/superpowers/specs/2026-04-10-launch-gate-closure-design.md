@@ -4,7 +4,7 @@
 Make the `rail` harness documented launch-ready for the core supervisor pipeline by closing the remaining contract gaps, aligning rubric failures with routing, and turning the existing evidence into a final launch audit.
 
 ## Scope
-- Re-open Tasks 1 through 8 in [docs/tasks.md](/Users/junhyounglee/workspace/rail/docs/tasks.md) as an audit pass.
+- Re-open Tasks 1 through 8 in [docs/tasks.md](/absolute/path/to/rail/docs/tasks.md) as an audit pass.
 - Treat Tasks 1 through 3 as already-implemented capabilities that must be re-validated against current docs and runtime behavior.
 - Close Tasks 4 through 8 primarily through contract and documentation updates unless the docs would otherwise claim behavior the runtime does not support.
 

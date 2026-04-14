@@ -2,7 +2,7 @@
 
 ## Goal
 
-Create `/Users/junhyounglee/workspace/rail` as the standalone control-plane repository for harness execution.
+Create `/absolute/path/to/rail` as the standalone control-plane repository for harness execution.
 
 ## Design summary
 

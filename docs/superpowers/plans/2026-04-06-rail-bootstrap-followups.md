@@ -2,7 +2,7 @@
 
 ## Implemented
 
-- standalone control-plane repository created at `/Users/junhyounglee/workspace/rail`
+- standalone control-plane repository created at `/absolute/path/to/rail`
 - `.harness/` bundle migrated into the new repository
 - runtime copied and adapted to `bin/rail.dart`
 - target repo split introduced through `--project-root`

@@ -1,21 +1,27 @@
-# 981park Target Example
+# Example target bootstrap
 
-Example target repository:
+예시용 목표 저장소:
 
-- `/Users/junhyounglee/workspace/981park-flutter-app`
+- `/absolute/path/to/target-flutter-app`
 
-Bootstrap example:
+공통 부트스트랩 예시:
 
 ```bash
-cd /Users/junhyounglee/workspace/rail
+cd /absolute/path/to/rail
 
 dart run bin/rail.dart compose-request \
   --task-type bug_fix \
-  --goal "프로필 화면에서 pull-to-refresh 후 간헐적으로 로딩 인디케이터가 사라지지 않는 문제 수정" \
-  --feature profile
+  --goal "설명 가능한 버그를 재현 가능한 수정 단위로 정의" \
+  --feature app_feature
 
 dart run bin/rail.dart run \
   --request .harness/requests/<generated>.yaml \
-  --project-root /Users/junhyounglee/workspace/981park-flutter-app
+  --project-root /absolute/path/to/target-flutter-app
 ```
 
+또는 요청이 준비되어 있다면 검증만 바로 수행할 수 있습니다.
+
+```bash
+dart run bin/rail.dart validate-request \
+  --request .harness/requests/<request-file>.yaml
+```

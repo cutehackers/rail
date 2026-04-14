@@ -1,0 +1,36 @@
+summary: |
+  Reworked the task handoff summary to capture changed files and concrete
+  validation evidence for a passing v1 core gate run.
+files_changed:
+  - "lib/src/runtime/harness_runner.dart"
+  - ".harness/actors/integrator.md"
+  - ".harness/templates/integration_result.schema.yaml"
+  - "docs/releases/v2-integrator-and-learning-gate.md"
+validation:
+  - check_name: evaluator terminal state
+    status: pass
+    command: "dart run bin/rail.dart execute --artifact .harness/artifacts/v2-integrator-smoke-ci"
+    evidence: "execution_report.yaml indicates terminal state is passed"
+    details: "run/execute completed under the v1 bounded gate"
+  - check_name: schema validation
+    status: pass
+    command: "dart run bin/rail.dart validate-artifact --file <artifact>/integration_result.yaml --schema integration_result"
+    evidence: "integration_result.yaml validates against integration_result.schema.yaml"
+    details: "required fields and structured evidence blocks are present"
+risks:
+  - description: "No functional regressions found for non-targeted task families"
+    severity: low
+  - description: "Follow-up quality signals are still manually curated"
+    severity: medium
+    mitigation: "Review-driven apply workflows remain deferred to explicit v2 workstreams"
+follow_up:
+  - action: "Capture representative integrate artifacts in release notes"
+    owner: "release"
+    due: "next-release-candidate"
+    notes: "Attach generated integration_result.yaml and artifact IDs."
+  - action: "Define release-readiness triage rubric"
+    owner: "engineering"
+    due: "v2-planning"
+evidence_quality: adequate
+release_readiness: ready
+blocking_issues: []

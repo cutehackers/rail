@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:rail/src/runtime/harness_runner.dart';
 import 'package:test/test.dart';
+import 'package:yaml/yaml.dart';
 
 void main() {
   final repoRoot = Directory.current;
@@ -83,8 +84,37 @@ void main() {
         filePath: p.join(artifactPath, 'integration_result.yaml'),
         schemaName: 'integration_result',
       );
+
+      final integrationMap = _loadYamlMap(
+        File(p.join(root, artifactPath, 'integration_result.yaml')),
+      );
+      expect(
+        integrationMap['evidence_quality'],
+        anyOf('draft', 'adequate', 'high_confidence'),
+      );
+      expect(
+        integrationMap['release_readiness'],
+        anyOf('ready', 'conditional', 'blocked'),
+      );
+      expect(integrationMap['blocking_issues'], isA<List<dynamic>>());
+
+      final validationEntries =
+          integrationMap['validation'] as List<dynamic>? ?? const <dynamic>[];
+      expect(validationEntries, isNotEmpty);
+      expect(
+        validationEntries.whereType<Map>().isNotEmpty,
+        isTrue,
+        reason: 'integration_result.validation should contain structured entries.',
+      );
+      final firstValidation = Map<String, dynamic>.from(
+        validationEntries.whereType<Map>().first,
+      );
+      expect(
+        firstValidation.keys,
+        containsAll(<String>['check_name', 'status', 'evidence']),
+      );
     },
-    timeout: const Timeout(Duration(minutes: 2)),
+    timeout: const Timeout(Duration(minutes: 4)),
   );
 
   test('integrate refuses artifacts whose evaluator did not pass', () async {
@@ -137,4 +167,28 @@ Future<void> _copyDirectory(Directory source, Directory destination) async {
       await entity.copy(targetPath);
     }
   }
+}
+
+Map<String, dynamic> _loadYamlMap(File file) {
+  final parsed = loadYaml(file.readAsStringSync());
+  if (parsed is YamlMap) {
+    return <String, dynamic>{
+      for (final entry in parsed.entries)
+        entry.key.toString(): _toNativeValue(entry.value),
+    };
+  }
+  throw StateError('Expected a YAML map in ${file.path}.');
+}
+
+dynamic _toNativeValue(dynamic value) {
+  if (value is YamlMap) {
+    return <String, dynamic>{
+      for (final entry in value.entries)
+        entry.key.toString(): _toNativeValue(entry.value),
+    };
+  }
+  if (value is YamlList) {
+    return value.map(_toNativeValue).toList(growable: false);
+  }
+  return value;
 }

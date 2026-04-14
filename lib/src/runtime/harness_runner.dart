@@ -4357,6 +4357,7 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
       responseObject['follow_up'],
     );
     final blockingIssues = _normalizeIntegrationBlockingIssues(
+      requestedReleaseReadiness: responseObject['release_readiness'],
       requested: responseObject['blocking_issues'],
       validationEntries: validationEntries,
       riskEntries: riskEntries,
@@ -4597,11 +4598,15 @@ ${const JsonEncoder.withIndent('  ').convert(executionPlan.toJson())}
   }
 
   List<String> _normalizeIntegrationBlockingIssues({
+    required dynamic requestedReleaseReadiness,
     required dynamic requested,
     required List<Map<String, Object?>> validationEntries,
     required List<Map<String, Object?>> riskEntries,
   }) {
-    final derived = <String>[..._normalizeLooseStringList(requested)];
+    final requestedValue = requestedReleaseReadiness?.toString().trim();
+    final derived = <String>[
+      if (requestedValue == 'blocked') ..._normalizeLooseStringList(requested),
+    ];
     for (final entry in validationEntries) {
       final status = entry['status']?.toString();
       final checkName = entry['check_name']?.toString() ?? 'unknown';

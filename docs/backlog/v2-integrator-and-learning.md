@@ -91,7 +91,11 @@ Current shape:
   - `.harness/learning/feedback/`
   - `.harness/learning/reviews/`
   - `.harness/learning/hardening-reviews/`
-- `--file` is canonical; legacy `--feedback` / `--decision` aliases remain accepted for apply commands
+- `--file` is the only supported apply flag for apply commands
+
+Status:
+
+- completed in the current `v2` branch baseline
 
 ### Workstream 3: Approved-Memory Operations
 
@@ -115,6 +119,10 @@ Done when:
 - no live run depends on unreviewed memory
 - queue and evidence files are rail-derived snapshots, not operator-edited files
 
+Status:
+
+- completed in the current `v2` branch baseline
+
 ### Workstream 4: Quality Improvement Operating Model
 
 Goal:
@@ -133,6 +141,10 @@ Done when:
 - long-term quality improvement is operationally documented
 - promotion from candidate to reusable guidance is review-driven and provenance-backed
 
+Status:
+
+- completed via `docs/releases/v2-quality-improvement-operating-model.md`
+
 ## Success Criteria
 
 `v2` should ship only when:
@@ -143,6 +155,12 @@ Done when:
 - post-pass integration is backed by fresh evidence, not historical launch claims
 - pending backlog does not block release when derived state is coherent
 - broken approved-memory, queue, or family-evidence state fails the gate
+
+Current release-readiness note:
+
+- workstreams 1 through 4 are implemented/documented in the current baseline
+- the `v2` release-ready boundary is now documented and locally gate-verified
+- remaining open work is follow-up polish such as compatibility-alias lifecycle and future operator-surface refinement
 
 ## Non-Goals
 

@@ -45,46 +45,120 @@ void main() {
     },
   );
 
-  test(
-    'apply-learning-review accepts --decision alias and persists the review',
-    () async {
-      final tempRoot = await _createHarnessRoot(
-        repoRoot,
-        'apply-learning-review',
-      );
-      addTearDown(() async {
-        if (tempRoot.existsSync()) {
-          await tempRoot.delete(recursive: true);
-        }
-      });
+  test('apply-learning-review persists the review from --file', () async {
+    final tempRoot = await _createHarnessRoot(
+      repoRoot,
+      'apply-learning-review',
+    );
+    addTearDown(() async {
+      if (tempRoot.existsSync()) {
+        await tempRoot.delete(recursive: true);
+      }
+    });
 
-      final candidateFile = await _writeQualityCandidateFixture(tempRoot);
-      final candidateRef = p.relative(candidateFile.path, from: tempRoot.path);
-      final decisionFile = await _writeLearningReviewFixture(
-        tempRoot,
-        candidateRef: candidateRef,
-      );
-      final decisionRef = p.relative(decisionFile.path, from: tempRoot.path);
+    final candidateFile = await _writeQualityCandidateFixture(tempRoot);
+    final candidateRef = p.relative(candidateFile.path, from: tempRoot.path);
+    final decisionFile = await _writeLearningReviewFixture(
+      tempRoot,
+      candidateRef: candidateRef,
+    );
+    final decisionRef = p.relative(decisionFile.path, from: tempRoot.path);
 
-      final exitCode = await RailCli(
+    final exitCode = await RailCli(
+      root: tempRoot,
+    ).run(['apply-learning-review', '--file', decisionRef]);
+
+    expect(exitCode, 0);
+    expect(
+      File(
+        p.join(
+          tempRoot.path,
+          '.harness',
+          'learning',
+          'learning_review_decisions',
+          '${_sanitize(candidateRef)}.yaml',
+        ),
+      ).existsSync(),
+      isTrue,
+    );
+  });
+
+  test('apply commands require --file and reject legacy aliases', () async {
+    final tempRoot = await _createHarnessRoot(repoRoot, 'apply-alias-rejected');
+    addTearDown(() async {
+      if (tempRoot.existsSync()) {
+        await tempRoot.delete(recursive: true);
+      }
+    });
+
+    final candidateFile = await _writeQualityCandidateFixture(tempRoot);
+    final candidateRef = p.relative(candidateFile.path, from: tempRoot.path);
+    final feedbackFile = await _writeUserOutcomeFeedbackFixture(
+      tempRoot,
+      candidateRef: candidateRef,
+    );
+    final feedbackRef = p.relative(feedbackFile.path, from: tempRoot.path);
+    final learningDecisionFile = await _writeLearningReviewFixture(
+      tempRoot,
+      candidateRef: candidateRef,
+    );
+    final learningDecisionRef = p.relative(
+      learningDecisionFile.path,
+      from: tempRoot.path,
+    );
+    final hardeningCandidateFile = await _writeHardeningCandidateFixture(
+      tempRoot,
+    );
+    final hardeningCandidateRef = p.relative(
+      hardeningCandidateFile.path,
+      from: tempRoot.path,
+    );
+    final hardeningDecisionFile = await _writeHardeningReviewFixture(
+      tempRoot,
+      candidateRef: hardeningCandidateRef,
+    );
+    final hardeningDecisionRef = p.relative(
+      hardeningDecisionFile.path,
+      from: tempRoot.path,
+    );
+
+    await expectLater(
+      () => RailCli(
         root: tempRoot,
-      ).run(['apply-learning-review', '--decision', decisionRef]);
-
-      expect(exitCode, 0);
-      expect(
-        File(
-          p.join(
-            tempRoot.path,
-            '.harness',
-            'learning',
-            'learning_review_decisions',
-            '${_sanitize(candidateRef)}.yaml',
-          ),
-        ).existsSync(),
-        isTrue,
-      );
-    },
-  );
+      ).run(['apply-user-outcome-feedback', '--feedback', feedbackRef]),
+      throwsA(
+        isA<ArgumentError>().having(
+          (error) => error.message,
+          'message',
+          contains('Missing required option: --file'),
+        ),
+      ),
+    );
+    await expectLater(
+      () => RailCli(
+        root: tempRoot,
+      ).run(['apply-learning-review', '--decision', learningDecisionRef]),
+      throwsA(
+        isA<ArgumentError>().having(
+          (error) => error.message,
+          'message',
+          contains('Missing required option: --file'),
+        ),
+      ),
+    );
+    await expectLater(
+      () => RailCli(
+        root: tempRoot,
+      ).run(['apply-hardening-review', '--decision', hardeningDecisionRef]),
+      throwsA(
+        isA<ArgumentError>().having(
+          (error) => error.message,
+          'message',
+          contains('Missing required option: --file'),
+        ),
+      ),
+    );
+  });
 
   test(
     'promote writes only the canonical approved-memory path for the family',
@@ -124,7 +198,7 @@ void main() {
 
       final exitCode = await RailCli(
         root: tempRoot,
-      ).run(['apply-learning-review', '--decision', decisionRef]);
+      ).run(['apply-learning-review', '--file', decisionRef]);
 
       expect(exitCode, 0);
 
@@ -186,7 +260,7 @@ void main() {
       await expectLater(
         RailCli(
           root: tempRoot,
-        ).run(['apply-learning-review', '--decision', decisionRef]),
+        ).run(['apply-learning-review', '--file', decisionRef]),
         throwsA(isA<StateError>()),
       );
     },
@@ -322,7 +396,7 @@ void main() {
         );
         final promoteExitCode = await RailCli(
           root: tempRoot,
-        ).run(['apply-learning-review', '--decision', promoteRef]);
+        ).run(['apply-learning-review', '--file', promoteRef]);
         expect(promoteExitCode, 0);
         final approvedFile = File(
           p.join(
@@ -349,7 +423,7 @@ void main() {
         );
         final followUpExitCode = await RailCli(
           root: tempRoot,
-        ).run(['apply-learning-review', '--decision', followUpRef]);
+        ).run(['apply-learning-review', '--file', followUpRef]);
 
         expect(followUpExitCode, 0);
         expect(approvedFile.existsSync(), isTrue);
@@ -638,7 +712,7 @@ Future<String> _promoteReviewedCandidate(
   final decisionRef = p.relative(decisionFile.path, from: root.path);
   final exitCode = await RailCli(
     root: root,
-  ).run(['apply-learning-review', '--decision', decisionRef]);
+  ).run(['apply-learning-review', '--file', decisionRef]);
   expect(exitCode, 0);
   return '.harness/learning/approved/bug_fix.yaml';
 }

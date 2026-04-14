@@ -21,55 +21,43 @@ void main() {
         artifactDirectory.deleteSync(recursive: true);
       }
 
-      final runResult = await Process.run(
-        'dart',
-        [
-          'run',
-          'bin/rail.dart',
-          'run',
-          '--request',
-          p.join('test', 'fixtures', 'valid_request.yaml'),
-          '--project-root',
-          root,
-          '--task-id',
-          taskId,
-        ],
-        workingDirectory: root,
-      );
+      final runResult = await Process.run('dart', [
+        'run',
+        'bin/rail.dart',
+        'run',
+        '--request',
+        p.join('test', 'fixtures', 'valid_request.yaml'),
+        '--project-root',
+        root,
+        '--task-id',
+        taskId,
+      ], workingDirectory: root);
       expect(
         runResult.exitCode,
         0,
         reason: '${runResult.stdout}\n${runResult.stderr}',
       );
 
-      final executeResult = await Process.run(
-        'dart',
-        [
-          'run',
-          'bin/rail.dart',
-          'execute',
-          '--artifact',
-          artifactPath,
-        ],
-        workingDirectory: root,
-      );
+      final executeResult = await Process.run('dart', [
+        'run',
+        'bin/rail.dart',
+        'execute',
+        '--artifact',
+        artifactPath,
+      ], workingDirectory: root);
       expect(
         executeResult.exitCode,
         0,
         reason: '${executeResult.stdout}\n${executeResult.stderr}',
       );
 
-      final integrateResult = await Process.run(
-        'dart',
-        [
-          'run',
-          'bin/rail.dart',
-          'integrate',
-          '--artifact',
-          artifactPath,
-        ],
-        workingDirectory: root,
-      );
+      final integrateResult = await Process.run('dart', [
+        'run',
+        'bin/rail.dart',
+        'integrate',
+        '--artifact',
+        artifactPath,
+      ], workingDirectory: root);
       expect(
         integrateResult.exitCode,
         0,
@@ -94,9 +82,10 @@ void main() {
       );
       expect(
         integrationMap['release_readiness'],
-        anyOf('ready', 'conditional', 'blocked'),
+        anyOf('ready', 'conditional'),
       );
       expect(integrationMap['blocking_issues'], isA<List<dynamic>>());
+      expect(integrationMap['blocking_issues'], isEmpty);
 
       final validationEntries =
           integrationMap['validation'] as List<dynamic>? ?? const <dynamic>[];
@@ -104,7 +93,8 @@ void main() {
       expect(
         validationEntries.whereType<Map>().isNotEmpty,
         isTrue,
-        reason: 'integration_result.validation should contain structured entries.',
+        reason:
+            'integration_result.validation should contain structured entries.',
       );
       final firstValidation = Map<String, dynamic>.from(
         validationEntries.whereType<Map>().first,
@@ -122,7 +112,10 @@ void main() {
       p.join(repoRoot.path, '.dart_tool', 'integrator-fixtures'),
     ).create(recursive: true);
     final copied = Directory(
-      p.join(tempRoot.path, 'split-task-${DateTime.now().microsecondsSinceEpoch}'),
+      p.join(
+        tempRoot.path,
+        'split-task-${DateTime.now().microsecondsSinceEpoch}',
+      ),
     );
     addTearDown(() async {
       if (copied.existsSync()) {
@@ -131,13 +124,7 @@ void main() {
     });
 
     final source = Directory(
-      p.join(
-        repoRoot.path,
-        'test',
-        'fixtures',
-        'standard_route',
-        'split_task',
-      ),
+      p.join(repoRoot.path, 'test', 'fixtures', 'standard_route', 'split_task'),
     );
     await _copyDirectory(source, copied);
 

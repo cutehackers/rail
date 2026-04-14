@@ -396,7 +396,7 @@ Future<void> _seedReviewedApprovedMemory(
   final decisionRef = p.relative(decisionFile.path, from: root.path);
   final exitCode = await RailCli(
     root: root,
-  ).run(['apply-learning-review', '--decision', decisionRef]);
+  ).run(['apply-learning-review', '--file', decisionRef]);
   expect(exitCode, 0);
 }
 

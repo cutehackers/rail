@@ -27,7 +27,7 @@ dart run bin/rail.dart validate-artifact \
   --schema integration_result
 dart run bin/rail.dart verify-learning-state
 
-if rg -q '^release_readiness: blocked$' "${ARTIFACT_PATH}/integration_result.yaml"; then
+if rg -q "^release_readiness:[[:space:]]*['\"]?blocked['\"]?[[:space:]]*$" "${ARTIFACT_PATH}/integration_result.yaml"; then
   echo "V2 gate failed: integration_result reports release_readiness=blocked."
   exit 1
 fi

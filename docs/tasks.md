@@ -1,11 +1,56 @@
-# Task Index Redirect
+# Active Release-Ready Tasks
 
-The old launch task list is archived at [docs/archive/launch-history.md](/Users/junhyounglee/workspace/rail/docs/archive/launch-history.md).
+This checklist tracks the remaining work to make `rail` release-ready at the
+`v2 integrator and learning gate` boundary.
 
-The `v0.1.0` release memory lives at [docs/archive/v0.1.0-release-memory.md](/Users/junhyounglee/workspace/rail/docs/archive/v0.1.0-release-memory.md).
+Scope of this checklist:
 
-For active work:
+- includes repository-local runtime, CI, docs, and operator-process work
+- excludes packaging, installer strategy, and external distribution format
+- treats `v1 core supervisor gate` as already shipped and closed
 
-- `v1` release contract: [docs/releases/v1-core-supervisor-gate.md](/Users/junhyounglee/workspace/rail/docs/releases/v1-core-supervisor-gate.md)
-- `v1` release backlog: [docs/backlog/v1-core-supervisor-gate.md](/Users/junhyounglee/workspace/rail/docs/backlog/v1-core-supervisor-gate.md)
-- `v2` deferred backlog: [docs/backlog/v2-integrator-and-learning.md](/Users/junhyounglee/workspace/rail/docs/backlog/v2-integrator-and-learning.md)
+Current baseline:
+
+- `v1` release blockers: none
+- `v1` verification gaps: none
+- `v2` runtime surface is implemented locally
+- `v2` now has CI coverage and a canonical operating model
+- `v2` local gate is CI-covered, documented, and verified in the current baseline
+- remaining follow-up is release-surface polish, not a ship blocker
+
+## Must
+
+- [x] Add a `v2` CI workflow that runs `./tool/v2_release_gate.sh`
+  Done when pull requests and pushes to `main` fail on broken `v2` operational state in the same way `v1` already does.
+
+- [x] Write the `Quality Improvement Operating Model`
+  Define the retained quality signals, operator review flow, promotion rules, and the line between meaningful improvement and noise.
+  Done when the model is documented as the canonical rule set for Workstream 4.
+
+- [x] Turn the `v2` release evidence contract into an operator runbook
+  Cover how to review `integration_result.release_readiness`, `blocking_issues`, `follow_up`, and which artifacts must be preserved for a release candidate.
+  Done when operators can execute the `v2` gate and make a consistent release decision without relying on tribal knowledge.
+
+- [x] Close the `v2` backlog against its own success criteria
+  Update `docs/backlog/v2-integrator-and-learning.md` so completed workstreams are marked explicitly and the remaining open work is only the unfinished release-ready scope.
+  Done when the backlog and release docs say the same thing about what is still open.
+
+## Should
+
+- [x] Decide the lifecycle of `--feedback` and `--decision` compatibility aliases
+  Chosen direction: remove them before official release and standardize the apply commands on `--file` only.
+
+- [x] Add a repeatable example for `v2` release evidence capture
+  Keep one representative `integration_result` and its referenced artifacts as a stable example of a passing `v2` release candidate.
+  Done when the evidence shape is easy to inspect and compare during future releases.
+
+- [x] Tighten the `v2` release checklist around operator ownership
+  Make the owner of release decisions explicit for `release_readiness`, blocking issues, and follow-up actions so the handoff contract is operational rather than descriptive only.
+
+## Later
+
+- [ ] Revisit packaging and distribution strategy
+  This is intentionally excluded from the current release-ready definition.
+
+- [ ] Reassess language/runtime choice for long-term delivery
+  The current repo is Dart-based, but that decision is no longer assumed to be permanent.

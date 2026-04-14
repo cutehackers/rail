@@ -165,7 +165,7 @@ dart run bin/rail.dart apply-hardening-review \
   --file .harness/learning/hardening-reviews/<draft>.yaml
 ```
 
-`--file` is the canonical apply flag. `--feedback` and `--decision` remain accepted as compatibility aliases.
+`--file` is the only supported apply flag for the file-based review commands.
 
 When a same-family review is promoted, rail overwrites the single active approved file for that family. Previous approved content stays in git history; there are no archive files for older baselines.
 

@@ -19,7 +19,7 @@ Create a concise, merge-ready handoff summary after evaluator pass.
 - `follow_up`
 - `evidence_quality`
 - `release_readiness`
-- `blocking_issues` (optional)
+- `blocking_issues` (optional, blocked-only)
 
 ## Output Quality Requirements
 - `evidence_quality` must be one of `draft`, `adequate`, `high_confidence`.
@@ -27,7 +27,7 @@ Create a concise, merge-ready handoff summary after evaluator pass.
   - `ready`
   - `conditional`
   - `blocked`
-- `blocking_issues` is only populated when `release_readiness` is `conditional` or `blocked`.
+- `blocking_issues` is only populated when `release_readiness = blocked`.
 - When `release_readiness = blocked`, include explicit reasons and concrete follow-up actions.
 
 ## Decision Semantics

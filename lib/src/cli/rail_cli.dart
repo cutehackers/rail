@@ -180,9 +180,7 @@ class RailCli {
         {
           final tail = args.skip(1).toList();
           await runner.applyUserOutcomeFeedback(
-            feedbackPath:
-                _readOption(tail, '--file') ??
-                _readRequiredOption(tail, '--feedback', usageSink: err),
+            feedbackPath: _readRequiredOption(tail, '--file', usageSink: err),
           );
           return 0;
         }
@@ -190,9 +188,7 @@ class RailCli {
         {
           final tail = args.skip(1).toList();
           await runner.applyLearningReview(
-            decisionPath:
-                _readOption(tail, '--file') ??
-                _readRequiredOption(tail, '--decision', usageSink: err),
+            decisionPath: _readRequiredOption(tail, '--file', usageSink: err),
           );
           return 0;
         }
@@ -200,9 +196,7 @@ class RailCli {
         {
           final tail = args.skip(1).toList();
           await runner.applyHardeningReview(
-            decisionPath:
-                _readOption(tail, '--file') ??
-                _readRequiredOption(tail, '--decision', usageSink: err),
+            decisionPath: _readRequiredOption(tail, '--file', usageSink: err),
           );
           return 0;
         }
@@ -253,14 +247,10 @@ void writeUsage(StringSink sink) {
     '  dart run bin/rail.dart integrate --artifact <path> [--project-root <path>]',
   );
   sink.writeln(
-    '  dart run bin/rail.dart apply-user-outcome-feedback --file <path> [--feedback <path>]',
+    '  dart run bin/rail.dart apply-user-outcome-feedback --file <path>',
   );
-  sink.writeln(
-    '  dart run bin/rail.dart apply-learning-review --file <path> [--decision <path>]',
-  );
-  sink.writeln(
-    '  dart run bin/rail.dart apply-hardening-review --file <path> [--decision <path>]',
-  );
+  sink.writeln('  dart run bin/rail.dart apply-learning-review --file <path>');
+  sink.writeln('  dart run bin/rail.dart apply-hardening-review --file <path>');
   sink.writeln('  dart run bin/rail.dart verify-learning-state');
 }
 

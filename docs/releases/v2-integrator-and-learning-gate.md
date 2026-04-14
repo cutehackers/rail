@@ -19,6 +19,12 @@
 - unreviewed live reuse of quality memory
 - direct hardening or policy updates outside reviewed apply commands
 
+The canonical quality-improvement promotion and surveillance rules live in
+`docs/releases/v2-quality-improvement-operating-model.md`.
+
+The operator decision procedure lives in
+`docs/releases/v2-release-evidence-runbook.md`.
+
 When a later same-family review promotes new approved memory, rail overwrites the canonical file and keeps the older content only in git history.
 
 ## Gate Checklist
@@ -72,7 +78,14 @@ Rail regenerates the derived state from those inputs:
 
 Approved memory is updated only on `promote` at `.harness/learning/approved/<task_family>.yaml`; `hold` and `reject` validate the existing approved file and leave it unchanged.
 
-`--file` is the canonical apply flag. `--feedback` and `--decision` remain accepted as compatibility aliases during migration.
+`--file` is the only supported apply flag for the file-based review commands.
+
+Quality-improvement review should follow the operating model document for:
+
+- paired same-family comparison
+- promotion versus hold/reject/harden decisions
+- family watch and restriction handling
+- the boundary between meaningful improvement and noise
 
 ## Minimum Evidence Requirements
 
@@ -92,6 +105,10 @@ Representative example format:
 - `follow_up`: concrete owner/action items
 - `evidence_quality`: `adequate` or better
 - `release_readiness`: `ready` or `conditional`
+
+Checked-in reference example:
+
+- `docs/archive/v2-integrator-evidence-example.yaml`
 
 ## Deferred Scope Control
 

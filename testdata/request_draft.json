@@ -3,9 +3,12 @@
   "project_root": "/tmp/rail-compose-request-smoke-target",
   "task_type": "bug_fix",
   "goal": "Normalize a structured request draft into a request file",
-  "context": [
-    "compose-request should read draft input from stdin"
-  ],
+  "context": {
+    "feature": "harness_request",
+    "validation_targets": [
+      "test/fixtures/request_validation_test.dart"
+    ]
+  },
   "constraints": [
     "keep the output deterministic"
   ],

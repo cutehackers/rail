@@ -15,49 +15,61 @@ var defaultRiskToleranceByTaskType = map[string]string{
 	"safe_refactor":    "medium",
 }
 
-func NormalizeDraft(draft Draft, currentWorkingDir string) (Draft, error) {
+var allowedRiskTolerance = map[string]struct{}{
+	"low":    {},
+	"medium": {},
+	"high":   {},
+}
+
+func NormalizeDraft(draft Draft) (MaterializedRequest, error) {
 	taskType := strings.ToLower(strings.TrimSpace(draft.TaskType))
 	if taskType == "" {
-		return Draft{}, fmt.Errorf("task_type is required")
+		return MaterializedRequest{}, fmt.Errorf("task_type is required")
 	}
 
 	defaultRiskTolerance, ok := defaultRiskToleranceByTaskType[taskType]
 	if !ok {
-		return Draft{}, fmt.Errorf("unsupported task_type: %s", taskType)
+		return MaterializedRequest{}, fmt.Errorf("unsupported task_type: %s", taskType)
 	}
 
 	goal := strings.TrimSpace(draft.Goal)
 	if goal == "" {
-		return Draft{}, fmt.Errorf("goal is required")
+		return MaterializedRequest{}, fmt.Errorf("goal is required")
 	}
 
 	projectRoot := strings.TrimSpace(draft.ProjectRoot)
 	if projectRoot == "" {
-		projectRoot = currentWorkingDir
-	}
-	if !filepath.IsAbs(projectRoot) {
-		projectRoot = filepath.Join(currentWorkingDir, projectRoot)
-	}
-
-	absoluteProjectRoot, err := filepath.Abs(projectRoot)
-	if err != nil {
-		return Draft{}, fmt.Errorf("resolve project_root: %w", err)
+		return MaterializedRequest{}, fmt.Errorf("project_root is required")
 	}
 
 	riskTolerance := strings.ToLower(strings.TrimSpace(draft.RiskTolerance))
 	if riskTolerance == "" {
 		riskTolerance = defaultRiskTolerance
 	}
+	if _, ok := allowedRiskTolerance[riskTolerance]; !ok {
+		return MaterializedRequest{}, fmt.Errorf("unsupported risk_tolerance: %s", riskTolerance)
+	}
 
-	return Draft{
-		RequestVersion:   normalizedRequestVersion(draft.RequestVersion),
-		ProjectRoot:      filepath.Clean(absoluteProjectRoot),
-		TaskType:         taskType,
-		Goal:             goal,
-		Context:          normalizeStrings(draft.Context),
-		Constraints:      normalizeStrings(draft.Constraints),
-		DefinitionOfDone: normalizeStrings(draft.DefinitionOfDone),
-		RiskTolerance:    riskTolerance,
+	_ = normalizedRequestVersion(draft.RequestVersion)
+
+	return MaterializedRequest{
+		ProjectRoot: projectRoot,
+		Request: CanonicalRequest{
+			TaskType: taskType,
+			Goal:     goal,
+			Context: RequestContext{
+				Feature:           strings.TrimSpace(draft.Context.Feature),
+				SuspectedFiles:    normalizeStrings(draft.Context.SuspectedFiles),
+				RelatedFiles:      normalizeStrings(draft.Context.RelatedFiles),
+				ValidationRoots:   normalizeStrings(draft.Context.ValidationRoots),
+				ValidationTargets: normalizeStrings(draft.Context.ValidationTargets),
+			},
+			Constraints:       normalizeStrings(draft.Constraints),
+			DefinitionOfDone:  normalizeStrings(draft.DefinitionOfDone),
+			Priority:          "medium",
+			RiskTolerance:     riskTolerance,
+			ValidationProfile: "standard",
+		},
 	}, nil
 }
 

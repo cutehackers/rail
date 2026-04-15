@@ -14,9 +14,15 @@ Suggested draft:
   "project_root": "/absolute/path/to/target-repo",
   "task_type": "bug_fix",
   "goal": "프로필 화면에서 pull-to-refresh 후 가끔 로딩 인디케이터가 사라지지 않는 문제 수정",
-  "context": [
-    "profile 화면 pull-to-refresh 흐름 관련"
-  ],
+  "context": {
+    "feature": "profile",
+    "suspected_files": [
+      "lib/profile_screen.dart"
+    ],
+    "related_files": [],
+    "validation_roots": [],
+    "validation_targets": []
+  },
   "definition_of_done": [
     "refresh 완료 후 loading state가 정상 해제된다",
     "관련 테스트 또는 영향 범위 검토가 가능하다",
@@ -45,6 +51,13 @@ Suggested draft:
   "project_root": "/absolute/path/to/target-repo",
   "task_type": "feature_addition",
   "goal": "사용자 프로필 조회 결과를 5분간 메모리 캐시한다",
+  "context": {
+    "feature": "profile",
+    "suspected_files": [],
+    "related_files": [],
+    "validation_roots": [],
+    "validation_targets": []
+  },
   "constraints": [
     "domain interface 변경 금지",
     "새 패키지 추가 금지"
@@ -71,6 +84,13 @@ Suggested draft:
   "project_root": "/absolute/path/to/target-repo",
   "task_type": "safe_refactor",
   "goal": "club details 화면의 build 로직을 섹션 단위로 분리",
+  "context": {
+    "feature": "club_details",
+    "suspected_files": [],
+    "related_files": [],
+    "validation_roots": [],
+    "validation_targets": []
+  },
   "constraints": [
     "동작 변경 금지"
   ],

@@ -20,9 +20,8 @@ You then:
 2. ask at most one concise clarification only if a missing field makes the request unsafe
 3. emit a structured request draft
 4. materialize the normalized request with `rail compose-request`
-5. validate the request
-6. bootstrap the workflow against the target repo
-7. summarize the artifact location and next actor step
+5. report the created request file and applied defaults
+6. hand off validation and bootstrap as later workflow steps
 
 Do not make the user write YAML by hand unless they explicitly ask to. Natural-language interpretation remains the primary UX; the CLI validates and materializes the official request file.
 
@@ -65,9 +64,15 @@ Emit a draft like:
   "project_root": "/absolute/path/to/target-repo",
   "task_type": "bug_fix",
   "goal": "Describe the requested outcome",
-  "context": [
-    "Short factual context item"
-  ],
+  "context": {
+    "feature": "profile",
+    "suspected_files": [
+      "lib/profile_screen.dart"
+    ],
+    "related_files": [],
+    "validation_roots": [],
+    "validation_targets": []
+  },
   "constraints": [
     "Short concrete constraint"
   ],
@@ -80,6 +85,8 @@ Emit a draft like:
 }
 ```
 
+`project_root` is required. Reject unknown draft fields instead of inventing them.
+
 Only emit fields you can support from the user request or a single safety clarification. Keep `context`, `constraints`, and `definition_of_done` concise and concrete.
 
 ## Commands
@@ -89,8 +96,6 @@ Use the installed binary:
 ```bash
 rail compose-request --stdin
 rail compose-request --input /absolute/path/to/request-draft.json
-rail validate-request --request /absolute/path/to/target-repo/.harness/requests/request.yaml
-rail run --request /absolute/path/to/target-repo/.harness/requests/request.yaml --project-root /absolute/path/to/target-repo
 ```
 
 When you need to refer to paths in explanations or examples, use placeholders such as `/absolute/path/to/request-draft.json` and `/absolute/path/to/target-repo` instead of machine-specific home-directory paths.
@@ -114,11 +119,10 @@ After bootstrapping, report:
 - inferred `task_type`
 - created request file
 - target project root
-- generated artifact directory
 - defaults that were applied
-- that bootstrap is complete and actor execution is a separate step unless you were asked to continue
+- that validation and bootstrap follow in later workflow steps
 
-When execution continues, supervisor routing should be described in action terms, not just actor names. Examples: `revise_generator`, `rebuild_context`, `tighten_validation`, `split_task`.
+Do not present `rail validate-request` or `rail run` as available in this step unless later Go workflow tasks have implemented them.
 
 ## Guardrails
 

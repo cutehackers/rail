@@ -51,22 +51,17 @@ func RunComposeRequest(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 
-	currentWorkingDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get working directory: %w", err)
-	}
-
-	normalized, err := request.NormalizeDraft(draft, currentWorkingDir)
+	materialized, err := request.NormalizeDraft(draft)
 	if err != nil {
 		return err
 	}
 
-	outputPath := request.RequestPath(normalized.ProjectRoot)
+	outputPath := request.RequestPath(materialized.ProjectRoot)
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return fmt.Errorf("create request directory: %w", err)
 	}
 
-	payload, err := yaml.Marshal(normalized)
+	payload, err := yaml.Marshal(materialized.Request)
 	if err != nil {
 		return fmt.Errorf("marshal normalized request: %w", err)
 	}

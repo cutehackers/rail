@@ -8,12 +8,13 @@ import (
 )
 
 func TestRouteEvaluationMapsFixtureToTightenValidation(t *testing.T) {
-	router, err := NewRouter(testRepoRoot(t))
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
 	if err != nil {
 		t.Fatalf("NewRouter returned error: %v", err)
 	}
 
-	artifactPath := copyRouteFixture(t, "tighten_validation")
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
 	summary, err := router.RouteEvaluation(filepath.Join(artifactPath, "evaluation_result.yaml"))
 	if err != nil {
 		t.Fatalf("RouteEvaluation returned error: %v", err)
@@ -62,14 +63,14 @@ func TestRouteEvaluationCreatesTerminalSummaryForTerminalFixtures(t *testing.T) 
 		},
 	}
 
-	router, err := NewRouter(testRepoRoot(t))
-	if err != nil {
-		t.Fatalf("NewRouter returned error: %v", err)
-	}
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			artifactPath := copyRouteFixture(t, tc.fixture)
+			projectRoot := t.TempDir()
+			router, err := NewRouter(projectRoot)
+			if err != nil {
+				t.Fatalf("NewRouter returned error: %v", err)
+			}
+			artifactPath := copyRouteFixtureIntoProject(t, projectRoot, tc.fixture)
 			summary, err := router.RouteEvaluation(artifactPath)
 			if err != nil {
 				t.Fatalf("RouteEvaluation returned error: %v", err)
@@ -88,7 +89,63 @@ func TestRouteEvaluationCreatesTerminalSummaryForTerminalFixtures(t *testing.T) 
 			if !strings.Contains(string(terminalSummary), tc.expectedSummaryText) {
 				t.Fatalf("unexpected terminal summary: %q", string(terminalSummary))
 			}
+			for _, fragment := range []string{
+				"# Terminal Outcome",
+				"## Guardrail Cost",
+				"## Guardrail Value",
+				"## Failure Details",
+			} {
+				if !strings.Contains(string(terminalSummary), fragment) {
+					t.Fatalf("expected terminal summary to contain %q, got:\n%s", fragment, string(terminalSummary))
+				}
+			}
 		})
+	}
+}
+
+func TestRouteEvaluationWritesConcreteSupervisorTrace(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	trace, err := os.ReadFile(filepath.Join(artifactPath, "supervisor_trace.md"))
+	if err != nil {
+		t.Fatalf("expected supervisor_trace.md to exist: %v", err)
+	}
+	for _, fragment := range []string{
+		"# Supervisor Decision Trace",
+		"## Iteration 1",
+		"- selected_action: `tighten_validation`",
+		"- reason_codes: `validation_scope_missing_target`",
+		"- guardrail_cost: `generator_revisions_used=0, context_rebuilds_used=0, validation_tightenings_used=0`",
+	} {
+		if !strings.Contains(string(trace), fragment) {
+			t.Fatalf("expected supervisor trace to contain %q, got:\n%s", fragment, string(trace))
+		}
+	}
+}
+
+func TestRouteEvaluationRejectsArtifactOutsideProjectRoot(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixture(t, "tighten_validation")
+	_, err = router.RouteEvaluation(artifactPath)
+	if err == nil {
+		t.Fatalf("expected RouteEvaluation to reject artifact outside %q", projectRoot)
+	}
+	if !strings.Contains(err.Error(), "project root") {
+		t.Fatalf("expected project-root confinement error, got %v", err)
 	}
 }
 
@@ -116,6 +173,35 @@ func copyRouteFixture(t *testing.T, fixtureName string) string {
 		return os.WriteFile(destination, data, info.Mode())
 	}); err != nil {
 		t.Fatalf("failed to copy fixture %q: %v", fixtureName, err)
+	}
+
+	return targetRoot
+}
+
+func copyRouteFixtureIntoProject(t *testing.T, projectRoot, fixtureName string) string {
+	t.Helper()
+	sourceRoot := filepath.Join(testRepoRoot(t), "test", "fixtures", "standard_route", fixtureName)
+	targetRoot := filepath.Join(projectRoot, ".harness", "artifacts", fixtureName)
+
+	if err := filepath.Walk(sourceRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(sourceRoot, path)
+		if err != nil {
+			return err
+		}
+		destination := filepath.Join(targetRoot, relative)
+		if info.IsDir() {
+			return os.MkdirAll(destination, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(destination, data, info.Mode())
+	}); err != nil {
+		t.Fatalf("failed to copy fixture %q into project: %v", fixtureName, err)
 	}
 
 	return targetRoot

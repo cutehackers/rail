@@ -30,7 +30,7 @@ func NewValidator(projectRoot string) (*Validator, error) {
 }
 
 func (v *Validator) ValidateRequestFile(requestPath string) (request.CanonicalRequest, error) {
-	requestFile, err := resolveFilePath(requestPath)
+	requestFile, err := ResolvePathWithinRoot(v.projectRoot, requestPath)
 	if err != nil {
 		return request.CanonicalRequest{}, err
 	}
@@ -61,7 +61,7 @@ func (v *Validator) ValidateRequestFile(requestPath string) (request.CanonicalRe
 }
 
 func (v *Validator) ValidateArtifactFile(filePath, schemaName string) (map[string]any, error) {
-	artifactFile, err := resolveFilePath(filePath)
+	artifactFile, err := ResolvePathWithinRoot(v.projectRoot, filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -146,15 +146,71 @@ func readYAMLFile(path string) (any, error) {
 	return normalizeYAMLValue(raw), nil
 }
 
-func resolveFilePath(path string) (string, error) {
+func ResolvePathWithinRoot(projectRoot, path string) (string, error) {
+	if strings.TrimSpace(projectRoot) == "" {
+		return "", errors.New("project root is required")
+	}
 	if strings.TrimSpace(path) == "" {
 		return "", errors.New("file path is required")
 	}
-	resolved, err := filepath.Abs(path)
+
+	root, err := filepath.Abs(projectRoot)
 	if err != nil {
-		return "", fmt.Errorf("resolve file path: %w", err)
+		return "", fmt.Errorf("resolve project root: %w", err)
 	}
-	return resolved, nil
+	rootCanonical, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		rootCanonical = root
+	}
+
+	candidate := path
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(root, candidate)
+	}
+	candidate = filepath.Clean(candidate)
+
+	canonicalTarget, err := canonicalWithinRoot(rootCanonical, candidate)
+	if err != nil {
+		return "", err
+	}
+	if !isWithinRoot(rootCanonical, canonicalTarget) {
+		return "", fmt.Errorf("path escapes project root %s: %s", projectRoot, path)
+	}
+	return candidate, nil
+}
+
+func canonicalWithinRoot(root, candidate string) (string, error) {
+	current := candidate
+	for {
+		info, err := os.Stat(current)
+		switch {
+		case err == nil:
+			canonical, resolveErr := filepath.EvalSymlinks(current)
+			if resolveErr != nil {
+				return "", fmt.Errorf("resolve path %s: %w", candidate, resolveErr)
+			}
+			if info.IsDir() {
+				return canonical, nil
+			}
+			return canonical, nil
+		case os.IsNotExist(err):
+			parent := filepath.Dir(current)
+			if parent == current {
+				return "", fmt.Errorf("path escapes project root %s: %s", root, candidate)
+			}
+			current = parent
+		default:
+			return "", fmt.Errorf("stat path %s: %w", candidate, err)
+		}
+	}
+}
+
+func isWithinRoot(root, candidate string) bool {
+	relative, err := filepath.Rel(root, candidate)
+	if err != nil {
+		return false
+	}
+	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
 }
 
 func schemaPathForName(schemaName string) string {
@@ -201,6 +257,14 @@ func asMap(value any, context string) (map[string]any, error) {
 		return nil, fmt.Errorf("expected object for %s", context)
 	}
 	return mapValue, nil
+}
+
+func ReadYAMLFile(path string) (any, error) {
+	return readYAMLFile(path)
+}
+
+func AsMap(value any, context string) (map[string]any, error) {
+	return asMap(value, context)
 }
 
 type SchemaValidator struct {

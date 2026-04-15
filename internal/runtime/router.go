@@ -28,7 +28,7 @@ func NewRouter(projectRoot string) (*Router, error) {
 }
 
 func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
-	artifactDirectory, err := resolveArtifactDirectory(artifactPath)
+	artifactDirectory, err := r.resolveArtifactDirectory(artifactPath)
 	if err != nil {
 		return "", err
 	}
@@ -63,11 +63,11 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 	if err := writeJSON(filepath.Join(artifactDirectory, "state.json"), nextState); err != nil {
 		return "", err
 	}
-	if err := appendSupervisorDecisionTrace(filepath.Join(artifactDirectory, "supervisor_trace.md"), nextState); err != nil {
+	if err := appendSupervisorDecisionTrace(artifactDirectory, nextState); err != nil {
 		return "", err
 	}
 	if shouldTerminate(nextState) {
-		if err := writeTerminalSummary(filepath.Join(artifactDirectory, "terminal_summary.md"), nextState); err != nil {
+		if err := writeTerminalSummary(artifactDirectory, nextState); err != nil {
 			return "", err
 		}
 	}
@@ -75,13 +75,13 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 	return formatExecutionSummary(artifactDirectory, nextState, "Harness evaluation routed"), nil
 }
 
-func resolveArtifactDirectory(artifactPath string) (string, error) {
+func (r *Router) resolveArtifactDirectory(artifactPath string) (string, error) {
 	if strings.TrimSpace(artifactPath) == "" {
 		return "", fmt.Errorf("artifact path is required")
 	}
-	resolved, err := filepath.Abs(artifactPath)
+	resolved, err := contracts.ResolvePathWithinRoot(r.projectRoot, artifactPath)
 	if err != nil {
-		return "", fmt.Errorf("resolve artifact path: %w", err)
+		return "", err
 	}
 	info, err := os.Stat(resolved)
 	if err != nil {
@@ -439,17 +439,66 @@ func formatExecutionSummary(artifactDirectory string, state State, prefix string
 	)
 }
 
-func appendSupervisorDecisionTrace(path string, state State) error {
-	var builder strings.Builder
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		builder.WriteString("# Supervisor Decision Trace\n\n")
+func appendSupervisorDecisionTrace(artifactDirectory string, state State) error {
+	tracePath := filepath.Join(artifactDirectory, "supervisor_trace.md")
+	evaluationPath := filepath.Join(artifactDirectory, "evaluation_result.yaml")
+	evaluationMap := map[string]any{}
+	if _, err := os.Stat(evaluationPath); err == nil {
+		value, readErr := readYAMLMap(evaluationPath)
+		if readErr != nil {
+			return readErr
+		}
+		evaluationMap = value
 	}
-	builder.WriteString(fmt.Sprintf("status=%s\n", state.Status))
-	builder.WriteString(fmt.Sprintf("action=%s\n", lastAction(state.ActionHistory)))
-	builder.WriteString(fmt.Sprintf("reason_codes=%s\n", strings.Join(state.LastReasonCodes, ", ")))
-	builder.WriteString(fmt.Sprintf("selected_action=%s\n", lastAction(state.ActionHistory)))
-	builder.WriteString("\n")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	decision := readOptionalStringValue(evaluationMap, "decision", derefString(state.LastDecision, ""))
+	qualityConfidence := readOptionalStringValue(evaluationMap, "quality_confidence", "unknown")
+	action := lastAction(state.ActionHistory)
+	iteration := countActor(state.CompletedActors, "evaluator")
+	category := primaryReasonCategory(state.LastReasonCodes)
+	triggerCategory := category
+	if state.LastInterventionTriggerCategory != nil {
+		triggerCategory = *state.LastInterventionTriggerCategory
+	}
+	triggerReasonCodes := state.LastInterventionTriggerReasonCodes
+	if len(triggerReasonCodes) == 0 {
+		triggerReasonCodes = state.LastReasonCodes
+	}
+	executedInterventionCount := executedInterventionCount(state)
+
+	var builder strings.Builder
+	if _, err := os.Stat(tracePath); os.IsNotExist(err) {
+		builder.WriteString("# Supervisor Decision Trace\n\n")
+		builder.WriteString("Reason code taxonomy:\n")
+		builder.WriteString("- `environment_*`: tooling, sandbox, SDK cache, permissions, or external setup failures\n")
+		builder.WriteString("- `validation_scope_*` / `validation_target_*` / `validation_mismatch_*`: validation scope or target selection problems\n")
+		builder.WriteString("- `validation_evidence_*`: validation evidence is missing, incomplete, or weak\n")
+		builder.WriteString("- `validation_requirement_*`: validation exposed a concrete unmet requirement\n")
+		builder.WriteString("- `requirements_coverage_*` / `requirements_behavior_*`: required coverage or behavior is still missing\n")
+		builder.WriteString("- `context_*`: insufficient repository context or missing grounding\n")
+		builder.WriteString("- `implementation_*`: code or patch quality gaps\n")
+		builder.WriteString("- `scope_*`: blast radius or task-boundary findings\n")
+		builder.WriteString("- `architecture_*`: design or layering violations\n\n")
+		builder.WriteString("Routing rule:\n")
+		builder.WriteString("- runtime treats `reason_codes` as authoritative; `next_action` is used only when the reason-code taxonomy does not resolve a supervisor action\n\n")
+	}
+	builder.WriteString(fmt.Sprintf("## Iteration %d\n\n", iteration))
+	builder.WriteString(fmt.Sprintf("- decision: `%s`\n", fallbackString(decision, "unknown")))
+	builder.WriteString(fmt.Sprintf("- selected_action: `%s`\n", fallbackString(action, "unknown")))
+	builder.WriteString(fmt.Sprintf("- routing_status_after_iteration: `%s`\n", state.Status))
+	builder.WriteString(fmt.Sprintf("- primary_reason_category: `%s`\n", category))
+	builder.WriteString(fmt.Sprintf("- reason_codes: `%s`\n", joinOrNone(state.LastReasonCodes)))
+	builder.WriteString(fmt.Sprintf("- quality_confidence: `%s`\n", qualityConfidence))
+	builder.WriteString(fmt.Sprintf("- context_refresh: `count=%d, last_trigger=%s, last_reason_family=%s`\n", state.ContextRefreshCount, derefString(state.LastContextRefreshTrigger, "none"), derefString(state.LastContextRefreshReasonFamily, "none")))
+	builder.WriteString(fmt.Sprintf("- executed_intervention_count: `%d`\n", executedInterventionCount))
+	builder.WriteString(fmt.Sprintf("- guardrail_cost: `generator_revisions_used=%d, context_rebuilds_used=%d, validation_tightenings_used=%d`\n", state.GeneratorRevisionsUsed, state.ContextRefreshCount, state.ValidationTighteningsUsed))
+	builder.WriteString(fmt.Sprintf("- guardrail_value: `trigger=%s, outcome=%s`\n", terminalRiskTriggerLabel(triggerReasonCodes, triggerCategory), guardrailValueOutcome(state.Status, qualityConfidence, executedInterventionCount)))
+	if shouldTerminate(state) {
+		builder.WriteString(fmt.Sprintf("- terminal_status: `%s`\n\n", state.Status))
+	} else {
+		builder.WriteString(fmt.Sprintf("- non_terminal_routing_state: `%s`\n\n", state.Status))
+	}
+
+	file, err := os.OpenFile(tracePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("open supervisor trace: %w", err)
 	}
@@ -460,17 +509,110 @@ func appendSupervisorDecisionTrace(path string, state State) error {
 	return nil
 }
 
-func writeTerminalSummary(path string, state State) error {
-	var summary string
-	switch state.Status {
-	case "split_required":
-		summary = "The request should be decomposed before continuing."
-	case "blocked_environment":
-		summary = "The workflow is blocked by environment issues."
-	default:
-		summary = fmt.Sprintf("Terminal status: %s", state.Status)
+func writeTerminalSummary(artifactDirectory string, state State) error {
+	summaryPath := filepath.Join(artifactDirectory, "terminal_summary.md")
+	evaluationPath := filepath.Join(artifactDirectory, "evaluation_result.yaml")
+	executionPath := filepath.Join(artifactDirectory, "execution_report.yaml")
+	evaluationMap := map[string]any{}
+	executionMap := map[string]any{}
+	if _, err := os.Stat(evaluationPath); err == nil {
+		value, readErr := readYAMLMap(evaluationPath)
+		if readErr != nil {
+			return readErr
+		}
+		evaluationMap = value
 	}
-	return os.WriteFile(path, []byte(summary+"\n"), 0o644)
+	if _, err := os.Stat(executionPath); err == nil {
+		value, readErr := readYAMLMap(executionPath)
+		if readErr != nil {
+			return readErr
+		}
+		executionMap = value
+	}
+	findings, err := readOptionalStringList(evaluationMap, "findings")
+	if err != nil {
+		return err
+	}
+	failureDetails, err := readOptionalStringList(executionMap, "failure_details")
+	if err != nil {
+		return err
+	}
+	logs, err := readOptionalStringList(executionMap, "logs")
+	if err != nil {
+		return err
+	}
+	qualityConfidence := readOptionalStringValue(evaluationMap, "quality_confidence", "unknown")
+	action := lastAction(state.ActionHistory)
+	if action == "" {
+		action = "none"
+	}
+	decision := readOptionalStringValue(evaluationMap, "decision", derefString(state.LastDecision, "unknown"))
+	reasonCategory := primaryReasonCategory(state.LastReasonCodes)
+	triggerCategory := reasonCategory
+	if state.LastInterventionTriggerCategory != nil {
+		triggerCategory = *state.LastInterventionTriggerCategory
+	}
+	triggerReasonCodes := state.LastInterventionTriggerReasonCodes
+	if len(triggerReasonCodes) == 0 {
+		triggerReasonCodes = state.LastReasonCodes
+	}
+	executedInterventionCount := executedInterventionCount(state)
+
+	var builder strings.Builder
+	builder.WriteString("# Terminal Outcome\n\n")
+	builder.WriteString(fmt.Sprintf("- status: `%s`\n", state.Status))
+	builder.WriteString(fmt.Sprintf("- action: `%s`\n", action))
+	builder.WriteString(fmt.Sprintf("- decision: `%s`\n", decision))
+	builder.WriteString(fmt.Sprintf("- reason_category: `%s`\n", reasonCategory))
+	builder.WriteString(fmt.Sprintf("- reason_codes: `%s`\n", joinOrNone(state.LastReasonCodes)))
+	builder.WriteString(fmt.Sprintf("- quality_confidence: `%s`\n", qualityConfidence))
+	builder.WriteString(fmt.Sprintf("- context_refresh: `count=%d, last_trigger=%s, last_reason_family=%s`\n\n", state.ContextRefreshCount, derefString(state.LastContextRefreshTrigger, "none"), derefString(state.LastContextRefreshReasonFamily, "none")))
+
+	builder.WriteString("## Summary\n\n")
+	builder.WriteString(terminalOutcomeSummary(state.Status))
+	builder.WriteString("\n\n## Recommended Next Step\n\n")
+	builder.WriteString("- " + terminalOutcomeNextStep(state.Status) + "\n\n")
+
+	builder.WriteString("## Guardrail Cost\n\n")
+	builder.WriteString(fmt.Sprintf("- executed_intervention_count: `%d`\n", executedInterventionCount))
+	builder.WriteString(fmt.Sprintf("- generator_revisions_used: `%d`\n", state.GeneratorRevisionsUsed))
+	builder.WriteString(fmt.Sprintf("- context_rebuilds_used: `%d`\n", state.ContextRefreshCount))
+	builder.WriteString(fmt.Sprintf("- validation_tightenings_used: `%d`\n", state.ValidationTighteningsUsed))
+	builder.WriteString(fmt.Sprintf("- terminal_status: `%s`\n\n", state.Status))
+
+	builder.WriteString("## Guardrail Value\n\n")
+	builder.WriteString(fmt.Sprintf("- trigger_failure_or_risk: `%s`\n", terminalRiskTriggerLabel(triggerReasonCodes, triggerCategory)))
+	builder.WriteString(fmt.Sprintf("- last_intervention: `%s`\n", lastGuardrailIntervention(state.ActionHistory)))
+	builder.WriteString(fmt.Sprintf("- final_quality_confidence: `%s`\n", qualityConfidence))
+	builder.WriteString(fmt.Sprintf("- outcome: `%s`\n\n", guardrailValueOutcome(state.Status, qualityConfidence, executedInterventionCount)))
+
+	if len(findings) > 0 {
+		builder.WriteString("## Evaluator Findings\n")
+		for _, finding := range findings {
+			builder.WriteString("- " + finding + "\n")
+		}
+		builder.WriteString("\n")
+	}
+	if len(failureDetails) > 0 {
+		builder.WriteString("## Failure Details\n")
+		for _, detail := range failureDetails {
+			builder.WriteString("- " + detail + "\n")
+		}
+		builder.WriteString("\n")
+	}
+	if len(logs) > 0 {
+		builder.WriteString("## Command Logs\n")
+		limit := min(len(logs), 10)
+		for _, logLine := range logs[:limit] {
+			builder.WriteString("- " + logLine + "\n")
+		}
+		if len(logs) > 10 {
+			builder.WriteString(fmt.Sprintf("- ... (%d more)\n", len(logs)-10))
+		}
+		builder.WriteString("\n")
+	}
+
+	return os.WriteFile(summaryPath, []byte(builder.String()), 0o644)
 }
 
 func readOptionalString(source map[string]any, key string) (*string, error) {
@@ -516,6 +658,144 @@ func contains(values []string, target string) bool {
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+func readYAMLMap(path string) (map[string]any, error) {
+	value, err := contracts.ReadYAMLFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return contracts.AsMap(value, path)
+}
+
+func countActor(completedActors []string, actor string) int {
+	count := 0
+	for _, completedActor := range completedActors {
+		if completedActor == actor {
+			count++
+		}
+	}
+	return count
+}
+
+func executedInterventionCount(state State) int {
+	return state.GeneratorRevisionsUsed + state.ContextRefreshCount + state.ValidationTighteningsUsed
+}
+
+func terminalRiskTriggerLabel(reasonCodes []string, reasonCategory string) string {
+	if len(reasonCodes) == 0 {
+		if reasonCategory == "none" {
+			return "none_active"
+		}
+		return reasonCategory + " :: resolved_before_terminal"
+	}
+	return reasonCategory + " :: " + strings.Join(reasonCodes, ", ")
+}
+
+func lastGuardrailIntervention(actionHistory []string) string {
+	for index := len(actionHistory) - 1; index >= 0; index-- {
+		action := actionHistory[index]
+		switch action {
+		case "revise_generator", "rebuild_context", "tighten_validation", "split_task", "block_environment":
+			return action
+		}
+	}
+	return "none"
+}
+
+func guardrailValueOutcome(status, qualityConfidence string, executedInterventionCount int) string {
+	if status == "passed" {
+		if executedInterventionCount == 0 {
+			return "pass_without_guardrail_intervention"
+		}
+		switch qualityConfidence {
+		case "high":
+			return "improved_confidence"
+		case "medium":
+			return "accepted_after_intervention"
+		case "low":
+			return "accepted_with_low_confidence"
+		default:
+			return "accepted_after_intervention"
+		}
+	}
+	switch status {
+	case "blocked_environment", "split_required", "evolution_exhausted", "revise_exhausted", "rejected":
+		return "bounded_refusal"
+	default:
+		return "needs_review"
+	}
+}
+
+func terminalOutcomeSummary(status string) string {
+	switch status {
+	case "passed":
+		return "The supervisor accepted the run and no further evolution step is required."
+	case "blocked_environment":
+		return "The supervisor was blocked by environment or tooling issues that prevented credible validation. More code changes would not have fixed this run."
+	case "split_required":
+		return "The supervisor stopped because the request is too broad or crosses task boundaries and should be decomposed before continuing."
+	case "evolution_exhausted":
+		return "The supervisor stopped because it ran out of bounded evolution actions without finding a credible path forward."
+	case "revise_exhausted":
+		return "The supervisor stopped because implementation retries were exhausted without closing the gap."
+	case "rejected":
+		return "The evaluator rejected the run because the result violated constraints or carried unacceptable risk."
+	default:
+		return "The harness recorded a terminal state, but this outcome needs manual review."
+	}
+}
+
+func terminalOutcomeNextStep(status string) string {
+	switch status {
+	case "passed":
+		return "Proceed to integration or handoff using the completed artifacts."
+	case "blocked_environment":
+		return "Fix the environment or tooling issue first, then rerun the same request rather than revising the generator output."
+	case "split_required":
+		return "Rewrite the request into smaller follow-up tasks with tighter scope and rerun them separately."
+	case "evolution_exhausted":
+		return "Inspect the supervisor trace, refine the request or context, and restart with a clearer validation strategy."
+	case "revise_exhausted":
+		return "Review the implementation findings, update the plan or context, and restart with a more credible generator target."
+	case "rejected":
+		return "Address the rejection reason before rerunning. Do not continue with the same artifact chain."
+	default:
+		return "Inspect the evaluator result and supervisor trace before deciding the next action."
+	}
+}
+
+func joinOrNone(values []string) string {
+	if len(values) == 0 {
+		return "none"
+	}
+	return strings.Join(values, ", ")
+}
+
+func fallbackString(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func derefString(value *string, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	return fallbackString(*value, fallback)
+}
+
+func readOptionalStringValue(source map[string]any, key, fallback string) string {
+	value, ok := source[key]
+	if !ok || value == nil {
+		return fallback
+	}
+	text, ok := value.(string)
+	if !ok {
+		return fallback
+	}
+	return fallbackString(text, fallback)
 }
 
 func actorLabel(actor *string) string {

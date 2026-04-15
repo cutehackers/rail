@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 
 	"rail/internal/assets"
@@ -38,6 +40,10 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 		return "", errors.New("task id is required")
 	}
 
+	requestFile, err := contracts.ResolvePathWithinRoot(b.projectRoot, requestPath)
+	if err != nil {
+		return "", err
+	}
 	requestValue, err := b.validator.ValidateRequestFile(requestPath)
 	if err != nil {
 		return "", err
@@ -47,37 +53,83 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	taskRouter, err := b.loadMap(".harness/supervisor/task_router.yaml")
+	if err != nil {
+		return "", err
+	}
 	policy, err := b.loadMap(".harness/supervisor/policy.yaml")
 	if err != nil {
 		return "", err
 	}
-	executionPolicy, err := b.loadMap(".harness/supervisor/execution_policy.yaml")
+	executionPolicyMap, err := b.loadMap(".harness/supervisor/execution_policy.yaml")
+	if err != nil {
+		return "", err
+	}
+	testRulesMap, err := b.loadMap(".harness/supervisor/test_target_rules.yaml")
+	if err != nil {
+		return "", err
+	}
+	contextContractMap, err := b.loadMap(".harness/supervisor/context_contract.yaml")
 	if err != nil {
 		return "", err
 	}
 
+	executionPolicy, err := executionPolicyFromMap(executionPolicyMap)
+	if err != nil {
+		return "", err
+	}
+	testRules, err := testTargetRulesFromMap(testRulesMap)
+	if err != nil {
+		return "", err
+	}
+	contextContract, err := contextContractFromMap(contextContractMap)
+	if err != nil {
+		return "", err
+	}
+
+	fileHints, err := normalizeFileHints(b.projectRoot, requestValue)
+	if err != nil {
+		return "", err
+	}
+	executionPlan := buildExecutionPlan(
+		requestValue,
+		b.projectRoot,
+		executionPolicy,
+		testRules,
+		fileHints,
+	)
+
 	resolvedWorkflow, err := buildResolvedWorkflow(
 		b.projectRoot,
-		requestPath,
+		requestFile,
 		taskID,
 		requestValue,
 		registry,
+		taskRouter,
 		policy,
+		contextContract,
+		fileHints,
+		executionPlan.TestTargets(),
 	)
 	if err != nil {
 		return "", err
 	}
 
-	artifactRoot, err := readStringFromMap(executionPolicy, "artifacts", "root")
-	if err != nil {
-		return "", err
-	}
-	artifactDirectory := filepath.Join(b.projectRoot, filepath.FromSlash(artifactRoot), taskID)
+	artifactDirectory := filepath.Join(b.projectRoot, filepath.FromSlash(executionPolicy.ArtifactRoot), taskID)
 	if err := os.MkdirAll(artifactDirectory, 0o755); err != nil {
 		return "", fmt.Errorf("create artifact directory: %w", err)
 	}
 
-	requestBytes, err := os.ReadFile(requestPath)
+	if err := os.MkdirAll(filepath.Join(artifactDirectory, "inputs"), 0o755); err != nil {
+		return "", fmt.Errorf("create inputs directory: %w", err)
+	}
+	if executionPolicy.CreateActorBriefs {
+		if err := os.MkdirAll(filepath.Join(artifactDirectory, "actor_briefs"), 0o755); err != nil {
+			return "", fmt.Errorf("create actor_briefs directory: %w", err)
+		}
+	}
+
+	requestBytes, err := os.ReadFile(requestFile)
 	if err != nil {
 		return "", fmt.Errorf("read request file: %w", err)
 	}
@@ -85,23 +137,61 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 		return "", fmt.Errorf("write request snapshot: %w", err)
 	}
 
-	if err := writeJSON(filepath.Join(artifactDirectory, "resolved_workflow.json"), resolvedWorkflow); err != nil {
-		return "", err
-	}
-	if err := writeJSON(filepath.Join(artifactDirectory, "state.json"), initialState(resolvedWorkflow)); err != nil {
-		return "", err
-	}
-	if err := writeJSON(filepath.Join(artifactDirectory, "execution_plan.json"), map[string]any{
-		"formatCommand":   nil,
-		"analyzeCommands": []string{},
-		"testCommands":    []string{},
-	}); err != nil {
+	materializedInputs, err := b.materializeStaticInputs(artifactDirectory, resolvedWorkflow.RubricPath)
+	if err != nil {
 		return "", err
 	}
 
-	for _, output := range resolvedWorkflow.RequiredOutputs {
-		if err := writeYAML(filepath.Join(artifactDirectory, artifactFileName(output)), placeholderContent(output)); err != nil {
+	if executionPolicy.PersistJSONSnapshots {
+		if err := writeJSON(filepath.Join(artifactDirectory, "resolved_workflow.json"), resolvedWorkflow); err != nil {
 			return "", err
+		}
+		if err := writeJSON(filepath.Join(artifactDirectory, "execution_plan.json"), executionPlan); err != nil {
+			return "", err
+		}
+		if err := writeJSON(filepath.Join(artifactDirectory, "state.json"), initialState(resolvedWorkflow)); err != nil {
+			return "", err
+		}
+	}
+
+	if executionPolicy.CreatePlaceholders {
+		for _, output := range resolvedWorkflow.RequiredOutputs {
+			if err := writeYAML(filepath.Join(artifactDirectory, artifactFileName(output)), placeholderContent(output)); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	if err := os.WriteFile(
+		filepath.Join(artifactDirectory, "workflow_steps.md"),
+		[]byte(buildWorkflowSteps(resolvedWorkflow, executionPlan)),
+		0o644,
+	); err != nil {
+		return "", fmt.Errorf("write workflow steps: %w", err)
+	}
+
+	if executionPolicy.CreateActorBriefs {
+		for index, actorName := range resolvedWorkflow.Actors {
+			actorInstructions, err := b.loadTextAsset(filepath.ToSlash(filepath.Join(".harness", "actors", actorName+".md")))
+			if err != nil {
+				return "", err
+			}
+			actorContract, err := contextContract.contractFor(actorName)
+			if err != nil {
+				return "", err
+			}
+			briefPath := filepath.Join(
+				artifactDirectory,
+				"actor_briefs",
+				fmt.Sprintf("%02d_%s.md", index+1, actorName),
+			)
+			if err := os.WriteFile(
+				briefPath,
+				[]byte(buildActorBrief(actorName, actorInstructions, resolvedWorkflow, executionPlan, actorContract, artifactDirectory, materializedInputs)),
+				0o644,
+			); err != nil {
+				return "", fmt.Errorf("write actor brief %s: %w", actorName, err)
+			}
 		}
 	}
 
@@ -153,23 +243,81 @@ type State struct {
 	ValidationTighteningsUsed          int      `json:"validationTighteningsUsed"`
 }
 
+type ExecutionPlan struct {
+	FormatCommand   *string  `json:"formatCommand"`
+	AnalyzeCommands []string `json:"analyzeCommands"`
+	TestCommands    []string `json:"testCommands"`
+	testTargets     []string
+}
+
+func (p ExecutionPlan) TestTargets() []string {
+	return append([]string{}, p.testTargets...)
+}
+
+type executionPolicy struct {
+	ArtifactRoot         string
+	FormatCommand        string
+	PackageAnalyze       string
+	WorkspaceAnalyze     string
+	SmokeAnalyze         string
+	PackageTest          string
+	WorkspaceTest        string
+	SmokeTest            string
+	CreatePlaceholders   bool
+	CreateActorBriefs    bool
+	PersistJSONSnapshots bool
+}
+
+type testTargetRules struct {
+	SourceSuffix    string
+	TestSuffix      string
+	FeatureTestRoot string
+	PackageTestRoot string
+	PathRules       []testPathRule
+}
+
+type testPathRule struct {
+	SourceRoot    string
+	SourceSegment string
+	TestSegment   string
+}
+
+type contextContract struct {
+	ActorContracts        map[string]actorContract
+	TerminationConditions []string
+}
+
+type actorContract struct {
+	Inputs  []string
+	Outputs []string
+}
+
+type materializedInputs struct {
+	ArchitectureRulesPath string
+	ProjectRulesPath      string
+	ForbiddenChangesPath  string
+	ExecutionPolicyPath   string
+	RubricPath            string
+	RequestPath           string
+}
+
 func buildResolvedWorkflow(
 	projectRoot string,
 	requestPath string,
 	taskID string,
 	requestValue request.CanonicalRequest,
 	registry map[string]any,
+	taskRouter map[string]any,
 	policy map[string]any,
+	contextContract contextContract,
+	fileHints []string,
+	testTargets []string,
 ) (ResolvedWorkflow, error) {
 	taskRegistry, err := readMap(registry, "task_registry")
 	if err != nil {
 		return ResolvedWorkflow{}, err
 	}
 	taskConfig, err := readMap(taskRegistry, requestValue.TaskType)
-	if err != nil {
-		return ResolvedWorkflow{}, err
-	}
-	actors, err := readStringList(taskConfig, "actors")
 	if err != nil {
 		return ResolvedWorkflow{}, err
 	}
@@ -181,16 +329,49 @@ func buildResolvedWorkflow(
 	if err != nil {
 		return ResolvedWorkflow{}, err
 	}
+	taskRetryBudget, err := readIntFromMap(taskConfig, "retry", "generator_max_retry")
+	if err != nil {
+		return ResolvedWorkflow{}, err
+	}
+
+	routes, err := readMap(taskRouter, "routes")
+	if err != nil {
+		return ResolvedWorkflow{}, err
+	}
+	routeConfig, err := readMap(routes, requestValue.TaskType)
+	if err != nil {
+		return ResolvedWorkflow{}, err
+	}
+	actors, err := readStringList(routeConfig, "actors")
+	if err != nil {
+		return ResolvedWorkflow{}, err
+	}
+	defaults, err := readMap(taskRouter, "defaults")
+	if err != nil {
+		return ResolvedWorkflow{}, err
+	}
+	routeRiskBudgets, err := readMap(defaults, "risk_tolerance")
+	if err != nil {
+		return ResolvedWorkflow{}, err
+	}
+	routeRiskRule, err := readMap(routeRiskBudgets, requestValue.RiskTolerance)
+	if err != nil {
+		return ResolvedWorkflow{}, err
+	}
+	routeRetryBudget, err := readInt(routeRiskRule, "retry_budget")
+	if err != nil {
+		return ResolvedWorkflow{}, err
+	}
 
 	retryRules, err := readMap(policy, "retry_rules")
 	if err != nil {
 		return ResolvedWorkflow{}, err
 	}
-	riskRule, err := readMap(retryRules, requestValue.RiskTolerance)
+	policyRiskRule, err := readMap(retryRules, requestValue.RiskTolerance)
 	if err != nil {
 		return ResolvedWorkflow{}, err
 	}
-	generatorRetryBudget, err := readInt(riskRule, "max_generator_retry")
+	policyRetryBudget, err := readInt(policyRiskRule, "max_generator_retry")
 	if err != nil {
 		return ResolvedWorkflow{}, err
 	}
@@ -220,6 +401,11 @@ func buildResolvedWorkflow(
 		return ResolvedWorkflow{}, err
 	}
 
+	requestRelative, err := filepath.Rel(projectRoot, requestPath)
+	if err != nil {
+		return ResolvedWorkflow{}, fmt.Errorf("relativize request path: %w", err)
+	}
+
 	return ResolvedWorkflow{
 		TaskID:                  taskID,
 		TaskType:                requestValue.TaskType,
@@ -228,21 +414,17 @@ func buildResolvedWorkflow(
 		ProjectRoot:             projectRoot,
 		Actors:                  actors,
 		RubricPath:              rubricPath,
-		GeneratorRetryBudget:    generatorRetryBudget,
+		GeneratorRetryBudget:    resolveRetryBudget(taskRetryBudget, routeRetryBudget, policyRetryBudget),
 		ContextRebuildBudget:    contextBudget,
 		ValidationTightenBudget: validationBudget,
-		ChangedFileHints:        []string{},
-		InferredTestTargets:     []string{},
+		ChangedFileHints:        append([]string{}, fileHints...),
+		InferredTestTargets:     append([]string{}, testTargets...),
 		RequiredOutputs:         requiredOutputs,
-		RequestPath:             filepath.ToSlash(requestPath),
-		TerminationConditions: []string{
-			"evaluator_decision == reject",
-			"retries_exhausted == true",
-			"evaluator_decision == pass",
-		},
-		PassIf:   passIf,
-		ReviseIf: reviseIf,
-		RejectIf: rejectIf,
+		RequestPath:             filepath.ToSlash(requestRelative),
+		TerminationConditions:   append([]string{}, contextContract.TerminationConditions...),
+		PassIf:                  passIf,
+		ReviseIf:                reviseIf,
+		RejectIf:                rejectIf,
 	}, nil
 }
 
@@ -265,6 +447,527 @@ func initialState(workflow ResolvedWorkflow) State {
 		ActionHistory:                      []string{},
 		LastInterventionTriggerReasonCodes: []string{},
 	}
+}
+
+func buildExecutionPlan(
+	requestValue request.CanonicalRequest,
+	projectRoot string,
+	policy executionPolicy,
+	rules testTargetRules,
+	fileHints []string,
+) ExecutionPlan {
+	analyzeRoots := append([]string{}, requestValue.Context.ValidationRoots...)
+	if len(analyzeRoots) == 0 {
+		analyzeRoots = inferPackageRoots(fileHints)
+	}
+
+	testTargets := append([]string{}, requestValue.Context.ValidationTargets...)
+	if len(testTargets) == 0 {
+		testTargets = rules.inferTargets(projectRoot, fileHints, requestValue.Context.Feature)
+	}
+
+	var formatCommand *string
+	if len(fileHints) > 0 {
+		command := strings.ReplaceAll(policy.FormatCommand, "{files}", joinQuoted(fileHints))
+		formatCommand = &command
+	}
+
+	var analyzeCommands []string
+	switch {
+	case requestValue.ValidationProfile == "smoke":
+		analyzeCommands = []string{
+			fmt.Sprintf("cd %s && %s", shellQuote(projectRoot), policy.SmokeAnalyze),
+		}
+	case len(analyzeRoots) == 0:
+		analyzeCommands = []string{
+			fmt.Sprintf("cd %s && %s", shellQuote(projectRoot), policy.WorkspaceAnalyze),
+		}
+	default:
+		analyzeCommands = make([]string, 0, len(analyzeRoots))
+		for _, packageRoot := range analyzeRoots {
+			analyzeCommands = append(
+				analyzeCommands,
+				fmt.Sprintf("cd %s && %s", shellQuote(filepath.Join(projectRoot, packageRoot)), policy.PackageAnalyze),
+			)
+		}
+	}
+
+	var testCommands []string
+	switch {
+	case requestValue.ValidationProfile == "smoke":
+		testCommands = []string{
+			fmt.Sprintf("cd %s && %s", shellQuote(projectRoot), policy.SmokeTest),
+		}
+	case len(testTargets) == 0:
+		testCommands = []string{
+			fmt.Sprintf("cd %s && %s", shellQuote(projectRoot), policy.WorkspaceTest),
+		}
+	default:
+		groupedTargets := groupTargetsByPackage(testTargets)
+		packageRoots := make([]string, 0, len(groupedTargets))
+		for packageRoot := range groupedTargets {
+			packageRoots = append(packageRoots, packageRoot)
+		}
+		sort.Strings(packageRoots)
+		for _, packageRoot := range packageRoots {
+			command := strings.ReplaceAll(policy.PackageTest, "{targets}", joinQuoted(groupedTargets[packageRoot]))
+			testCommands = append(
+				testCommands,
+				fmt.Sprintf("cd %s && %s", shellQuote(filepath.Join(projectRoot, packageRoot)), command),
+			)
+		}
+	}
+
+	return ExecutionPlan{
+		FormatCommand:   formatCommand,
+		AnalyzeCommands: analyzeCommands,
+		TestCommands:    testCommands,
+		testTargets:     testTargets,
+	}
+}
+
+func (b *Bootstrapper) materializeStaticInputs(artifactDirectory, rubricPath string) (materializedInputs, error) {
+	type inputFile struct {
+		Source string
+		Target string
+	}
+	inputs := []inputFile{
+		{Source: ".harness/rules/architecture_rules.md", Target: filepath.Join("inputs", "architecture_rules.md")},
+		{Source: ".harness/rules/project_rules.md", Target: filepath.Join("inputs", "project_rules.md")},
+		{Source: ".harness/rules/forbidden_changes.md", Target: filepath.Join("inputs", "forbidden_changes.md")},
+		{Source: ".harness/supervisor/execution_policy.yaml", Target: filepath.Join("inputs", "execution_policy.yaml")},
+		{Source: rubricPath, Target: filepath.Join("inputs", "rubric.yaml")},
+	}
+	for _, input := range inputs {
+		data, err := b.loadTextAsset(input.Source)
+		if err != nil {
+			return materializedInputs{}, err
+		}
+		target := filepath.Join(artifactDirectory, input.Target)
+		if err := os.WriteFile(target, []byte(data), 0o644); err != nil {
+			return materializedInputs{}, fmt.Errorf("write %s: %w", input.Target, err)
+		}
+	}
+	return materializedInputs{
+		ArchitectureRulesPath: filepath.ToSlash(filepath.Join("inputs", "architecture_rules.md")),
+		ProjectRulesPath:      filepath.ToSlash(filepath.Join("inputs", "project_rules.md")),
+		ForbiddenChangesPath:  filepath.ToSlash(filepath.Join("inputs", "forbidden_changes.md")),
+		ExecutionPolicyPath:   filepath.ToSlash(filepath.Join("inputs", "execution_policy.yaml")),
+		RubricPath:            filepath.ToSlash(filepath.Join("inputs", "rubric.yaml")),
+		RequestPath:           "request.yaml",
+	}, nil
+}
+
+func buildWorkflowSteps(workflow ResolvedWorkflow, executionPlan ExecutionPlan) string {
+	var builder strings.Builder
+	builder.WriteString("# Workflow Steps\n\n")
+	builder.WriteString(fmt.Sprintf("- Task ID: `%s`\n", workflow.TaskID))
+	builder.WriteString(fmt.Sprintf("- Task type: `%s`\n", workflow.TaskType))
+	builder.WriteString(fmt.Sprintf("- Target project root: `%s`\n", workflow.ProjectRoot))
+	builder.WriteString(fmt.Sprintf("- Actors: `%s`\n", strings.Join(workflow.Actors, " -> ")))
+	builder.WriteString(fmt.Sprintf("- Rubric: `%s`\n", workflow.RubricPath))
+	builder.WriteString(fmt.Sprintf("- Generator revise budget: `%d`\n", workflow.GeneratorRetryBudget))
+	builder.WriteString(fmt.Sprintf("- Context rebuild budget: `%d`\n", workflow.ContextRebuildBudget))
+	builder.WriteString(fmt.Sprintf("- Validation tighten budget: `%d`\n\n", workflow.ValidationTightenBudget))
+
+	if len(workflow.ChangedFileHints) > 0 {
+		builder.WriteString("## File Hints\n")
+		for _, fileHint := range workflow.ChangedFileHints {
+			builder.WriteString(fmt.Sprintf("- `%s`\n", fileHint))
+		}
+		builder.WriteString("\n")
+	}
+	if len(workflow.InferredTestTargets) > 0 {
+		builder.WriteString("## Test Targets\n")
+		for _, target := range workflow.InferredTestTargets {
+			builder.WriteString(fmt.Sprintf("- `%s`\n", target))
+		}
+		builder.WriteString("\n")
+	}
+
+	builder.WriteString("## Policy\n")
+	for _, condition := range workflow.PassIf {
+		builder.WriteString(fmt.Sprintf("- pass_if: `%s`\n", condition))
+	}
+	for _, condition := range workflow.ReviseIf {
+		builder.WriteString(fmt.Sprintf("- revise_if: `%s`\n", condition))
+	}
+	for _, condition := range workflow.RejectIf {
+		builder.WriteString(fmt.Sprintf("- reject_if: `%s`\n", condition))
+	}
+	for _, condition := range workflow.TerminationConditions {
+		builder.WriteString(fmt.Sprintf("- terminate_if: `%s`\n", condition))
+	}
+	builder.WriteString("\n")
+
+	builder.WriteString("## Supervisor Actions\n")
+	builder.WriteString("- `revise_generator`: request another implementation attempt with the current context.\n")
+	builder.WriteString("- `rebuild_context`: refresh context artifacts before another implementation attempt.\n")
+	builder.WriteString("- `tighten_validation`: reduce executor scope to the smallest credible validation set.\n")
+	builder.WriteString("- `split_task`: stop orchestration and require a smaller follow-up task.\n")
+	builder.WriteString("- `block_environment`: stop orchestration because tooling or environment setup prevents credible validation.\n\n")
+
+	builder.WriteString("## Executor Commands\n")
+	if executionPlan.FormatCommand != nil {
+		builder.WriteString(fmt.Sprintf("- `%s`\n", *executionPlan.FormatCommand))
+	}
+	for _, command := range executionPlan.AnalyzeCommands {
+		builder.WriteString(fmt.Sprintf("- `%s`\n", command))
+	}
+	for _, command := range executionPlan.TestCommands {
+		builder.WriteString(fmt.Sprintf("- `%s`\n", command))
+	}
+	return builder.String()
+}
+
+func buildActorBrief(
+	actorName string,
+	actorInstructions string,
+	workflow ResolvedWorkflow,
+	executionPlan ExecutionPlan,
+	contract actorContract,
+	artifactDirectory string,
+	materializedInputs materializedInputs,
+) string {
+	outputPath := filepath.Join(artifactDirectory, artifactFileName(canonicalOutputForActor(actorName)))
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("# %s Brief\n\n", strings.ToUpper(actorName)))
+	builder.WriteString(fmt.Sprintf("- Task ID: `%s`\n", workflow.TaskID))
+	builder.WriteString(fmt.Sprintf("- Task type: `%s`\n", workflow.TaskType))
+	builder.WriteString(fmt.Sprintf("- Target project root: `%s`\n", workflow.ProjectRoot))
+	builder.WriteString(fmt.Sprintf("- Output file: `%s`\n", outputPath))
+	builder.WriteString(fmt.Sprintf("- Rubric: `%s`\n\n", workflow.RubricPath))
+	builder.WriteString("## Contract Inputs\n")
+	for _, input := range contract.Inputs {
+		builder.WriteString(fmt.Sprintf("- `%s`: `%s`\n", input, inputPathForToken(input, artifactDirectory, materializedInputs)))
+	}
+	builder.WriteString("\n## Contract Outputs\n")
+	for _, output := range contract.Outputs {
+		builder.WriteString(fmt.Sprintf("- `%s`\n", output))
+	}
+	builder.WriteString("\n## Actor Instructions\n")
+	builder.WriteString(actorInstructions)
+	if !strings.HasSuffix(actorInstructions, "\n") {
+		builder.WriteString("\n")
+	}
+	builder.WriteString("\n## Executor Preview\n")
+	preview, _ := json.MarshalIndent(executionPlan, "", "  ")
+	builder.Write(preview)
+	builder.WriteString("\n")
+	return builder.String()
+}
+
+func inputPathForToken(token, artifactDirectory string, inputs materializedInputs) string {
+	switch token {
+	case "user_request", "constraints":
+		return filepath.Join(artifactDirectory, inputs.RequestPath)
+	case "architecture_rules":
+		return filepath.Join(artifactDirectory, filepath.FromSlash(inputs.ArchitectureRulesPath))
+	case "project_rules":
+		return filepath.Join(artifactDirectory, filepath.FromSlash(inputs.ProjectRulesPath))
+	case "forbidden_changes":
+		return filepath.Join(artifactDirectory, filepath.FromSlash(inputs.ForbiddenChangesPath))
+	case "execution_policy":
+		return filepath.Join(artifactDirectory, filepath.FromSlash(inputs.ExecutionPolicyPath))
+	case "rubric":
+		return filepath.Join(artifactDirectory, filepath.FromSlash(inputs.RubricPath))
+	case "plan":
+		return filepath.Join(artifactDirectory, "plan.yaml")
+	case "context_pack":
+		return filepath.Join(artifactDirectory, "context_pack.yaml")
+	case "implementation_result":
+		return filepath.Join(artifactDirectory, "implementation_result.yaml")
+	case "execution_report":
+		return filepath.Join(artifactDirectory, "execution_report.yaml")
+	case "evaluation_result":
+		return filepath.Join(artifactDirectory, "evaluation_result.yaml")
+	default:
+		return filepath.Join(artifactDirectory, token)
+	}
+}
+
+func canonicalOutputForActor(actorName string) string {
+	switch actorName {
+	case "planner":
+		return "plan"
+	case "context_builder":
+		return "context_pack"
+	case "generator":
+		return "implementation_result"
+	case "executor":
+		return "execution_report"
+	case "evaluator":
+		return "evaluation_result"
+	default:
+		return actorName
+	}
+}
+
+func normalizeFileHints(projectRoot string, requestValue request.CanonicalRequest) ([]string, error) {
+	deduped := map[string]struct{}{}
+	fileHints := append([]string{}, requestValue.Context.SuspectedFiles...)
+	fileHints = append(fileHints, requestValue.Context.RelatedFiles...)
+	for _, fileHint := range fileHints {
+		resolved, err := contracts.ResolvePathWithinRoot(projectRoot, fileHint)
+		if err != nil {
+			return nil, err
+		}
+		relative, err := filepath.Rel(projectRoot, resolved)
+		if err != nil {
+			return nil, fmt.Errorf("relativize file hint %s: %w", fileHint, err)
+		}
+		deduped[filepath.ToSlash(filepath.Clean(relative))] = struct{}{}
+	}
+	normalized := make([]string, 0, len(deduped))
+	for fileHint := range deduped {
+		normalized = append(normalized, fileHint)
+	}
+	sort.Strings(normalized)
+	return normalized, nil
+}
+
+func resolveRetryBudget(taskRetryBudget, routeRetryBudget, policyRetryBudget int) int {
+	return min(taskRetryBudget, min(routeRetryBudget, policyRetryBudget))
+}
+
+func executionPolicyFromMap(mapValue map[string]any) (executionPolicy, error) {
+	artifactsMap, err := readMap(mapValue, "artifacts")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	formatMap, err := readMap(mapValue, "format")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	analyzeMap, err := readMap(mapValue, "analyze")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	testsMap, err := readMap(mapValue, "tests")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	runtimeMap, err := readMap(mapValue, "runtime")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	return executionPolicy{
+		ArtifactRoot:         mustReadString(artifactsMap, "root"),
+		FormatCommand:        mustReadString(formatMap, "command"),
+		PackageAnalyze:       mustReadString(analyzeMap, "package_command"),
+		WorkspaceAnalyze:     mustReadString(analyzeMap, "workspace_fallback"),
+		SmokeAnalyze:         mustReadString(analyzeMap, "smoke_command"),
+		PackageTest:          mustReadString(testsMap, "package_command"),
+		WorkspaceTest:        mustReadString(testsMap, "workspace_fallback"),
+		SmokeTest:            mustReadString(testsMap, "smoke_command"),
+		CreatePlaceholders:   mustReadBool(runtimeMap, "create_placeholders"),
+		CreateActorBriefs:    mustReadBool(runtimeMap, "create_actor_briefs"),
+		PersistJSONSnapshots: mustReadBool(runtimeMap, "persist_json_snapshots"),
+	}, nil
+}
+
+func testTargetRulesFromMap(mapValue map[string]any) (testTargetRules, error) {
+	naming, err := readMap(mapValue, "naming")
+	if err != nil {
+		return testTargetRules{}, err
+	}
+	fallback, err := readMap(mapValue, "fallback")
+	if err != nil {
+		return testTargetRules{}, err
+	}
+	pathRuleEntries, err := readListOfMaps(mapValue, "path_rules")
+	if err != nil {
+		return testTargetRules{}, err
+	}
+	pathRules := make([]testPathRule, 0, len(pathRuleEntries))
+	for _, pathRuleEntry := range pathRuleEntries {
+		pathRules = append(pathRules, testPathRule{
+			SourceRoot:    mustReadString(pathRuleEntry, "source_root"),
+			SourceSegment: mustReadString(pathRuleEntry, "source_segment"),
+			TestSegment:   mustReadString(pathRuleEntry, "test_segment"),
+		})
+	}
+	return testTargetRules{
+		SourceSuffix:    mustReadString(naming, "source_suffix"),
+		TestSuffix:      mustReadString(naming, "test_suffix"),
+		FeatureTestRoot: mustReadString(fallback, "feature_test_root"),
+		PackageTestRoot: mustReadString(fallback, "package_test_root"),
+		PathRules:       pathRules,
+	}, nil
+}
+
+func (r testTargetRules) inferTargets(projectRoot string, fileHints []string, featureName string) []string {
+	targets := map[string]struct{}{}
+	packageRoots := map[string]struct{}{}
+	for _, fileHint := range fileHints {
+		normalized := filepath.ToSlash(filepath.Clean(fileHint))
+		segments := strings.Split(normalized, "/")
+		if slices.Contains(segments, "test") {
+			targets[normalized] = struct{}{}
+			if len(segments) > 0 && segments[0] == "test" {
+				packageRoots["."] = struct{}{}
+			}
+			continue
+		}
+		if !strings.HasSuffix(normalized, r.SourceSuffix) {
+			continue
+		}
+		if len(segments) > 0 && segments[0] == "lib" {
+			packageRoots["."] = struct{}{}
+			relativeInsideSource := strings.Join(segments[1:], "/")
+			testPath := filepath.ToSlash(filepath.Join("test", strings.TrimSuffix(relativeInsideSource, r.SourceSuffix)+r.TestSuffix))
+			if projectPathExists(projectRoot, testPath) {
+				targets[testPath] = struct{}{}
+			} else {
+				targets[filepath.ToSlash(filepath.Dir(testPath))] = struct{}{}
+			}
+			continue
+		}
+		for _, pathRule := range r.PathRules {
+			sourceIndex := slices.Index(segments, pathRule.SourceSegment)
+			if len(segments) >= 2 && segments[0] == pathRule.SourceRoot && sourceIndex >= 0 {
+				packageRoot := strings.Join(segments[:sourceIndex], "/")
+				packageRoots[packageRoot] = struct{}{}
+				relativeInsideSource := strings.Join(segments[sourceIndex+1:], "/")
+				testPath := filepath.ToSlash(filepath.Join(packageRoot, pathRule.TestSegment, strings.TrimSuffix(relativeInsideSource, r.SourceSuffix)+r.TestSuffix))
+				if projectPathExists(projectRoot, testPath) {
+					targets[testPath] = struct{}{}
+				} else {
+					targets[filepath.ToSlash(filepath.Dir(testPath))] = struct{}{}
+				}
+				break
+			}
+		}
+	}
+	if len(targets) == 0 && strings.TrimSpace(featureName) != "" {
+		rootCandidate := filepath.ToSlash(filepath.Join(r.PackageTestRoot, featureName))
+		if projectPathExists(projectRoot, rootCandidate) {
+			targets[rootCandidate] = struct{}{}
+		}
+		appCandidate := filepath.ToSlash(filepath.Join("apps", featureName, r.FeatureTestRoot))
+		if projectPathExists(projectRoot, appCandidate) {
+			targets[appCandidate] = struct{}{}
+		}
+		for packageRoot := range packageRoots {
+			packageCandidate := filepath.ToSlash(filepath.Join(packageRoot, r.PackageTestRoot))
+			if projectPathExists(projectRoot, packageCandidate) {
+				targets[packageCandidate] = struct{}{}
+			}
+		}
+	}
+	results := make([]string, 0, len(targets))
+	for target := range targets {
+		results = append(results, target)
+	}
+	sort.Strings(results)
+	return results
+}
+
+func contextContractFromMap(mapValue map[string]any) (contextContract, error) {
+	actorFlowSchema, err := readMap(mapValue, "actor_flow_schema")
+	if err != nil {
+		return contextContract{}, err
+	}
+	contracts := map[string]actorContract{}
+	for actorName, raw := range actorFlowSchema {
+		actorMap, ok := raw.(map[string]any)
+		if !ok {
+			return contextContract{}, fmt.Errorf("expected actor contract for %s", actorName)
+		}
+		inputs, err := readStringList(actorMap, "in")
+		if err != nil {
+			return contextContract{}, err
+		}
+		outputs, err := readStringList(actorMap, "out")
+		if err != nil {
+			return contextContract{}, err
+		}
+		contracts[actorName] = actorContract{Inputs: inputs, Outputs: outputs}
+	}
+	termination, err := readMap(mapValue, "termination")
+	if err != nil {
+		return contextContract{}, err
+	}
+	conditions, err := readStringList(termination, "conditions")
+	if err != nil {
+		return contextContract{}, err
+	}
+	return contextContract{
+		ActorContracts:        contracts,
+		TerminationConditions: conditions,
+	}, nil
+}
+
+func (c contextContract) contractFor(actorName string) (actorContract, error) {
+	contract, ok := c.ActorContracts[actorName]
+	if !ok {
+		return actorContract{}, fmt.Errorf("missing actor contract for %s", actorName)
+	}
+	return contract, nil
+}
+
+func inferPackageRoots(fileHints []string) []string {
+	packageRoots := map[string]struct{}{}
+	for _, fileHint := range fileHints {
+		segments := strings.Split(filepath.ToSlash(filepath.Clean(fileHint)), "/")
+		if len(segments) >= 2 && (segments[0] == "apps" || segments[0] == "packages") {
+			packageRoots[filepath.ToSlash(filepath.Join(segments[0], segments[1]))] = struct{}{}
+			continue
+		}
+		if len(segments) > 0 && (segments[0] == "lib" || segments[0] == "test") {
+			packageRoots["."] = struct{}{}
+		}
+	}
+	results := make([]string, 0, len(packageRoots))
+	for packageRoot := range packageRoots {
+		results = append(results, packageRoot)
+	}
+	sort.Strings(results)
+	return results
+}
+
+func groupTargetsByPackage(targets []string) map[string][]string {
+	grouped := map[string][]string{}
+	for _, target := range targets {
+		normalized := filepath.ToSlash(filepath.Clean(target))
+		segments := strings.Split(normalized, "/")
+		if len(segments) >= 2 && (segments[0] == "apps" || segments[0] == "packages") {
+			packageRoot := filepath.ToSlash(filepath.Join(segments[0], segments[1]))
+			localTarget := filepath.ToSlash(strings.TrimPrefix(normalized, packageRoot+"/"))
+			grouped[packageRoot] = append(grouped[packageRoot], localTarget)
+			continue
+		}
+		grouped["."] = append(grouped["."], normalized)
+	}
+	for packageRoot := range grouped {
+		sort.Strings(grouped[packageRoot])
+	}
+	return grouped
+}
+
+func projectPathExists(projectRoot, relativePath string) bool {
+	_, err := os.Stat(filepath.Join(projectRoot, filepath.FromSlash(relativePath)))
+	return err == nil
+}
+
+func joinQuoted(values []string) string {
+	quoted := make([]string, 0, len(values))
+	for _, value := range values {
+		quoted = append(quoted, shellQuote(value))
+	}
+	return strings.Join(quoted, " ")
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func (b *Bootstrapper) loadTextAsset(relPath string) (string, error) {
+	data, _, err := assets.Resolve(b.projectRoot, relPath)
+	if err != nil {
+		return "", fmt.Errorf("load %s: %w", relPath, err)
+	}
+	return string(data), nil
 }
 
 func placeholderContent(outputName string) map[string]any {
@@ -384,6 +1087,26 @@ func readMap(source map[string]any, key string) (map[string]any, error) {
 	return mapValue, nil
 }
 
+func readListOfMaps(source map[string]any, key string) ([]map[string]any, error) {
+	value, ok := source[key]
+	if !ok {
+		return nil, fmt.Errorf("missing `%s`", key)
+	}
+	listValue, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected `%s` to be a list", key)
+	}
+	result := make([]map[string]any, 0, len(listValue))
+	for _, entry := range listValue {
+		mapEntry, ok := entry.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("expected `%s` entries to be maps", key)
+		}
+		result = append(result, mapEntry)
+	}
+	return result, nil
+}
+
 func readString(source map[string]any, key string) (string, error) {
 	value, ok := source[key]
 	if !ok {
@@ -396,12 +1119,20 @@ func readString(source map[string]any, key string) (string, error) {
 	return stringValue, nil
 }
 
-func readStringFromMap(source map[string]any, key, nested string) (string, error) {
+func mustReadString(source map[string]any, key string) string {
+	text, err := readString(source, key)
+	if err != nil {
+		panic(err)
+	}
+	return text
+}
+
+func readIntFromMap(source map[string]any, key, nested string) (int, error) {
 	mapValue, err := readMap(source, key)
 	if err != nil {
-		return "", err
+		return 0, err
 	}
-	return readString(mapValue, nested)
+	return readInt(mapValue, nested)
 }
 
 func readStringList(source map[string]any, key string) ([]string, error) {
@@ -439,6 +1170,26 @@ func readInt(source map[string]any, key string) (int, error) {
 	default:
 		return 0, fmt.Errorf("expected `%s` to be an integer", key)
 	}
+}
+
+func readBool(source map[string]any, key string) (bool, error) {
+	value, ok := source[key]
+	if !ok {
+		return false, fmt.Errorf("missing `%s`", key)
+	}
+	boolValue, ok := value.(bool)
+	if !ok {
+		return false, fmt.Errorf("expected `%s` to be a bool", key)
+	}
+	return boolValue, nil
+}
+
+func mustReadBool(source map[string]any, key string) bool {
+	value, err := readBool(source, key)
+	if err != nil {
+		panic(err)
+	}
+	return value
 }
 
 func runtimeNormalizeYAMLValue(value any) any {

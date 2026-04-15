@@ -109,12 +109,34 @@ func TestAppRunPrintsComposeRequestErrorsToStderr(t *testing.T) {
 
 func TestRunValidateRequestAcceptsFixture(t *testing.T) {
 	repoRoot := repoRootFromCLIPackage(t)
+	projectRoot := t.TempDir()
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	if err := os.MkdirAll(filepath.Dir(requestPath), 0o755); err != nil {
+		t.Fatalf("failed to create request directory: %v", err)
+	}
+	requestBody, err := os.ReadFile(filepath.Join(repoRoot, "test", "fixtures", "valid_request.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read fixture request: %v", err)
+	}
+	if err := os.WriteFile(requestPath, requestBody, 0o644); err != nil {
+		t.Fatalf("failed to write fixture request: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
 	var stdout bytes.Buffer
 
-	err := RunValidateRequest(
-		[]string{"--request", filepath.Join(repoRoot, "test", "fixtures", "valid_request.yaml")},
-		&stdout,
-	)
+	err = RunValidateRequest([]string{"--request", requestPath}, &stdout)
 	if err != nil {
 		t.Fatalf("RunValidateRequest returned error: %v", err)
 	}
@@ -123,12 +145,65 @@ func TestRunValidateRequestAcceptsFixture(t *testing.T) {
 	}
 }
 
+func TestRunValidateRequestRejectsRequestOutsideDiscoveredProjectRoot(t *testing.T) {
+	repoRoot := repoRootFromCLIPackage(t)
+	projectRoot := t.TempDir()
+	outsideRoot := t.TempDir()
+	requestPath := filepath.Join(outsideRoot, "request.yaml")
+	requestBody, err := os.ReadFile(filepath.Join(repoRoot, "test", "fixtures", "valid_request.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read fixture request: %v", err)
+	}
+	if err := os.WriteFile(requestPath, requestBody, 0o644); err != nil {
+		t.Fatalf("failed to write request fixture: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	var stdout bytes.Buffer
+	err = RunValidateRequest([]string{"--request", requestPath}, &stdout)
+	if err == nil {
+		t.Fatalf("expected validate-request to reject a request outside %q", projectRoot)
+	}
+	if !strings.Contains(err.Error(), "project root") {
+		t.Fatalf("expected project-root confinement error, got %v", err)
+	}
+}
+
 func TestRunRouteEvaluationAcceptsEvaluationFilePath(t *testing.T) {
 	repoRoot := repoRootFromCLIPackage(t)
-	artifactPath := copyStandardRouteFixtureForCLI(t, repoRoot, "tighten_validation")
+	projectRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	artifactPath := copyStandardRouteFixtureForCLI(t, repoRoot, projectRoot, "tighten_validation")
 	var stdout bytes.Buffer
 
-	err := RunRouteEvaluation(
+	err = RunRouteEvaluation(
 		[]string{"--artifact", filepath.Join(artifactPath, "evaluation_result.yaml")},
 		&stdout,
 	)
@@ -149,10 +224,10 @@ func repoRootFromCLIPackage(t *testing.T) string {
 	return root
 }
 
-func copyStandardRouteFixtureForCLI(t *testing.T, repoRoot, fixtureName string) string {
+func copyStandardRouteFixtureForCLI(t *testing.T, repoRoot, projectRoot, fixtureName string) string {
 	t.Helper()
 	sourceRoot := filepath.Join(repoRoot, "test", "fixtures", "standard_route", fixtureName)
-	targetRoot := filepath.Join(t.TempDir(), fixtureName)
+	targetRoot := filepath.Join(projectRoot, ".harness", "artifacts", fixtureName)
 
 	if err := filepath.Walk(sourceRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {

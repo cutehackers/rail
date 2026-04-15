@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"rail/internal/contracts"
+	"rail/internal/project"
 )
 
 func RunValidateRequest(args []string, stdout io.Writer) error {
@@ -26,11 +27,15 @@ func RunValidateRequest(args []string, stdout io.Writer) error {
 		return fmt.Errorf("validate-request requires --request")
 	}
 
-	projectRoot, err := os.Getwd()
+	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("resolve working directory: %w", err)
 	}
-	validator, err := contracts.NewValidator(projectRoot)
+	workspace, err := project.DiscoverProject(currentDir)
+	if err != nil {
+		return err
+	}
+	validator, err := contracts.NewValidator(workspace.Root)
 	if err != nil {
 		return err
 	}

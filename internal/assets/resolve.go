@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	defaultassets "rail/assets/defaults"
 )
 
 var ErrNoFallback = errors.New("no embedded fallback for stateful harness paths")
@@ -37,7 +39,7 @@ func Resolve(projectRoot, relPath string) ([]byte, string, error) {
 		return nil, "", err
 	}
 
-	data, readErr := fs.ReadFile(defaultAssets, embeddedPath)
+	data, readErr := fs.ReadFile(defaultassets.FS, embeddedPath)
 	if readErr != nil {
 		return nil, "", readErr
 	}
@@ -58,5 +60,5 @@ func toEmbeddedPath(relPath string) (string, error) {
 	if !strings.HasPrefix(relPath, harnessPrefix) {
 		return "", fmt.Errorf("unsupported harness path: %s", relPath)
 	}
-	return filepath.ToSlash(filepath.Join("defaults", strings.TrimPrefix(relPath, harnessPrefix))), nil
+	return filepath.ToSlash(strings.TrimPrefix(relPath, harnessPrefix)), nil
 }

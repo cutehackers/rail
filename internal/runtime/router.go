@@ -196,13 +196,8 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 		nextState.Status = "rebuilding_context"
 		nextState.CurrentActor = stringPtr("context_builder")
 		nextState.ActionHistory = append(nextState.ActionHistory, action)
-		nextState.ContextRefreshCount++
 		nextState.PendingContextRefreshTrigger = pendingTrigger
 		nextState.PendingContextRefreshReasonFamily = pendingReasonFamily
-		nextState.LastContextRefreshTrigger = nextState.PendingContextRefreshTrigger
-		nextState.LastContextRefreshReasonFamily = nextState.PendingContextRefreshReasonFamily
-		nextState.PendingContextRefreshTrigger = nil
-		nextState.PendingContextRefreshReasonFamily = nil
 	case "tighten_validation":
 		nextState.ValidationTighteningsRemaining--
 		if nextState.ValidationTighteningsRemaining < 0 || !contains(workflow.Actors, "executor") {
@@ -213,7 +208,6 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 		nextState.Status = "tightening_validation"
 		nextState.CurrentActor = stringPtr("executor")
 		nextState.ActionHistory = append(nextState.ActionHistory, action)
-		nextState.ValidationTighteningsUsed++
 	case "split_task":
 		nextState.Status = "split_required"
 		nextState.CurrentActor = nil
@@ -232,7 +226,6 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 		nextState.Status = "revising"
 		nextState.CurrentActor = stringPtr("generator")
 		nextState.ActionHistory = append(nextState.ActionHistory, "revise_generator")
-		nextState.GeneratorRevisionsUsed++
 	}
 
 	return nextState, nil
@@ -533,7 +526,6 @@ func (r *Router) writeTerminalSummary(artifactDirectory string, state State) err
 	evaluationPath := filepath.Join(artifactDirectory, "evaluation_result.yaml")
 	executionPath := filepath.Join(artifactDirectory, "execution_report.yaml")
 	evaluationMap := map[string]any{}
-	executionMap := map[string]any{}
 	if _, err := os.Stat(evaluationPath); err == nil {
 		value, readErr := readYAMLMap(evaluationPath)
 		if readErr != nil {
@@ -541,12 +533,15 @@ func (r *Router) writeTerminalSummary(artifactDirectory string, state State) err
 		}
 		evaluationMap = value
 	}
-	if _, err := os.Stat(executionPath); err == nil {
-		value, readErr := readYAMLMap(executionPath)
-		if readErr != nil {
-			return readErr
+	if _, err := os.Stat(executionPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("terminal routing requires execution_report.yaml: %s", executionPath)
 		}
-		executionMap = value
+		return fmt.Errorf("stat execution_report.yaml: %w", err)
+	}
+	executionMap, err := readYAMLMap(executionPath)
+	if err != nil {
+		return err
 	}
 	findings, err := readOptionalStringList(evaluationMap, "findings")
 	if err != nil {
@@ -631,38 +626,36 @@ func (r *Router) writeTerminalSummary(artifactDirectory string, state State) err
 		builder.WriteString("\n")
 	}
 
-	if _, err := os.Stat(executionPath); err == nil {
-		enrichedExecutionMap := map[string]any{}
-		for key, value := range executionMap {
-			enrichedExecutionMap[key] = value
-		}
-		enrichedExecutionMap["executed_intervention_count"] = executedInterventionCount
-		enrichedExecutionMap["context_refresh"] = map[string]any{
-			"count":              state.ContextRefreshCount,
-			"last_trigger":       state.LastContextRefreshTrigger,
-			"last_reason_family": state.LastContextRefreshReasonFamily,
-		}
-		enrichedExecutionMap["guardrail_cost"] = map[string]any{
-			"generator_revisions_used":    state.GeneratorRevisionsUsed,
-			"context_rebuilds_used":       state.ContextRefreshCount,
-			"validation_tightenings_used": state.ValidationTighteningsUsed,
-		}
-		enrichedExecutionMap["guardrail_value"] = map[string]any{
-			"trigger_failure_or_risk": terminalRiskTriggerLabel(triggerReasonCodes, triggerCategory),
-			"trigger_reason_codes":    triggerReasonCodes,
-			"trigger_reason_category": triggerCategory,
-			"last_intervention":       lastGuardrailIntervention(state.ActionHistory),
-			"quality_confidence":      qualityConfidence,
-			"outcome":                 guardrailValueOutcome(state.Status, qualityConfidence, executedInterventionCount),
-		}
-		enrichedExecutionMap["terminal_status"] = state.Status
-		enrichedExecutionMap["approved_memory_consideration"] = ensureApprovedMemoryConsideration(executionMap)
-		if err := writeYAML(executionPath, enrichedExecutionMap); err != nil {
-			return err
-		}
-		if _, err := r.validator.ValidateArtifactFile(executionPath, "execution_report"); err != nil {
-			return err
-		}
+	enrichedExecutionMap := map[string]any{}
+	for key, value := range executionMap {
+		enrichedExecutionMap[key] = value
+	}
+	enrichedExecutionMap["executed_intervention_count"] = executedInterventionCount
+	enrichedExecutionMap["context_refresh"] = map[string]any{
+		"count":              state.ContextRefreshCount,
+		"last_trigger":       state.LastContextRefreshTrigger,
+		"last_reason_family": state.LastContextRefreshReasonFamily,
+	}
+	enrichedExecutionMap["guardrail_cost"] = map[string]any{
+		"generator_revisions_used":    state.GeneratorRevisionsUsed,
+		"context_rebuilds_used":       state.ContextRefreshCount,
+		"validation_tightenings_used": state.ValidationTighteningsUsed,
+	}
+	enrichedExecutionMap["guardrail_value"] = map[string]any{
+		"trigger_failure_or_risk": terminalRiskTriggerLabel(triggerReasonCodes, triggerCategory),
+		"trigger_reason_codes":    triggerReasonCodes,
+		"trigger_reason_category": triggerCategory,
+		"last_intervention":       lastGuardrailIntervention(state.ActionHistory),
+		"quality_confidence":      qualityConfidence,
+		"outcome":                 guardrailValueOutcome(state.Status, qualityConfidence, executedInterventionCount),
+	}
+	enrichedExecutionMap["terminal_status"] = state.Status
+	enrichedExecutionMap["approved_memory_consideration"] = ensureApprovedMemoryConsideration(executionMap)
+	if err := writeYAML(executionPath, enrichedExecutionMap); err != nil {
+		return err
+	}
+	if _, err := r.validator.ValidateArtifactFile(executionPath, "execution_report"); err != nil {
+		return err
 	}
 
 	return os.WriteFile(summaryPath, []byte(builder.String()), 0o644)

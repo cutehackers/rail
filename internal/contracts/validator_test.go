@@ -33,6 +33,35 @@ func TestValidateRequestRejectsPathOutsideProjectRoot(t *testing.T) {
 	}
 }
 
+func TestResolvePathWithinRootCanonicalizesSymlinkedPaths(t *testing.T) {
+	projectRoot := t.TempDir()
+	requestDir := filepath.Join(projectRoot, ".harness", "requests")
+	if err := os.MkdirAll(requestDir, 0o755); err != nil {
+		t.Fatalf("failed to create request directory: %v", err)
+	}
+
+	symlinkParent := t.TempDir()
+	symlinkRoot := filepath.Join(symlinkParent, "workspace")
+	if err := os.Symlink(projectRoot, symlinkRoot); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	symlinkPath := filepath.Join(symlinkRoot, ".harness", "requests", "request.yaml")
+	resolved, err := ResolvePathWithinRoot(projectRoot, symlinkPath)
+	if err != nil {
+		t.Fatalf("ResolvePathWithinRoot returned error: %v", err)
+	}
+
+	canonicalRoot, err := filepath.EvalSymlinks(projectRoot)
+	if err != nil {
+		t.Fatalf("failed to canonicalize project root: %v", err)
+	}
+	want := filepath.Join(canonicalRoot, ".harness", "requests", "request.yaml")
+	if resolved != want {
+		t.Fatalf("unexpected resolved path: got %q want %q", resolved, want)
+	}
+}
+
 func testRepoRootFromContracts(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))

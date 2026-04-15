@@ -209,6 +209,91 @@ validation_profile: standard
 	}
 }
 
+func TestBootstrapNormalizesCanonicalPathsWithinSymlinkedRoot(t *testing.T) {
+	projectRoot := t.TempDir()
+	symlinkParent := t.TempDir()
+	symlinkRoot := filepath.Join(symlinkParent, "workspace")
+	if err := os.Symlink(projectRoot, symlinkRoot); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	bootstrapper, err := NewBootstrapper(symlinkRoot)
+	if err != nil {
+		t.Fatalf("NewBootstrapper returned error: %v", err)
+	}
+
+	for _, relPath := range []string{
+		filepath.Join(".harness", "requests"),
+		filepath.Join("lib"),
+		filepath.Join("packages", "app", "lib"),
+		filepath.Join("packages", "app", "test"),
+	} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	requestBody := `task_type: bug_fix
+goal: normalize canonical inputs in a symlinked checkout
+context:
+  feature: profile
+  suspected_files:
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "lib", "profile.dart")) + `
+  related_files:
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app", "lib", "profile_state.dart")) + `
+  validation_roots:
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app")) + `
+  validation_targets:
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app", "test", "profile_test.dart")) + `
+constraints: []
+definition_of_done:
+  - keep normalized paths inside the repo
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write request fixture: %v", err)
+	}
+
+	artifactPath, err := bootstrapper.Bootstrap(requestPath, "bootstrap-symlink-root")
+	if err != nil {
+		t.Fatalf("Bootstrap returned error: %v", err)
+	}
+
+	workflow, err := readResolvedWorkflow(filepath.Join(artifactPath, "resolved_workflow.json"))
+	if err != nil {
+		t.Fatalf("failed to read resolved workflow: %v", err)
+	}
+	if workflow.RequestPath != ".harness/requests/request.yaml" {
+		t.Fatalf("unexpected requestPath: got %q want %q", workflow.RequestPath, ".harness/requests/request.yaml")
+	}
+	if got, want := workflow.ChangedFileHints, []string{"lib/profile.dart", "packages/app/lib/profile_state.dart"}; !slices.Equal(got, want) {
+		t.Fatalf("unexpected changedFileHints: got %v want %v", got, want)
+	}
+	if got, want := workflow.InferredTestTargets, []string{"packages/app/test/profile_test.dart"}; !slices.Equal(got, want) {
+		t.Fatalf("unexpected inferredTestTargets: got %v want %v", got, want)
+	}
+	for _, got := range append(append([]string{}, workflow.ChangedFileHints...), workflow.InferredTestTargets...) {
+		if strings.HasPrefix(got, "..") {
+			t.Fatalf("expected in-repo relative path, got %q", got)
+		}
+	}
+
+	executionPlan, err := readExecutionPlan(filepath.Join(artifactPath, "execution_plan.json"))
+	if err != nil {
+		t.Fatalf("failed to read execution plan: %v", err)
+	}
+	wantAnalyze := []string{"cd '" + filepath.ToSlash(filepath.Join(symlinkRoot, "packages", "app")) + "' && flutter analyze . --fatal-infos"}
+	if !slices.Equal(executionPlan.AnalyzeCommands, wantAnalyze) {
+		t.Fatalf("unexpected analyzeCommands: got %v want %v", executionPlan.AnalyzeCommands, wantAnalyze)
+	}
+	wantTests := []string{"cd '" + filepath.ToSlash(filepath.Join(symlinkRoot, "packages", "app")) + "' && flutter test 'test/profile_test.dart'"}
+	if !slices.Equal(executionPlan.TestCommands, wantTests) {
+		t.Fatalf("unexpected testCommands: got %v want %v", executionPlan.TestCommands, wantTests)
+	}
+}
+
 func TestBootstrapRejectsEscapingValidationInputs(t *testing.T) {
 	projectRoot := t.TempDir()
 	bootstrapper, err := NewBootstrapper(projectRoot)

@@ -404,7 +404,7 @@ func buildResolvedWorkflow(
 		return ResolvedWorkflow{}, err
 	}
 
-	requestRelative, err := filepath.Rel(projectRoot, requestPath)
+	requestRelative, err := projectRelativePath(projectRoot, requestPath)
 	if err != nil {
 		return ResolvedWorkflow{}, fmt.Errorf("relativize request path: %w", err)
 	}
@@ -423,7 +423,7 @@ func buildResolvedWorkflow(
 		ChangedFileHints:        append([]string{}, fileHints...),
 		InferredTestTargets:     append([]string{}, testTargets...),
 		RequiredOutputs:         requiredOutputs,
-		RequestPath:             filepath.ToSlash(requestRelative),
+		RequestPath:             requestRelative,
 		TerminationConditions:   append([]string{}, contextContract.TerminationConditions...),
 		PassIf:                  passIf,
 		ReviseIf:                reviseIf,
@@ -721,15 +721,11 @@ func normalizeFileHints(projectRoot string, requestValue request.CanonicalReques
 func normalizeProjectRelativePaths(projectRoot string, rawPaths []string) ([]string, error) {
 	deduped := map[string]struct{}{}
 	for _, rawPath := range rawPaths {
-		resolved, err := contracts.ResolvePathWithinRoot(projectRoot, rawPath)
-		if err != nil {
-			return nil, err
-		}
-		relative, err := filepath.Rel(projectRoot, resolved)
+		relative, err := projectRelativePath(projectRoot, rawPath)
 		if err != nil {
 			return nil, fmt.Errorf("relativize %s: %w", rawPath, err)
 		}
-		deduped[filepath.ToSlash(filepath.Clean(relative))] = struct{}{}
+		deduped[relative] = struct{}{}
 	}
 	normalized := make([]string, 0, len(deduped))
 	for rawPath := range deduped {
@@ -753,11 +749,11 @@ func normalizeProjectRelativeDirectories(projectRoot string, rawPaths []string) 
 		if !info.IsDir() {
 			return nil, fmt.Errorf("%s must resolve to a directory", rawPath)
 		}
-		relative, err := filepath.Rel(projectRoot, resolved)
+		relative, err := projectRelativePath(projectRoot, resolved)
 		if err != nil {
 			return nil, fmt.Errorf("relativize %s: %w", rawPath, err)
 		}
-		deduped[filepath.ToSlash(filepath.Clean(relative))] = struct{}{}
+		deduped[relative] = struct{}{}
 	}
 	normalized := make([]string, 0, len(deduped))
 	for rawPath := range deduped {
@@ -765,6 +761,32 @@ func normalizeProjectRelativeDirectories(projectRoot string, rawPaths []string) 
 	}
 	sort.Strings(normalized)
 	return normalized, nil
+}
+
+func projectRelativePath(projectRoot, rawPath string) (string, error) {
+	root, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve project root: %w", err)
+	}
+	rootCanonical, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		rootCanonical = root
+	}
+
+	resolved, err := contracts.ResolvePathWithinRoot(projectRoot, rawPath)
+	if err != nil {
+		return "", err
+	}
+
+	relative, err := filepath.Rel(rootCanonical, resolved)
+	if err != nil {
+		return "", err
+	}
+	relative = filepath.Clean(relative)
+	if relative != "." && (relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator))) {
+		return "", fmt.Errorf("path escapes project root %s: %s", projectRoot, rawPath)
+	}
+	return filepath.ToSlash(relative), nil
 }
 
 func resolveRetryBudget(taskRetryBudget, routeRetryBudget, policyRetryBudget int) int {

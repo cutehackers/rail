@@ -176,23 +176,27 @@ func ResolvePathWithinRoot(projectRoot, path string) (string, error) {
 	if !isWithinRoot(rootCanonical, canonicalTarget) {
 		return "", fmt.Errorf("path escapes project root %s: %s", projectRoot, path)
 	}
-	return candidate, nil
+	return canonicalTarget, nil
 }
 
 func canonicalWithinRoot(root, candidate string) (string, error) {
 	current := candidate
 	for {
-		info, err := os.Stat(current)
+		_, err := os.Stat(current)
 		switch {
 		case err == nil:
 			canonical, resolveErr := filepath.EvalSymlinks(current)
 			if resolveErr != nil {
 				return "", fmt.Errorf("resolve path %s: %w", candidate, resolveErr)
 			}
-			if info.IsDir() {
+			if current == candidate {
 				return canonical, nil
 			}
-			return canonical, nil
+			suffix, relErr := filepath.Rel(current, candidate)
+			if relErr != nil {
+				return "", fmt.Errorf("resolve path %s: %w", candidate, relErr)
+			}
+			return filepath.Join(canonical, suffix), nil
 		case os.IsNotExist(err):
 			parent := filepath.Dir(current)
 			if parent == current {

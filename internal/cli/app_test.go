@@ -47,7 +47,7 @@ func TestAppRunAcceptsKnownCommand(t *testing.T) {
 }
 
 func TestAppRunRejectsRegisteredButUnimplementedCommands(t *testing.T) {
-	for _, command := range []string{"validate-request", "run", "execute", "route-evaluation"} {
+	for _, command := range []string{"run", "execute"} {
 		if got := NewApp().Run([]string{command}); got == 0 {
 			t.Fatalf("expected non-zero exit code for unimplemented command %q, got %d", command, got)
 		}
@@ -105,4 +105,75 @@ func TestAppRunPrintsComposeRequestErrorsToStderr(t *testing.T) {
 	if !strings.Contains(stderr.String(), "project_root is required") {
 		t.Fatalf("expected compose-request error on stderr, got %q", stderr.String())
 	}
+}
+
+func TestRunValidateRequestAcceptsFixture(t *testing.T) {
+	repoRoot := repoRootFromCLIPackage(t)
+	var stdout bytes.Buffer
+
+	err := RunValidateRequest(
+		[]string{"--request", filepath.Join(repoRoot, "test", "fixtures", "valid_request.yaml")},
+		&stdout,
+	)
+	if err != nil {
+		t.Fatalf("RunValidateRequest returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Request is valid") {
+		t.Fatalf("unexpected validate-request output: %q", stdout.String())
+	}
+}
+
+func TestRunRouteEvaluationAcceptsEvaluationFilePath(t *testing.T) {
+	repoRoot := repoRootFromCLIPackage(t)
+	artifactPath := copyStandardRouteFixtureForCLI(t, repoRoot, "tighten_validation")
+	var stdout bytes.Buffer
+
+	err := RunRouteEvaluation(
+		[]string{"--artifact", filepath.Join(artifactPath, "evaluation_result.yaml")},
+		&stdout,
+	)
+	if err != nil {
+		t.Fatalf("RunRouteEvaluation returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "status=tightening_validation") {
+		t.Fatalf("unexpected route-evaluation output: %q", stdout.String())
+	}
+}
+
+func repoRootFromCLIPackage(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("failed to resolve repo root: %v", err)
+	}
+	return root
+}
+
+func copyStandardRouteFixtureForCLI(t *testing.T, repoRoot, fixtureName string) string {
+	t.Helper()
+	sourceRoot := filepath.Join(repoRoot, "test", "fixtures", "standard_route", fixtureName)
+	targetRoot := filepath.Join(t.TempDir(), fixtureName)
+
+	if err := filepath.Walk(sourceRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(sourceRoot, path)
+		if err != nil {
+			return err
+		}
+		destination := filepath.Join(targetRoot, relative)
+		if info.IsDir() {
+			return os.MkdirAll(destination, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(destination, data, info.Mode())
+	}); err != nil {
+		t.Fatalf("failed to copy standard-route fixture %q: %v", fixtureName, err)
+	}
+
+	return targetRoot
 }

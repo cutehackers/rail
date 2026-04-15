@@ -91,13 +91,16 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	executionPlan := buildExecutionPlan(
+	executionPlan, err := buildExecutionPlan(
 		requestValue,
 		b.projectRoot,
 		executionPolicy,
 		testRules,
 		fileHints,
 	)
+	if err != nil {
+		return "", err
+	}
 
 	resolvedWorkflow, err := buildResolvedWorkflow(
 		b.projectRoot,
@@ -455,13 +458,19 @@ func buildExecutionPlan(
 	policy executionPolicy,
 	rules testTargetRules,
 	fileHints []string,
-) ExecutionPlan {
-	analyzeRoots := append([]string{}, requestValue.Context.ValidationRoots...)
+) (ExecutionPlan, error) {
+	analyzeRoots, err := normalizeProjectRelativePaths(projectRoot, requestValue.Context.ValidationRoots)
+	if err != nil {
+		return ExecutionPlan{}, fmt.Errorf("normalize context.validation_roots: %w", err)
+	}
 	if len(analyzeRoots) == 0 {
 		analyzeRoots = inferPackageRoots(fileHints)
 	}
 
-	testTargets := append([]string{}, requestValue.Context.ValidationTargets...)
+	testTargets, err := normalizeProjectRelativePaths(projectRoot, requestValue.Context.ValidationTargets)
+	if err != nil {
+		return ExecutionPlan{}, fmt.Errorf("normalize context.validation_targets: %w", err)
+	}
 	if len(testTargets) == 0 {
 		testTargets = rules.inferTargets(projectRoot, fileHints, requestValue.Context.Feature)
 	}
@@ -523,7 +532,7 @@ func buildExecutionPlan(
 		AnalyzeCommands: analyzeCommands,
 		TestCommands:    testCommands,
 		testTargets:     testTargets,
-	}
+	}, nil
 }
 
 func (b *Bootstrapper) materializeStaticInputs(artifactDirectory, rubricPath string) (materializedInputs, error) {
@@ -704,23 +713,27 @@ func canonicalOutputForActor(actorName string) string {
 }
 
 func normalizeFileHints(projectRoot string, requestValue request.CanonicalRequest) ([]string, error) {
-	deduped := map[string]struct{}{}
 	fileHints := append([]string{}, requestValue.Context.SuspectedFiles...)
 	fileHints = append(fileHints, requestValue.Context.RelatedFiles...)
-	for _, fileHint := range fileHints {
-		resolved, err := contracts.ResolvePathWithinRoot(projectRoot, fileHint)
+	return normalizeProjectRelativePaths(projectRoot, fileHints)
+}
+
+func normalizeProjectRelativePaths(projectRoot string, rawPaths []string) ([]string, error) {
+	deduped := map[string]struct{}{}
+	for _, rawPath := range rawPaths {
+		resolved, err := contracts.ResolvePathWithinRoot(projectRoot, rawPath)
 		if err != nil {
 			return nil, err
 		}
 		relative, err := filepath.Rel(projectRoot, resolved)
 		if err != nil {
-			return nil, fmt.Errorf("relativize file hint %s: %w", fileHint, err)
+			return nil, fmt.Errorf("relativize %s: %w", rawPath, err)
 		}
 		deduped[filepath.ToSlash(filepath.Clean(relative))] = struct{}{}
 	}
 	normalized := make([]string, 0, len(deduped))
-	for fileHint := range deduped {
-		normalized = append(normalized, fileHint)
+	for rawPath := range deduped {
+		normalized = append(normalized, rawPath)
 	}
 	sort.Strings(normalized)
 	return normalized, nil

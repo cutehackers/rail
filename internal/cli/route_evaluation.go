@@ -3,9 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
-	"os"
 
-	"rail/internal/project"
 	"rail/internal/runtime"
 )
 
@@ -27,11 +25,7 @@ func RunRouteEvaluation(args []string, stdout io.Writer) error {
 		return fmt.Errorf("route-evaluation requires --artifact")
 	}
 
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("resolve working directory: %w", err)
-	}
-	workspace, err := project.DiscoverProject(currentDir)
+	workspace, err := discoverWorkspaceFromPath(artifactPath)
 	if err != nil {
 		return err
 	}

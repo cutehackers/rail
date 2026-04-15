@@ -3,10 +3,8 @@ package cli
 import (
 	"fmt"
 	"io"
-	"os"
 
 	"rail/internal/contracts"
-	"rail/internal/project"
 )
 
 func RunValidateRequest(args []string, stdout io.Writer) error {
@@ -27,11 +25,7 @@ func RunValidateRequest(args []string, stdout io.Writer) error {
 		return fmt.Errorf("validate-request requires --request")
 	}
 
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("resolve working directory: %w", err)
-	}
-	workspace, err := project.DiscoverProject(currentDir)
+	workspace, err := discoverWorkspaceFromPath(requestPath)
 	if err != nil {
 		return err
 	}

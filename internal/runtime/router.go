@@ -182,11 +182,24 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 			nextState.CurrentActor = nil
 			return nextState, nil
 		}
+		pendingTrigger := state.PendingContextRefreshTrigger
+		if pendingTrigger == nil {
+			pendingTrigger = stringPtr(contextRefreshTrigger(reasonCodes, nextAction))
+		}
+		pendingReasonFamily := state.PendingContextRefreshReasonFamily
+		if pendingReasonFamily == nil {
+			pendingReasonFamily = stringPtr(reasonCategory)
+		}
 		nextState.Status = "rebuilding_context"
 		nextState.CurrentActor = stringPtr("context_builder")
 		nextState.ActionHistory = append(nextState.ActionHistory, action)
-		nextState.PendingContextRefreshTrigger = stringPtr(contextRefreshTrigger(reasonCodes, nextAction))
-		nextState.PendingContextRefreshReasonFamily = stringPtr(reasonCategory)
+		nextState.ContextRefreshCount++
+		nextState.PendingContextRefreshTrigger = pendingTrigger
+		nextState.PendingContextRefreshReasonFamily = pendingReasonFamily
+		nextState.LastContextRefreshTrigger = nextState.PendingContextRefreshTrigger
+		nextState.LastContextRefreshReasonFamily = nextState.PendingContextRefreshReasonFamily
+		nextState.PendingContextRefreshTrigger = nil
+		nextState.PendingContextRefreshReasonFamily = nil
 	case "tighten_validation":
 		nextState.ValidationTighteningsRemaining--
 		if nextState.ValidationTighteningsRemaining < 0 || !contains(workflow.Actors, "executor") {
@@ -197,6 +210,7 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 		nextState.Status = "tightening_validation"
 		nextState.CurrentActor = stringPtr("executor")
 		nextState.ActionHistory = append(nextState.ActionHistory, action)
+		nextState.ValidationTighteningsUsed++
 	case "split_task":
 		nextState.Status = "split_required"
 		nextState.CurrentActor = nil
@@ -215,6 +229,7 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 		nextState.Status = "revising"
 		nextState.CurrentActor = stringPtr("generator")
 		nextState.ActionHistory = append(nextState.ActionHistory, "revise_generator")
+		nextState.GeneratorRevisionsUsed++
 	}
 
 	return nextState, nil

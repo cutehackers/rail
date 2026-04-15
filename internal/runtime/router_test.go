@@ -124,12 +124,111 @@ func TestRouteEvaluationWritesConcreteSupervisorTrace(t *testing.T) {
 		"## Iteration 1",
 		"- selected_action: `tighten_validation`",
 		"- reason_codes: `validation_scope_missing_target`",
-		"- guardrail_cost: `generator_revisions_used=0, context_rebuilds_used=0, validation_tightenings_used=0`",
+		"- guardrail_cost: `generator_revisions_used=0, context_rebuilds_used=0, validation_tightenings_used=1`",
 		"- budgets_remaining: `generator=1, context=1, validation=0`",
 	} {
 		if !strings.Contains(string(trace), fragment) {
 			t.Fatalf("expected supervisor trace to contain %q, got:\n%s", fragment, string(trace))
 		}
+	}
+}
+
+func TestRouteEvaluationTracksContextRefreshAccounting(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "rebuild_context")
+	summary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+	if !strings.Contains(summary, "status=rebuilding_context") {
+		t.Fatalf("expected summary to include rebuilding_context, got %q", summary)
+	}
+
+	state, err := readState(filepath.Join(artifactPath, "state.json"))
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	if state.ContextRefreshCount != 1 {
+		t.Fatalf("unexpected ContextRefreshCount: got %d want %d", state.ContextRefreshCount, 1)
+	}
+	if state.LastContextRefreshTrigger == nil || *state.LastContextRefreshTrigger != "reason_codes" {
+		t.Fatalf("unexpected LastContextRefreshTrigger: got %v want %q", state.LastContextRefreshTrigger, "reason_codes")
+	}
+	if state.LastContextRefreshReasonFamily == nil || *state.LastContextRefreshReasonFamily != "context" {
+		t.Fatalf("unexpected LastContextRefreshReasonFamily: got %v want %q", state.LastContextRefreshReasonFamily, "context")
+	}
+	if state.PendingContextRefreshTrigger != nil || state.PendingContextRefreshReasonFamily != nil {
+		t.Fatalf(
+			"expected pending context refresh fields to be cleared, got trigger=%v family=%v",
+			state.PendingContextRefreshTrigger,
+			state.PendingContextRefreshReasonFamily,
+		)
+	}
+
+	trace, err := os.ReadFile(filepath.Join(artifactPath, "supervisor_trace.md"))
+	if err != nil {
+		t.Fatalf("expected supervisor_trace.md to exist: %v", err)
+	}
+	for _, fragment := range []string{
+		"- context_refresh: `count=1, last_trigger=reason_codes, last_reason_family=context`",
+		"- guardrail_cost: `generator_revisions_used=0, context_rebuilds_used=1, validation_tightenings_used=0`",
+	} {
+		if !strings.Contains(string(trace), fragment) {
+			t.Fatalf("expected supervisor trace to contain %q, got:\n%s", fragment, string(trace))
+		}
+	}
+}
+
+func TestRouteEvaluationTracksGeneratorRevisionAccounting(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	evaluationBody := `decision: revise
+scores:
+  requirements: 0.4
+  architecture: 0.8
+  regression_risk: 0.3
+quality_confidence: medium
+findings:
+  - Generator output still violates the requested behavior.
+reason_codes:
+  - implementation_patch_invalid
+`
+	if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(evaluationBody), 0o644); err != nil {
+		t.Fatalf("failed to override evaluation_result.yaml: %v", err)
+	}
+
+	summary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+	if !strings.Contains(summary, "action=revise_generator") {
+		t.Fatalf("expected summary to include revise_generator, got %q", summary)
+	}
+
+	state, err := readState(filepath.Join(artifactPath, "state.json"))
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	if state.GeneratorRevisionsUsed != 1 {
+		t.Fatalf("unexpected GeneratorRevisionsUsed: got %d want %d", state.GeneratorRevisionsUsed, 1)
+	}
+
+	trace, err := os.ReadFile(filepath.Join(artifactPath, "supervisor_trace.md"))
+	if err != nil {
+		t.Fatalf("expected supervisor_trace.md to exist: %v", err)
+	}
+	if !strings.Contains(string(trace), "- guardrail_cost: `generator_revisions_used=1, context_rebuilds_used=0, validation_tightenings_used=0`") {
+		t.Fatalf("expected supervisor trace to report generator revision usage, got:\n%s", string(trace))
 	}
 }
 

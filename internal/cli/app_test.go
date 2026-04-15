@@ -145,6 +145,46 @@ func TestRunValidateRequestAcceptsFixture(t *testing.T) {
 	}
 }
 
+func TestRunValidateRequestDiscoversProjectFromAbsoluteRequestPath(t *testing.T) {
+	repoRoot := repoRootFromCLIPackage(t)
+	projectRoot := t.TempDir()
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	if err := os.MkdirAll(filepath.Dir(requestPath), 0o755); err != nil {
+		t.Fatalf("failed to create request directory: %v", err)
+	}
+	requestBody, err := os.ReadFile(filepath.Join(repoRoot, "test", "fixtures", "valid_request.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read fixture request: %v", err)
+	}
+	if err := os.WriteFile(requestPath, requestBody, 0o644); err != nil {
+		t.Fatalf("failed to write fixture request: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+
+	outsideWD := t.TempDir()
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(outsideWD); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	var stdout bytes.Buffer
+	err = RunValidateRequest([]string{"--request", requestPath}, &stdout)
+	if err != nil {
+		t.Fatalf("RunValidateRequest returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Request is valid") {
+		t.Fatalf("unexpected validate-request output: %q", stdout.String())
+	}
+}
+
 func TestRunValidateRequestRejectsRequestOutsideDiscoveredProjectRoot(t *testing.T) {
 	repoRoot := repoRootFromCLIPackage(t)
 	projectRoot := t.TempDir()
@@ -161,6 +201,13 @@ func TestRunValidateRequestRejectsRequestOutsideDiscoveredProjectRoot(t *testing
 	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
 		t.Fatalf("failed to write git marker: %v", err)
 	}
+	symlinkPath := filepath.Join(projectRoot, ".harness", "requests", "external-request.yaml")
+	if err := os.MkdirAll(filepath.Dir(symlinkPath), 0o755); err != nil {
+		t.Fatalf("failed to create symlink directory: %v", err)
+	}
+	if err := os.Symlink(requestPath, symlinkPath); err != nil {
+		t.Fatalf("failed to create symlinked request path: %v", err)
+	}
 
 	originalWD, err := os.Getwd()
 	if err != nil {
@@ -174,7 +221,7 @@ func TestRunValidateRequestRejectsRequestOutsideDiscoveredProjectRoot(t *testing
 	})
 
 	var stdout bytes.Buffer
-	err = RunValidateRequest([]string{"--request", requestPath}, &stdout)
+	err = RunValidateRequest([]string{"--request", symlinkPath}, &stdout)
 	if err == nil {
 		t.Fatalf("expected validate-request to reject a request outside %q", projectRoot)
 	}
@@ -194,6 +241,40 @@ func TestRunRouteEvaluationAcceptsEvaluationFilePath(t *testing.T) {
 		t.Fatalf("failed to get working directory: %v", err)
 	}
 	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	artifactPath := copyStandardRouteFixtureForCLI(t, repoRoot, projectRoot, "tighten_validation")
+	var stdout bytes.Buffer
+
+	err = RunRouteEvaluation(
+		[]string{"--artifact", filepath.Join(artifactPath, "evaluation_result.yaml")},
+		&stdout,
+	)
+	if err != nil {
+		t.Fatalf("RunRouteEvaluation returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "status=tightening_validation") {
+		t.Fatalf("unexpected route-evaluation output: %q", stdout.String())
+	}
+}
+
+func TestRunRouteEvaluationDiscoversProjectFromAbsoluteArtifactPath(t *testing.T) {
+	repoRoot := repoRootFromCLIPackage(t)
+	projectRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+
+	outsideWD := t.TempDir()
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(outsideWD); err != nil {
 		t.Fatalf("failed to change working directory: %v", err)
 	}
 	t.Cleanup(func() {

@@ -59,9 +59,9 @@ context:
   related_files:
     - packages/app/lib/profile_state.dart
   validation_roots:
-    - packages/app
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app")) + `
   validation_targets:
-    - packages/app/test/profile_test.dart
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app", "test", "profile_test.dart")) + `
 constraints: []
 definition_of_done:
   - validate the intended target set
@@ -206,6 +206,52 @@ validation_profile: standard
 		if !strings.Contains(string(executionReport), fragment) {
 			t.Fatalf("expected execution_report placeholder to contain %q, got:\n%s", fragment, string(executionReport))
 		}
+	}
+}
+
+func TestBootstrapRejectsEscapingValidationInputs(t *testing.T) {
+	projectRoot := t.TempDir()
+	bootstrapper, err := NewBootstrapper(projectRoot)
+	if err != nil {
+		t.Fatalf("NewBootstrapper returned error: %v", err)
+	}
+
+	outsideRoot := t.TempDir()
+	for _, relPath := range []string{
+		filepath.Join(".harness", "requests"),
+		filepath.Join("lib"),
+	} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	requestBody := `task_type: bug_fix
+goal: reject validation paths that escape the project root
+context:
+  suspected_files:
+    - lib/profile.dart
+  validation_roots:
+    - ../outside
+  validation_targets:
+    - ` + filepath.ToSlash(filepath.Join(outsideRoot, "test", "evil_test.dart")) + `
+constraints: []
+definition_of_done:
+  - reject unsafe validation paths
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write request fixture: %v", err)
+	}
+
+	_, err = bootstrapper.Bootstrap(requestPath, "bootstrap-rejects-escaping-validation-inputs")
+	if err == nil {
+		t.Fatalf("expected Bootstrap to reject validation inputs outside %q", projectRoot)
+	}
+	if !strings.Contains(err.Error(), "project root") {
+		t.Fatalf("expected project-root confinement error, got %v", err)
 	}
 }
 

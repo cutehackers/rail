@@ -38,6 +38,7 @@ func (a *App) Run(args []string) int {
 
 	if args[0] == "init" {
 		if err := RunInit(args[1:]); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
 		return 0
@@ -45,6 +46,7 @@ func (a *App) Run(args []string) int {
 
 	if args[0] == "compose-request" {
 		if err := RunComposeRequest(args[1:], os.Stdin, os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
 		return 0

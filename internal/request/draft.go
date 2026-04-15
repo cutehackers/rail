@@ -58,6 +58,13 @@ func DecodeDraft(r io.Reader) (Draft, error) {
 	if err := decoder.Decode(&draft); err != nil {
 		return Draft{}, fmt.Errorf("decode draft: %w", err)
 	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != nil && err != io.EOF {
+		return Draft{}, fmt.Errorf("decode draft: %w", err)
+	}
+	if trailing != nil {
+		return Draft{}, fmt.Errorf("decode draft: multiple draft documents are not allowed")
+	}
 
 	return draft, nil
 }

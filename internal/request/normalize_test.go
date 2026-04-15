@@ -153,6 +153,24 @@ func TestComposeRequestRejectsUnknownDraftFields(t *testing.T) {
 	}
 }
 
+func TestComposeRequestRejectsMultipleDraftDocuments(t *testing.T) {
+	_, err := DecodeDraft(strings.NewReader(`---
+project_root: /tmp/target-app
+task_type: bug_fix
+goal: Fix the bug
+---
+project_root: /tmp/another-target
+task_type: bug_fix
+goal: Second draft
+`))
+	if err == nil {
+		t.Fatal("expected multi-document draft rejection")
+	}
+	if !strings.Contains(err.Error(), "multiple draft documents are not allowed") {
+		t.Fatalf("expected multi-document error, got %v", err)
+	}
+}
+
 func TestComposeRequestRejectsUnsupportedRequestVersion(t *testing.T) {
 	_, err := NormalizeDraft(Draft{
 		RequestVersion: "2",

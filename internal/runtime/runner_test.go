@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestRunBootstrapsSmokeArtifact(t *testing.T) {
@@ -109,6 +111,41 @@ func TestRunRejectsNonEmptyExistingArtifactDirectory(t *testing.T) {
 	}
 	if string(trace) != "stale trace\n" {
 		t.Fatalf("expected stale supervisor trace to remain unchanged, got %q", string(trace))
+	}
+}
+
+func TestBuildSmokeEvaluationResultRejectsFormatFailure(t *testing.T) {
+	artifactDirectory := t.TempDir()
+	executionReport := map[string]any{
+		"format":  "fail",
+		"analyze": "pass",
+		"tests": map[string]any{
+			"total":  1,
+			"passed": 1,
+			"failed": 0,
+		},
+		"failure_details": []string{"Format command failed: dart format foo.dart"},
+		"logs":            []string{"dart format foo.dart (exit=1)"},
+	}
+	data, err := yaml.Marshal(executionReport)
+	if err != nil {
+		t.Fatalf("failed to marshal execution report: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(artifactDirectory, "execution_report.yaml"), data, 0o644); err != nil {
+		t.Fatalf("failed to write execution report: %v", err)
+	}
+
+	result, err := buildSmokeEvaluationResult(artifactDirectory)
+	if err != nil {
+		t.Fatalf("buildSmokeEvaluationResult returned error: %v", err)
+	}
+
+	decision, ok := result["decision"].(string)
+	if !ok {
+		t.Fatalf("expected decision to be a string, got %T", result["decision"])
+	}
+	if decision != "revise" {
+		t.Fatalf("expected format failure to force revise, got %q", decision)
 	}
 }
 

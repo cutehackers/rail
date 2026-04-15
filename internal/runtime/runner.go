@@ -447,6 +447,7 @@ func buildSmokeEvaluationResult(artifactDirectory string) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
+	formatPass := readOptionalStringValue(executionReport, "format", "fail") == "pass"
 	analyzePass := readOptionalStringValue(executionReport, "analyze", "fail") == "pass"
 	tests, err := readMap(executionReport, "tests")
 	if err != nil {
@@ -456,7 +457,7 @@ func buildSmokeEvaluationResult(artifactDirectory string) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
-	pass := analyzePass && testFailures == 0
+	pass := formatPass && analyzePass && testFailures == 0
 
 	response := map[string]any{
 		"decision": passFailDecision(pass),

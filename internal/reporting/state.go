@@ -7,19 +7,27 @@ import (
 )
 
 type State struct {
-	TaskID                         string   `json:"taskId"`
-	Status                         string   `json:"status"`
-	CurrentActor                   *string  `json:"currentActor"`
-	CompletedActors                []string `json:"completedActors"`
-	LastDecision                   *string  `json:"lastDecision"`
-	LastReasonCodes                []string `json:"lastReasonCodes"`
-	ActionHistory                  []string `json:"actionHistory"`
-	GeneratorRevisionsUsed         int      `json:"generatorRevisionsUsed"`
-	ContextRefreshCount            int      `json:"contextRefreshCount"`
-	ValidationTighteningsUsed      int      `json:"validationTighteningsUsed"`
-	ContextRebuildsRemaining       int      `json:"contextRebuildsRemaining"`
-	GeneratorRetriesRemaining      int      `json:"generatorRetriesRemaining"`
-	ValidationTighteningsRemaining int      `json:"validationTighteningsRemaining"`
+	TaskID                             string   `json:"taskId"`
+	TaskFamily                         string   `json:"taskFamily"`
+	TaskFamilySource                   string   `json:"taskFamilySource"`
+	Status                             string   `json:"status"`
+	CurrentActor                       *string  `json:"currentActor"`
+	CompletedActors                    []string `json:"completedActors"`
+	GeneratorRetriesRemaining          int      `json:"generatorRetriesRemaining"`
+	ContextRebuildsRemaining           int      `json:"contextRebuildsRemaining"`
+	ValidationTighteningsRemaining     int      `json:"validationTighteningsRemaining"`
+	LastDecision                       *string  `json:"lastDecision"`
+	LastReasonCodes                    []string `json:"lastReasonCodes"`
+	ActionHistory                      []string `json:"actionHistory"`
+	GeneratorRevisionsUsed             int      `json:"generatorRevisionsUsed"`
+	ContextRefreshCount                int      `json:"contextRefreshCount"`
+	LastContextRefreshTrigger          *string  `json:"lastContextRefreshTrigger"`
+	LastContextRefreshReasonFamily     *string  `json:"lastContextRefreshReasonFamily"`
+	LastInterventionTriggerReasonCodes []string `json:"lastInterventionTriggerReasonCodes"`
+	LastInterventionTriggerCategory    *string  `json:"lastInterventionTriggerCategory"`
+	PendingContextRefreshTrigger       *string  `json:"pendingContextRefreshTrigger"`
+	PendingContextRefreshReasonFamily  *string  `json:"pendingContextRefreshReasonFamily"`
+	ValidationTighteningsUsed          int      `json:"validationTighteningsUsed"`
 }
 
 func LoadState(path string) (State, error) {

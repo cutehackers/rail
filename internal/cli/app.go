@@ -1,20 +1,25 @@
 package cli
 
 type App struct {
-	commands []string
+	commands   []string
+	commandSet map[string]struct{}
 }
 
 func NewApp() *App {
-	return &App{
-		commands: []string{
-			"compose-request",
-			"validate-request",
-			"init",
-			"run",
-			"execute",
-			"route-evaluation",
-		},
+	commands := []string{
+		"compose-request",
+		"validate-request",
+		"init",
+		"run",
+		"execute",
+		"route-evaluation",
 	}
+	commandSet := make(map[string]struct{}, len(commands))
+	for _, command := range commands {
+		commandSet[command] = struct{}{}
+	}
+
+	return &App{commands: commands, commandSet: commandSet}
 }
 
 func (a *App) CommandNames() []string {
@@ -22,5 +27,13 @@ func (a *App) CommandNames() []string {
 }
 
 func (a *App) Run(args []string) int {
-	return 0
+	if len(args) == 0 {
+		return 1
+	}
+
+	if _, ok := a.commandSet[args[0]]; ok {
+		return 0
+	}
+
+	return 1
 }

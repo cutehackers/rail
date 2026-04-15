@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -12,6 +13,9 @@ import (
 )
 
 var ErrNoFallback = errors.New("no embedded fallback for stateful harness paths")
+var ErrInvalidPath = errors.New("invalid harness path")
+
+var statPath = os.Stat
 
 var statefulPrefixes = []string{
 	".harness/artifacts/",
@@ -21,27 +25,40 @@ var statefulPrefixes = []string{
 }
 
 func Resolve(projectRoot, relPath string) ([]byte, string, error) {
-	localPath := filepath.Join(projectRoot, filepath.FromSlash(relPath))
-	if info, err := os.Stat(localPath); err == nil && !info.IsDir() {
-		data, readErr := os.ReadFile(localPath)
-		if readErr != nil {
-			return nil, "", readErr
-		}
-		return data, "local", nil
+	normalizedPath, err := normalizeHarnessPath(relPath)
+	if err != nil {
+		return nil, "none", err
 	}
 
-	if isStateful(relPath) {
+	localPath := filepath.Join(projectRoot, filepath.FromSlash(normalizedPath))
+	info, statErr := statPath(localPath)
+	switch {
+	case statErr == nil && info.IsDir():
+		return nil, "none", fmt.Errorf("%s is a directory", relPath)
+	case statErr == nil:
+		data, readErr := os.ReadFile(localPath)
+		if readErr != nil {
+			return nil, "none", readErr
+		}
+		return data, "local", nil
+	case errors.Is(statErr, fs.ErrNotExist):
+		// fall through to embedded defaults
+	default:
+		return nil, "none", statErr
+	}
+
+	if isStateful(normalizedPath) {
 		return nil, "none", fmt.Errorf("%w: %s", ErrNoFallback, relPath)
 	}
 
-	embeddedPath, err := toEmbeddedPath(relPath)
+	embeddedPath, err := toEmbeddedPath(normalizedPath)
 	if err != nil {
-		return nil, "", err
+		return nil, "none", err
 	}
 
 	data, readErr := fs.ReadFile(defaultassets.FS, embeddedPath)
 	if readErr != nil {
-		return nil, "", readErr
+		return nil, "none", readErr
 	}
 	return data, "embedded", nil
 }
@@ -53,6 +70,21 @@ func isStateful(relPath string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeHarnessPath(relPath string) (string, error) {
+	if relPath == "" {
+		return "", fmt.Errorf("%w: empty path", ErrInvalidPath)
+	}
+	if filepath.IsAbs(relPath) {
+		return "", fmt.Errorf("%w: %s", ErrInvalidPath, relPath)
+	}
+
+	normalized := path.Clean(filepath.ToSlash(relPath))
+	if normalized == "." || !strings.HasPrefix(normalized, ".harness/") {
+		return "", fmt.Errorf("%w: %s", ErrInvalidPath, relPath)
+	}
+	return normalized, nil
 }
 
 func toEmbeddedPath(relPath string) (string, error) {

@@ -2,6 +2,7 @@ package assets
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,5 +61,43 @@ func TestResolveDoesNotFallbackForStateDirectories(t *testing.T) {
 	}
 	if source != "none" {
 		t.Fatalf("unexpected source: got %q want %q", source, "none")
+	}
+}
+
+func TestResolveRejectsTraversalRelativePath(t *testing.T) {
+	projectRoot := t.TempDir()
+
+	_, source, err := Resolve(projectRoot, ".harness/../../go.mod")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrInvalidPath) {
+		t.Fatalf("expected ErrInvalidPath, got %v", err)
+	}
+	if source != "none" {
+		t.Fatalf("unexpected source: got %q want %q", source, "none")
+	}
+}
+
+func TestResolveReturnsLocalStatFailureWhenNotNotExist(t *testing.T) {
+	originalStat := statPath
+	t.Cleanup(func() { statPath = originalStat })
+
+	statPath = func(string) (os.FileInfo, error) {
+		return nil, fmt.Errorf("permission denied")
+	}
+
+	_, source, err := Resolve(t.TempDir(), ".harness/rules/project_rules.md")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if source != "none" {
+		t.Fatalf("unexpected source: got %q want %q", source, "none")
+	}
+	if strings.Contains(err.Error(), "permission denied") == false {
+		t.Fatalf("expected stat error to be returned, got %v", err)
+	}
+	if strings.Contains(err.Error(), "embedded") {
+		t.Fatalf("unexpected embedded fallback in error: %v", err)
 	}
 }

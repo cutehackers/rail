@@ -46,7 +46,7 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 	}
 	state = normalizeEvaluatorEntryState(state)
 	activeEvaluatorRouting := state.CurrentActor != nil && *state.CurrentActor == "evaluator" && !shouldTerminate(state)
-	if refreshed, err := r.refreshPersistedOutputsIfNeeded(artifactDirectory, state); err != nil {
+	if refreshed, err := r.refreshPersistedOutputsIfNeeded(artifactDirectory, state, activeEvaluatorRouting); err != nil {
 		return "", err
 	} else if refreshed && !activeEvaluatorRouting {
 		return formatExecutionSummary(artifactDirectory, state, "Harness evaluation refreshed persisted outputs"), nil
@@ -142,7 +142,7 @@ func readState(path string) (State, error) {
 	return state, nil
 }
 
-func (r *Router) refreshPersistedOutputsIfNeeded(artifactDirectory string, state State) (bool, error) {
+func (r *Router) refreshPersistedOutputsIfNeeded(artifactDirectory string, state State, activeEvaluatorRouting bool) (bool, error) {
 	refreshed := false
 
 	tracePath := filepath.Join(artifactDirectory, "supervisor_trace.md")
@@ -150,7 +150,7 @@ func (r *Router) refreshPersistedOutputsIfNeeded(artifactDirectory string, state
 		// already present
 	} else if !os.IsNotExist(err) {
 		return false, fmt.Errorf("stat supervisor_trace.md: %w", err)
-	} else if len(state.ActionHistory) > 0 {
+	} else if len(state.ActionHistory) > 0 && !activeEvaluatorRouting {
 		if err := appendSupervisorDecisionTrace(artifactDirectory, state); err != nil {
 			return false, err
 		}

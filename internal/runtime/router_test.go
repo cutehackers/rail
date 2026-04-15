@@ -219,7 +219,7 @@ func TestRouteEvaluationRecoversSupervisorTraceOnRerun(t *testing.T) {
 	}
 }
 
-func TestRouteEvaluationRecoversMissingTraceAndProcessesEvaluatorRerun(t *testing.T) {
+func TestRouteEvaluationDoesNotFabricatePriorTraceDuringEvaluatorRerun(t *testing.T) {
 	projectRoot := t.TempDir()
 	router, err := NewRouter(projectRoot)
 	if err != nil {
@@ -290,8 +290,6 @@ reason_codes: []
 		t.Fatalf("expected supervisor_trace.md to exist after rerun: %v", err)
 	}
 	for _, fragment := range []string{
-		"## Iteration 1",
-		"- selected_action: `tighten_validation`",
 		"## Iteration 2",
 		"- decision: `pass`",
 		"- selected_action: `pass`",
@@ -299,6 +297,14 @@ reason_codes: []
 	} {
 		if !strings.Contains(string(trace), fragment) {
 			t.Fatalf("expected rerun trace to contain %q, got:\n%s", fragment, string(trace))
+		}
+	}
+	for _, fragment := range []string{
+		"## Iteration 1\n\n- decision: `pass`",
+		"## Iteration 1\n\n- selected_action: `pass`",
+	} {
+		if strings.Contains(string(trace), fragment) {
+			t.Fatalf("expected rerun trace to avoid fabricating prior pass iteration, got:\n%s", string(trace))
 		}
 	}
 }

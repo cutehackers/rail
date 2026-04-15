@@ -242,6 +242,338 @@ reason_codes:
 	}
 }
 
+func TestRouteEvaluationCountsCorrectiveWorkOnlyAfterEvaluatorReentry(t *testing.T) {
+	tests := []struct {
+		name                  string
+		fixture               string
+		overrideEvaluation    string
+		selectedAction        string
+		selectedStatus        string
+		assertSelectedZero    func(t *testing.T, state State)
+		assertExecutedCount   func(t *testing.T, state State)
+		assertExecutedTrace   string
+		assertTerminalSummary string
+	}{
+		{
+			name:           "context_rebuild",
+			fixture:        "rebuild_context",
+			selectedAction: "rebuild_context",
+			selectedStatus: "rebuilding_context",
+			assertSelectedZero: func(t *testing.T, state State) {
+				t.Helper()
+				if state.ContextRefreshCount != 0 {
+					t.Fatalf("unexpected ContextRefreshCount at selection: got %d want %d", state.ContextRefreshCount, 0)
+				}
+			},
+			assertExecutedCount: func(t *testing.T, state State) {
+				t.Helper()
+				if state.ContextRefreshCount != 1 {
+					t.Fatalf("unexpected ContextRefreshCount after evaluator reentry: got %d want %d", state.ContextRefreshCount, 1)
+				}
+				if state.LastContextRefreshTrigger == nil || *state.LastContextRefreshTrigger != "reason_codes" {
+					t.Fatalf("unexpected LastContextRefreshTrigger: got %v want %q", state.LastContextRefreshTrigger, "reason_codes")
+				}
+				if state.LastContextRefreshReasonFamily == nil || *state.LastContextRefreshReasonFamily != "context" {
+					t.Fatalf(
+						"unexpected LastContextRefreshReasonFamily: got %v want %q",
+						state.LastContextRefreshReasonFamily,
+						"context",
+					)
+				}
+				if state.PendingContextRefreshTrigger != nil {
+					t.Fatalf("expected PendingContextRefreshTrigger to be cleared, got %v", state.PendingContextRefreshTrigger)
+				}
+				if state.PendingContextRefreshReasonFamily != nil {
+					t.Fatalf(
+						"expected PendingContextRefreshReasonFamily to be cleared, got %v",
+						state.PendingContextRefreshReasonFamily,
+					)
+				}
+			},
+			assertExecutedTrace:   "- guardrail_cost: `generator_revisions_used=0, context_rebuilds_used=1, validation_tightenings_used=0`",
+			assertTerminalSummary: "- action: `pass`",
+		},
+		{
+			name:           "validation_tightening",
+			fixture:        "tighten_validation",
+			selectedAction: "tighten_validation",
+			selectedStatus: "tightening_validation",
+			assertSelectedZero: func(t *testing.T, state State) {
+				t.Helper()
+				if state.ValidationTighteningsUsed != 0 {
+					t.Fatalf(
+						"unexpected ValidationTighteningsUsed at selection: got %d want %d",
+						state.ValidationTighteningsUsed,
+						0,
+					)
+				}
+			},
+			assertExecutedCount: func(t *testing.T, state State) {
+				t.Helper()
+				if state.ValidationTighteningsUsed != 1 {
+					t.Fatalf(
+						"unexpected ValidationTighteningsUsed after evaluator reentry: got %d want %d",
+						state.ValidationTighteningsUsed,
+						1,
+					)
+				}
+			},
+			assertExecutedTrace:   "- guardrail_cost: `generator_revisions_used=0, context_rebuilds_used=0, validation_tightenings_used=1`",
+			assertTerminalSummary: "- action: `pass`",
+		},
+		{
+			name:    "generator_revision",
+			fixture: "tighten_validation",
+			overrideEvaluation: `decision: revise
+scores:
+  requirements: 0.4
+  architecture: 0.8
+  regression_risk: 0.3
+quality_confidence: medium
+findings:
+  - Generator output still violates the requested behavior.
+reason_codes:
+  - implementation_patch_invalid
+`,
+			selectedAction: "revise_generator",
+			selectedStatus: "revising",
+			assertSelectedZero: func(t *testing.T, state State) {
+				t.Helper()
+				if state.GeneratorRevisionsUsed != 0 {
+					t.Fatalf("unexpected GeneratorRevisionsUsed at selection: got %d want %d", state.GeneratorRevisionsUsed, 0)
+				}
+			},
+			assertExecutedCount: func(t *testing.T, state State) {
+				t.Helper()
+				if state.GeneratorRevisionsUsed != 1 {
+					t.Fatalf(
+						"unexpected GeneratorRevisionsUsed after evaluator reentry: got %d want %d",
+						state.GeneratorRevisionsUsed,
+						1,
+					)
+				}
+			},
+			assertExecutedTrace:   "- guardrail_cost: `generator_revisions_used=1, context_rebuilds_used=0, validation_tightenings_used=0`",
+			assertTerminalSummary: "- action: `pass`",
+		},
+	}
+
+	passEvaluation := `decision: pass
+scores:
+  requirements: 1
+  architecture: 1
+  regression_risk: 0
+quality_confidence: high
+findings: []
+reason_codes: []
+`
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			projectRoot := t.TempDir()
+			router, err := NewRouter(projectRoot)
+			if err != nil {
+				t.Fatalf("NewRouter returned error: %v", err)
+			}
+
+			artifactPath := copyRouteFixtureIntoProject(t, projectRoot, tc.fixture)
+			if tc.overrideEvaluation != "" {
+				if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(tc.overrideEvaluation), 0o644); err != nil {
+					t.Fatalf("failed to override evaluation_result.yaml: %v", err)
+				}
+			}
+
+			summary, err := router.RouteEvaluation(artifactPath)
+			if err != nil {
+				t.Fatalf("first RouteEvaluation returned error: %v", err)
+			}
+			if !strings.Contains(summary, "status="+tc.selectedStatus) {
+				t.Fatalf("expected first summary to include status %q, got %q", tc.selectedStatus, summary)
+			}
+			if !strings.Contains(summary, "action="+tc.selectedAction) {
+				t.Fatalf("expected first summary to include action %q, got %q", tc.selectedAction, summary)
+			}
+
+			statePath := filepath.Join(artifactPath, "state.json")
+			state, err := readState(statePath)
+			if err != nil {
+				t.Fatalf("failed to read state after first routing: %v", err)
+			}
+			tc.assertSelectedZero(t, state)
+
+			state.CurrentActor = stringPtr("evaluator")
+			if err := writeJSON(statePath, state); err != nil {
+				t.Fatalf("failed to persist evaluator reentry state: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(passEvaluation), 0o644); err != nil {
+				t.Fatalf("failed to write pass evaluation_result.yaml: %v", err)
+			}
+
+			secondSummary, err := router.RouteEvaluation(artifactPath)
+			if err != nil {
+				t.Fatalf("second RouteEvaluation returned error: %v", err)
+			}
+			if !strings.Contains(secondSummary, "status=passed") {
+				t.Fatalf("expected second summary to include passed status, got %q", secondSummary)
+			}
+			if !strings.Contains(secondSummary, "action=pass") {
+				t.Fatalf("expected second summary to include pass action, got %q", secondSummary)
+			}
+
+			executedState, err := readState(statePath)
+			if err != nil {
+				t.Fatalf("failed to read state after evaluator reentry: %v", err)
+			}
+			tc.assertExecutedCount(t, executedState)
+
+			trace, err := os.ReadFile(filepath.Join(artifactPath, "supervisor_trace.md"))
+			if err != nil {
+				t.Fatalf("expected supervisor_trace.md to exist: %v", err)
+			}
+			if !strings.Contains(string(trace), tc.assertExecutedTrace) {
+				t.Fatalf("expected supervisor trace to contain %q, got:\n%s", tc.assertExecutedTrace, string(trace))
+			}
+
+			terminalSummary, err := os.ReadFile(filepath.Join(artifactPath, "terminal_summary.md"))
+			if err != nil {
+				t.Fatalf("expected terminal_summary.md to exist: %v", err)
+			}
+			if !strings.Contains(string(terminalSummary), tc.assertTerminalSummary) {
+				t.Fatalf("expected terminal summary to contain %q, got:\n%s", tc.assertTerminalSummary, string(terminalSummary))
+			}
+		})
+	}
+}
+
+func TestRouteEvaluationPreservesSelectedActionOnBudgetExhaustion(t *testing.T) {
+	tests := []struct {
+		name                  string
+		fixture               string
+		overrideEvaluation    string
+		prepareState          func(state *State)
+		expectedStatus        string
+		expectedAction        string
+		expectedTraceStatus   string
+		expectedTerminalLabel string
+	}{
+		{
+			name:                  "generator_revision_budget_exhausted",
+			fixture:               "tighten_validation",
+			expectedStatus:        "revise_exhausted",
+			expectedAction:        "revise_generator",
+			expectedTraceStatus:   "- terminal_status: `revise_exhausted`",
+			expectedTerminalLabel: "- action: `revise_generator`",
+			overrideEvaluation: `decision: revise
+scores:
+  requirements: 0.4
+  architecture: 0.8
+  regression_risk: 0.3
+quality_confidence: medium
+findings:
+  - Generator output still violates the requested behavior.
+reason_codes:
+  - implementation_patch_invalid
+`,
+			prepareState: func(state *State) {
+				state.GeneratorRetriesRemaining = 0
+			},
+		},
+		{
+			name:                  "context_rebuild_budget_exhausted",
+			fixture:               "rebuild_context",
+			expectedStatus:        "evolution_exhausted",
+			expectedAction:        "rebuild_context",
+			expectedTraceStatus:   "- terminal_status: `evolution_exhausted`",
+			expectedTerminalLabel: "- action: `rebuild_context`",
+			prepareState: func(state *State) {
+				state.ContextRebuildsRemaining = 0
+			},
+		},
+		{
+			name:                  "validation_tightening_budget_exhausted",
+			fixture:               "tighten_validation",
+			expectedStatus:        "evolution_exhausted",
+			expectedAction:        "tighten_validation",
+			expectedTraceStatus:   "- terminal_status: `evolution_exhausted`",
+			expectedTerminalLabel: "- action: `tighten_validation`",
+			prepareState: func(state *State) {
+				state.ValidationTighteningsRemaining = 0
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			projectRoot := t.TempDir()
+			router, err := NewRouter(projectRoot)
+			if err != nil {
+				t.Fatalf("NewRouter returned error: %v", err)
+			}
+
+			artifactPath := copyRouteFixtureIntoProject(t, projectRoot, tc.fixture)
+			if tc.overrideEvaluation != "" {
+				if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(tc.overrideEvaluation), 0o644); err != nil {
+					t.Fatalf("failed to override evaluation_result.yaml: %v", err)
+				}
+			}
+
+			statePath := filepath.Join(artifactPath, "state.json")
+			state, err := readState(statePath)
+			if err != nil {
+				t.Fatalf("failed to read initial state: %v", err)
+			}
+			tc.prepareState(&state)
+			if err := writeJSON(statePath, state); err != nil {
+				t.Fatalf("failed to write prepared state: %v", err)
+			}
+
+			summary, err := router.RouteEvaluation(artifactPath)
+			if err != nil {
+				t.Fatalf("RouteEvaluation returned error: %v", err)
+			}
+			if !strings.Contains(summary, "status="+tc.expectedStatus) {
+				t.Fatalf("expected summary to include status %q, got %q", tc.expectedStatus, summary)
+			}
+			if !strings.Contains(summary, "action="+tc.expectedAction) {
+				t.Fatalf("expected summary to include action %q, got %q", tc.expectedAction, summary)
+			}
+
+			exhaustedState, err := readState(statePath)
+			if err != nil {
+				t.Fatalf("failed to read exhausted state: %v", err)
+			}
+			if exhaustedState.Status != tc.expectedStatus {
+				t.Fatalf("unexpected status: got %q want %q", exhaustedState.Status, tc.expectedStatus)
+			}
+			if len(exhaustedState.ActionHistory) == 0 || exhaustedState.ActionHistory[len(exhaustedState.ActionHistory)-1] != tc.expectedAction {
+				t.Fatalf("unexpected action history: got %v want last %q", exhaustedState.ActionHistory, tc.expectedAction)
+			}
+
+			trace, err := os.ReadFile(filepath.Join(artifactPath, "supervisor_trace.md"))
+			if err != nil {
+				t.Fatalf("expected supervisor_trace.md to exist: %v", err)
+			}
+			if !strings.Contains(string(trace), "- selected_action: `"+tc.expectedAction+"`") {
+				t.Fatalf("expected supervisor trace to record selected action %q, got:\n%s", tc.expectedAction, string(trace))
+			}
+			if !strings.Contains(string(trace), tc.expectedTraceStatus) {
+				t.Fatalf("expected supervisor trace to contain %q, got:\n%s", tc.expectedTraceStatus, string(trace))
+			}
+
+			terminalSummary, err := os.ReadFile(filepath.Join(artifactPath, "terminal_summary.md"))
+			if err != nil {
+				t.Fatalf("expected terminal_summary.md to exist: %v", err)
+			}
+			if !strings.Contains(string(terminalSummary), tc.expectedTerminalLabel) {
+				t.Fatalf("expected terminal summary to contain %q, got:\n%s", tc.expectedTerminalLabel, string(terminalSummary))
+			}
+			if !strings.Contains(string(terminalSummary), "- last_intervention: `"+tc.expectedAction+"`") {
+				t.Fatalf("expected terminal summary to preserve last intervention %q, got:\n%s", tc.expectedAction, string(terminalSummary))
+			}
+		})
+	}
+}
+
 func TestRouteEvaluationRejectsArtifactOutsideProjectRoot(t *testing.T) {
 	projectRoot := t.TempDir()
 	router, err := NewRouter(projectRoot)

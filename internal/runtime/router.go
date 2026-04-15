@@ -44,6 +44,7 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	state = normalizeEvaluatorEntryState(state)
 	if state.CurrentActor == nil || *state.CurrentActor != "evaluator" || shouldTerminate(state) {
 		return fmt.Sprintf(
 			"Harness evaluation routing skipped for %s (currentActor=%s, status=%s)",
@@ -135,6 +136,27 @@ func readState(path string) (State, error) {
 	return state, nil
 }
 
+func normalizeEvaluatorEntryState(state State) State {
+	if state.CurrentActor == nil || *state.CurrentActor != "evaluator" {
+		return state
+	}
+
+	nextState := state
+	switch state.Status {
+	case "revising":
+		nextState.GeneratorRevisionsUsed++
+	case "tightening_validation":
+		nextState.ValidationTighteningsUsed++
+	case "rebuilding_context":
+		nextState.ContextRefreshCount++
+		nextState.LastContextRefreshTrigger = state.PendingContextRefreshTrigger
+		nextState.LastContextRefreshReasonFamily = state.PendingContextRefreshReasonFamily
+		nextState.PendingContextRefreshTrigger = nil
+		nextState.PendingContextRefreshReasonFamily = nil
+	}
+	return nextState
+}
+
 func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]any) (State, error) {
 	nextState := state
 	nextState.CompletedActors = append(append([]string{}, state.CompletedActors...), "evaluator")
@@ -179,6 +201,7 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 
 	switch action {
 	case "rebuild_context":
+		nextState.ActionHistory = append(nextState.ActionHistory, action)
 		nextState.ContextRebuildsRemaining--
 		if nextState.ContextRebuildsRemaining < 0 || !contains(workflow.Actors, "context_builder") {
 			nextState.Status = "evolution_exhausted"
@@ -195,10 +218,10 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 		}
 		nextState.Status = "rebuilding_context"
 		nextState.CurrentActor = stringPtr("context_builder")
-		nextState.ActionHistory = append(nextState.ActionHistory, action)
 		nextState.PendingContextRefreshTrigger = pendingTrigger
 		nextState.PendingContextRefreshReasonFamily = pendingReasonFamily
 	case "tighten_validation":
+		nextState.ActionHistory = append(nextState.ActionHistory, action)
 		nextState.ValidationTighteningsRemaining--
 		if nextState.ValidationTighteningsRemaining < 0 || !contains(workflow.Actors, "executor") {
 			nextState.Status = "evolution_exhausted"
@@ -207,7 +230,6 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 		}
 		nextState.Status = "tightening_validation"
 		nextState.CurrentActor = stringPtr("executor")
-		nextState.ActionHistory = append(nextState.ActionHistory, action)
 	case "split_task":
 		nextState.Status = "split_required"
 		nextState.CurrentActor = nil
@@ -217,6 +239,7 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 		nextState.CurrentActor = nil
 		nextState.ActionHistory = append(nextState.ActionHistory, action)
 	default:
+		nextState.ActionHistory = append(nextState.ActionHistory, "revise_generator")
 		nextState.GeneratorRetriesRemaining--
 		if nextState.GeneratorRetriesRemaining < 0 || !contains(workflow.Actors, "generator") {
 			nextState.Status = "revise_exhausted"
@@ -225,7 +248,6 @@ func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]
 		}
 		nextState.Status = "revising"
 		nextState.CurrentActor = stringPtr("generator")
-		nextState.ActionHistory = append(nextState.ActionHistory, "revise_generator")
 	}
 
 	return nextState, nil

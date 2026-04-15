@@ -106,6 +106,69 @@ func TestRouteEvaluationCreatesTerminalSummaryForTerminalFixtures(t *testing.T) 
 	}
 }
 
+func TestRouteEvaluationRecoversTerminalSummaryOnRerun(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	executionReportBody, err := os.ReadFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("failed to read fixture execution_report.yaml: %v", err)
+	}
+	if err := os.Remove(executionReportPath); err != nil {
+		t.Fatalf("failed to remove execution_report.yaml: %v", err)
+	}
+
+	_, err = router.RouteEvaluation(artifactPath)
+	if err == nil {
+		t.Fatalf("expected RouteEvaluation to fail when terminal summary inputs are missing")
+	}
+	if !strings.Contains(err.Error(), "execution_report.yaml") {
+		t.Fatalf("expected missing execution report error, got %v", err)
+	}
+
+	state, err := readState(filepath.Join(artifactPath, "state.json"))
+	if err != nil {
+		t.Fatalf("failed to read state after failed terminal summary: %v", err)
+	}
+	if state.Status != "blocked_environment" {
+		t.Fatalf("unexpected terminal status after failed summary write: got %q want %q", state.Status, "blocked_environment")
+	}
+	if state.CurrentActor != nil {
+		t.Fatalf("expected CurrentActor to be nil after terminal routing failure, got %v", state.CurrentActor)
+	}
+
+	if err := os.WriteFile(executionReportPath, executionReportBody, 0o644); err != nil {
+		t.Fatalf("failed to restore execution_report.yaml: %v", err)
+	}
+
+	summary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("expected rerun to recover terminal summary, got error: %v", err)
+	}
+	if strings.Contains(summary, "skipped") {
+		t.Fatalf("expected rerun to refresh terminal outputs instead of skipping, got %q", summary)
+	}
+	if !strings.Contains(summary, "status=blocked_environment") {
+		t.Fatalf("expected summary to include blocked_environment status, got %q", summary)
+	}
+	if !strings.Contains(summary, "action=block_environment") {
+		t.Fatalf("expected summary to include block_environment action, got %q", summary)
+	}
+
+	terminalSummary, err := os.ReadFile(filepath.Join(artifactPath, "terminal_summary.md"))
+	if err != nil {
+		t.Fatalf("expected terminal_summary.md to exist after recovery: %v", err)
+	}
+	if !strings.Contains(string(terminalSummary), "blocked by environment") {
+		t.Fatalf("unexpected recovered terminal summary contents:\n%s", string(terminalSummary))
+	}
+}
+
 func TestRouteEvaluationWritesConcreteSupervisorTrace(t *testing.T) {
 	projectRoot := t.TempDir()
 	router, err := NewRouter(projectRoot)

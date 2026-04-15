@@ -45,6 +45,11 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 		return "", err
 	}
 	state = normalizeEvaluatorEntryState(state)
+	if refreshed, err := r.refreshTerminalOutputsIfNeeded(artifactDirectory, state); err != nil {
+		return "", err
+	} else if refreshed {
+		return formatExecutionSummary(artifactDirectory, state, "Harness evaluation refreshed terminal outputs"), nil
+	}
 	if state.CurrentActor == nil || *state.CurrentActor != "evaluator" || shouldTerminate(state) {
 		return fmt.Sprintf(
 			"Harness evaluation routing skipped for %s (currentActor=%s, status=%s)",
@@ -134,6 +139,24 @@ func readState(path string) (State, error) {
 		state.CompletedActors = []string{}
 	}
 	return state, nil
+}
+
+func (r *Router) refreshTerminalOutputsIfNeeded(artifactDirectory string, state State) (bool, error) {
+	if !shouldTerminate(state) {
+		return false, nil
+	}
+
+	summaryPath := filepath.Join(artifactDirectory, "terminal_summary.md")
+	if _, err := os.Stat(summaryPath); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, fmt.Errorf("stat terminal_summary.md: %w", err)
+	}
+
+	if err := r.writeTerminalSummary(artifactDirectory, state); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func normalizeEvaluatorEntryState(state State) State {

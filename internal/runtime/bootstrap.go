@@ -459,7 +459,7 @@ func buildExecutionPlan(
 	rules testTargetRules,
 	fileHints []string,
 ) (ExecutionPlan, error) {
-	analyzeRoots, err := normalizeProjectRelativePaths(projectRoot, requestValue.Context.ValidationRoots)
+	analyzeRoots, err := normalizeProjectRelativeDirectories(projectRoot, requestValue.Context.ValidationRoots)
 	if err != nil {
 		return ExecutionPlan{}, fmt.Errorf("normalize context.validation_roots: %w", err)
 	}
@@ -724,6 +724,34 @@ func normalizeProjectRelativePaths(projectRoot string, rawPaths []string) ([]str
 		resolved, err := contracts.ResolvePathWithinRoot(projectRoot, rawPath)
 		if err != nil {
 			return nil, err
+		}
+		relative, err := filepath.Rel(projectRoot, resolved)
+		if err != nil {
+			return nil, fmt.Errorf("relativize %s: %w", rawPath, err)
+		}
+		deduped[filepath.ToSlash(filepath.Clean(relative))] = struct{}{}
+	}
+	normalized := make([]string, 0, len(deduped))
+	for rawPath := range deduped {
+		normalized = append(normalized, rawPath)
+	}
+	sort.Strings(normalized)
+	return normalized, nil
+}
+
+func normalizeProjectRelativeDirectories(projectRoot string, rawPaths []string) ([]string, error) {
+	deduped := map[string]struct{}{}
+	for _, rawPath := range rawPaths {
+		resolved, err := contracts.ResolvePathWithinRoot(projectRoot, rawPath)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(resolved)
+		if err != nil {
+			return nil, fmt.Errorf("stat %s: %w", rawPath, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("%s must resolve to a directory", rawPath)
 		}
 		relative, err := filepath.Rel(projectRoot, resolved)
 		if err != nil {

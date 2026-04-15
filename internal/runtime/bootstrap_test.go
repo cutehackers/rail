@@ -255,6 +255,60 @@ validation_profile: standard
 	}
 }
 
+func TestBootstrapRejectsValidationRootsThatAreFiles(t *testing.T) {
+	projectRoot := t.TempDir()
+	bootstrapper, err := NewBootstrapper(projectRoot)
+	if err != nil {
+		t.Fatalf("NewBootstrapper returned error: %v", err)
+	}
+
+	for _, relPath := range []string{
+		filepath.Join(".harness", "requests"),
+		filepath.Join("lib"),
+		filepath.Join("packages", "app", "test"),
+	} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+
+	fileRoot := filepath.Join(projectRoot, "lib", "profile.dart")
+	if err := os.WriteFile(fileRoot, []byte("class Profile {}\n"), 0o644); err != nil {
+		t.Fatalf("failed to write file-based validation root: %v", err)
+	}
+
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	requestBody := `task_type: bug_fix
+goal: reject file paths in validation_roots
+context:
+  suspected_files:
+    - lib/profile.dart
+  validation_roots:
+    - ` + filepath.ToSlash(fileRoot) + `
+  validation_targets:
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app", "test", "profile_test.dart")) + `
+constraints: []
+definition_of_done:
+  - reject file validation roots
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write request fixture: %v", err)
+	}
+
+	_, err = bootstrapper.Bootstrap(requestPath, "bootstrap-rejects-file-validation-root")
+	if err == nil {
+		t.Fatalf("expected Bootstrap to reject file-based validation_roots")
+	}
+	if !strings.Contains(err.Error(), "context.validation_roots") {
+		t.Fatalf("expected validation_roots error context, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "directory") {
+		t.Fatalf("expected directory validation error, got %v", err)
+	}
+}
+
 func TestBootstrapReturnsErrorForMalformedSupervisorConfig(t *testing.T) {
 	projectRoot := t.TempDir()
 	bootstrapper, err := NewBootstrapper(projectRoot)

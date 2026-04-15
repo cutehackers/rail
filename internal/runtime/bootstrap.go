@@ -1004,6 +1004,16 @@ func placeholderContent(outputName string) map[string]any {
 			"tests":           map[string]any{"total": 0, "passed": 0, "failed": 0},
 			"failure_details": []string{"bootstrap placeholder"},
 			"logs":            []string{},
+			"approved_memory_consideration": map[string]any{
+				"considered_ref":                     "",
+				"lookup_key":                         "",
+				"task_family_source":                 "",
+				"disposition":                        "drop",
+				"reasons":                            []string{},
+				"originating_candidate_refs":         []string{},
+				"current_state_refresh_ref":          "",
+				"current_state_refresh_generated_at": nil,
+			},
 		}
 	case "evaluation_result":
 		return map[string]any{

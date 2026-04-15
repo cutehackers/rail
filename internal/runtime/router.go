@@ -67,7 +67,7 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 		return "", err
 	}
 	if shouldTerminate(nextState) {
-		if err := writeTerminalSummary(artifactDirectory, nextState); err != nil {
+		if err := r.writeTerminalSummary(artifactDirectory, nextState); err != nil {
 			return "", err
 		}
 	}
@@ -493,10 +493,11 @@ func appendSupervisorDecisionTrace(artifactDirectory string, state State) error 
 	builder.WriteString(fmt.Sprintf("- guardrail_cost: `generator_revisions_used=%d, context_rebuilds_used=%d, validation_tightenings_used=%d`\n", state.GeneratorRevisionsUsed, state.ContextRefreshCount, state.ValidationTighteningsUsed))
 	builder.WriteString(fmt.Sprintf("- guardrail_value: `trigger=%s, outcome=%s`\n", terminalRiskTriggerLabel(triggerReasonCodes, triggerCategory), guardrailValueOutcome(state.Status, qualityConfidence, executedInterventionCount)))
 	if shouldTerminate(state) {
-		builder.WriteString(fmt.Sprintf("- terminal_status: `%s`\n\n", state.Status))
+		builder.WriteString(fmt.Sprintf("- terminal_status: `%s`\n", state.Status))
 	} else {
-		builder.WriteString(fmt.Sprintf("- non_terminal_routing_state: `%s`\n\n", state.Status))
+		builder.WriteString(fmt.Sprintf("- non_terminal_routing_state: `%s`\n", state.Status))
 	}
+	builder.WriteString(fmt.Sprintf("- budgets_remaining: `generator=%d, context=%d, validation=%d`\n\n", state.GeneratorRetriesRemaining, state.ContextRebuildsRemaining, state.ValidationTighteningsRemaining))
 
 	file, err := os.OpenFile(tracePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
@@ -509,7 +510,7 @@ func appendSupervisorDecisionTrace(artifactDirectory string, state State) error 
 	return nil
 }
 
-func writeTerminalSummary(artifactDirectory string, state State) error {
+func (r *Router) writeTerminalSummary(artifactDirectory string, state State) error {
 	summaryPath := filepath.Join(artifactDirectory, "terminal_summary.md")
 	evaluationPath := filepath.Join(artifactDirectory, "evaluation_result.yaml")
 	executionPath := filepath.Join(artifactDirectory, "execution_report.yaml")
@@ -610,6 +611,40 @@ func writeTerminalSummary(artifactDirectory string, state State) error {
 			builder.WriteString(fmt.Sprintf("- ... (%d more)\n", len(logs)-10))
 		}
 		builder.WriteString("\n")
+	}
+
+	if _, err := os.Stat(executionPath); err == nil {
+		enrichedExecutionMap := map[string]any{}
+		for key, value := range executionMap {
+			enrichedExecutionMap[key] = value
+		}
+		enrichedExecutionMap["executed_intervention_count"] = executedInterventionCount
+		enrichedExecutionMap["context_refresh"] = map[string]any{
+			"count":              state.ContextRefreshCount,
+			"last_trigger":       state.LastContextRefreshTrigger,
+			"last_reason_family": state.LastContextRefreshReasonFamily,
+		}
+		enrichedExecutionMap["guardrail_cost"] = map[string]any{
+			"generator_revisions_used":    state.GeneratorRevisionsUsed,
+			"context_rebuilds_used":       state.ContextRefreshCount,
+			"validation_tightenings_used": state.ValidationTighteningsUsed,
+		}
+		enrichedExecutionMap["guardrail_value"] = map[string]any{
+			"trigger_failure_or_risk": terminalRiskTriggerLabel(triggerReasonCodes, triggerCategory),
+			"trigger_reason_codes":    triggerReasonCodes,
+			"trigger_reason_category": triggerCategory,
+			"last_intervention":       lastGuardrailIntervention(state.ActionHistory),
+			"quality_confidence":      qualityConfidence,
+			"outcome":                 guardrailValueOutcome(state.Status, qualityConfidence, executedInterventionCount),
+		}
+		enrichedExecutionMap["terminal_status"] = state.Status
+		enrichedExecutionMap["approved_memory_consideration"] = ensureApprovedMemoryConsideration(executionMap)
+		if err := writeYAML(executionPath, enrichedExecutionMap); err != nil {
+			return err
+		}
+		if _, err := r.validator.ValidateArtifactFile(executionPath, "execution_report"); err != nil {
+			return err
+		}
 	}
 
 	return os.WriteFile(summaryPath, []byte(builder.String()), 0o644)
@@ -796,6 +831,43 @@ func readOptionalStringValue(source map[string]any, key, fallback string) string
 		return fallback
 	}
 	return fallbackString(text, fallback)
+}
+
+func ensureApprovedMemoryConsideration(source map[string]any) map[string]any {
+	existing, ok := source["approved_memory_consideration"].(map[string]any)
+	if !ok {
+		existing = map[string]any{}
+	}
+	return map[string]any{
+		"considered_ref":                     readOptionalStringValue(existing, "considered_ref", ""),
+		"lookup_key":                         readOptionalStringValue(existing, "lookup_key", ""),
+		"task_family_source":                 readOptionalStringValue(existing, "task_family_source", ""),
+		"disposition":                        readOptionalStringValue(existing, "disposition", "drop"),
+		"reasons":                            fallbackStringList(existing, "reasons"),
+		"originating_candidate_refs":         fallbackStringList(existing, "originating_candidate_refs"),
+		"current_state_refresh_ref":          readOptionalStringValue(existing, "current_state_refresh_ref", ""),
+		"current_state_refresh_generated_at": fallbackNullableString(existing, "current_state_refresh_generated_at"),
+	}
+}
+
+func fallbackStringList(source map[string]any, key string) []string {
+	values, err := readOptionalStringList(source, key)
+	if err != nil {
+		return []string{}
+	}
+	return values
+}
+
+func fallbackNullableString(source map[string]any, key string) any {
+	value, ok := source[key]
+	if !ok || value == nil {
+		return nil
+	}
+	text, ok := value.(string)
+	if !ok {
+		return nil
+	}
+	return text
 }
 
 func actorLabel(actor *string) string {

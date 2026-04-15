@@ -125,6 +125,7 @@ func TestRouteEvaluationWritesConcreteSupervisorTrace(t *testing.T) {
 		"- selected_action: `tighten_validation`",
 		"- reason_codes: `validation_scope_missing_target`",
 		"- guardrail_cost: `generator_revisions_used=0, context_rebuilds_used=0, validation_tightenings_used=0`",
+		"- budgets_remaining: `generator=1, context=1, validation=0`",
 	} {
 		if !strings.Contains(string(trace), fragment) {
 			t.Fatalf("expected supervisor trace to contain %q, got:\n%s", fragment, string(trace))
@@ -146,6 +147,47 @@ func TestRouteEvaluationRejectsArtifactOutsideProjectRoot(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "project root") {
 		t.Fatalf("expected project-root confinement error, got %v", err)
+	}
+}
+
+func TestRouteEvaluationEnrichesExecutionReportForTerminalOutcome(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReport, err := os.ReadFile(filepath.Join(artifactPath, "execution_report.yaml"))
+	if err != nil {
+		t.Fatalf("expected enriched execution_report.yaml to exist: %v", err)
+	}
+	for _, fragment := range []string{
+		"executed_intervention_count: 0",
+		"context_refresh:",
+		"count: 0",
+		"guardrail_cost:",
+		"generator_revisions_used: 0",
+		"context_rebuilds_used: 0",
+		"validation_tightenings_used: 0",
+		"guardrail_value:",
+		"trigger_failure_or_risk:",
+		"environment_permission_denied",
+		"trigger_reason_codes:",
+		"- environment_permission_denied",
+		"trigger_reason_category: environment",
+		"last_intervention: block_environment",
+		"quality_confidence: low",
+		"outcome: bounded_refusal",
+		"terminal_status: blocked_environment",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected enriched execution report to contain %q, got:\n%s", fragment, string(executionReport))
+		}
 	}
 }
 

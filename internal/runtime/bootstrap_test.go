@@ -191,6 +191,22 @@ validation_profile: standard
 			t.Fatalf("expected planner brief to contain %q, got:\n%s", fragment, string(actorBrief))
 		}
 	}
+
+	executionReport, err := os.ReadFile(filepath.Join(artifactPath, "execution_report.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read execution_report.yaml: %v", err)
+	}
+	for _, fragment := range []string{
+		"approved_memory_consideration:",
+		"considered_ref: \"\"",
+		"lookup_key: \"\"",
+		"disposition: drop",
+		"originating_candidate_refs: []",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected execution_report placeholder to contain %q, got:\n%s", fragment, string(executionReport))
+		}
+	}
 }
 
 type executionPlanJSON struct {

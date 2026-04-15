@@ -46,11 +46,44 @@ func TestAppRunAcceptsKnownCommand(t *testing.T) {
 	}
 }
 
-func TestAppRunRejectsRegisteredButUnimplementedCommands(t *testing.T) {
-	for _, command := range []string{"run", "execute"} {
-		if got := NewApp().Run([]string{command}); got == 0 {
-			t.Fatalf("expected non-zero exit code for unimplemented command %q, got %d", command, got)
-		}
+func TestAppRunBootstrapsArtifactForRunCommand(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-run-smoke",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+
+	if _, err := os.Stat(filepath.Join(projectRoot, ".harness", "artifacts", "cli-run-smoke", "state.json")); err != nil {
+		t.Fatalf("expected run command to create artifact state: %v", err)
+	}
+}
+
+func TestAppRunExecutesArtifactForExecuteCommand(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-execute-smoke",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+
+	if got := NewApp().Run([]string{
+		"execute",
+		"--artifact", filepath.Join(projectRoot, ".harness", "artifacts", "cli-execute-smoke"),
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for execute, got %d", got)
+	}
+
+	if _, err := os.Stat(filepath.Join(projectRoot, ".harness", "artifacts", "cli-execute-smoke", "terminal_summary.md")); err != nil {
+		t.Fatalf("expected execute command to create terminal summary: %v", err)
 	}
 }
 
@@ -332,4 +365,36 @@ func copyStandardRouteFixtureForCLI(t *testing.T, repoRoot, projectRoot, fixture
 	}
 
 	return targetRoot
+}
+
+func prepareSmokeProjectForCLI(t *testing.T) (string, string) {
+	t.Helper()
+
+	projectRoot := t.TempDir()
+	for _, relPath := range []string{
+		filepath.Join(".harness", "requests"),
+		filepath.Join(".harness", "artifacts"),
+		"test",
+	} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "pubspec.yaml"), []byte("name: smoke_project\n"), 0o644); err != nil {
+		t.Fatalf("failed to write pubspec.yaml: %v", err)
+	}
+
+	requestBody, err := os.ReadFile(filepath.Join(repoRootFromCLIPackage(t), ".harness", "requests", "rail-bootstrap-smoke.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read smoke request fixture: %v", err)
+	}
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "rail-bootstrap-smoke.yaml")
+	if err := os.WriteFile(requestPath, requestBody, 0o644); err != nil {
+		t.Fatalf("failed to write smoke request fixture: %v", err)
+	}
+
+	return projectRoot, requestPath
 }

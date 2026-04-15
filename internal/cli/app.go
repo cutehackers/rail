@@ -68,6 +68,22 @@ func (a *App) Run(args []string) int {
 		return 0
 	}
 
+	if args[0] == "run" {
+		if err := RunRun(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "execute" {
+		if err := RunExecute(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
 	if _, ok := a.commandSet[args[0]]; ok {
 		_, _ = fmt.Fprintf(os.Stderr, "%s is not yet implemented\n", args[0])
 		return 1

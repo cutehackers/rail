@@ -6,8 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"rail/internal/contracts"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Router struct {
@@ -878,11 +881,22 @@ func fallbackNullableString(source map[string]any, key string) any {
 	if !ok || value == nil {
 		return nil
 	}
-	text, ok := value.(string)
-	if !ok {
+	switch typed := value.(type) {
+	case string:
+		return stringScalarNode(typed)
+	case time.Time:
+		return stringScalarNode(typed.Format(time.RFC3339Nano))
+	default:
 		return nil
 	}
-	return text
+}
+
+func stringScalarNode(value string) *yaml.Node {
+	return &yaml.Node{
+		Kind:  yaml.ScalarNode,
+		Tag:   "!!str",
+		Value: value,
+	}
 }
 
 func actorLabel(actor *string) string {

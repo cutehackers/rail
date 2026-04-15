@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"rail/internal/contracts"
 )
 
 func TestRouteEvaluationMapsFixtureToTightenValidation(t *testing.T) {
@@ -287,6 +290,73 @@ func TestRouteEvaluationEnrichesExecutionReportForTerminalOutcome(t *testing.T) 
 		if !strings.Contains(string(executionReport), fragment) {
 			t.Fatalf("expected enriched execution report to contain %q, got:\n%s", fragment, string(executionReport))
 		}
+	}
+}
+
+func TestRouteEvaluationPreservesApprovedMemoryTimestamp(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	executionReportBody := `format: fail
+analyze: fail
+tests:
+  total: 1
+  passed: 0
+  failed: 1
+failure_details:
+  - Permission denied while reading the target workspace.
+logs:
+  - chmod denied
+  - analyzer could not inspect target files
+approved_memory_consideration:
+  considered_ref: memory/ref
+  lookup_key: guardrail-key
+  task_family_source: task_type
+  disposition: reuse
+  reasons:
+    - preserved
+  originating_candidate_refs:
+    - candidate/ref
+  current_state_refresh_ref: refresh/ref
+  current_state_refresh_generated_at: 2026-04-15T12:34:56Z
+`
+	if err := os.WriteFile(executionReportPath, []byte(executionReportBody), 0o644); err != nil {
+		t.Fatalf("failed to override execution_report.yaml: %v", err)
+	}
+
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	decodedExecutionReport, err := contracts.ReadYAMLFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("failed to decode enriched execution_report.yaml: %v", err)
+	}
+	executionReportMap, err := contracts.AsMap(decodedExecutionReport, "execution_report")
+	if err != nil {
+		t.Fatalf("failed to convert execution_report to map: %v", err)
+	}
+	approvedMemory, err := contracts.AsMap(executionReportMap["approved_memory_consideration"], "approved_memory_consideration")
+	if err != nil {
+		t.Fatalf("failed to convert approved_memory_consideration to map: %v", err)
+	}
+
+	generatedAt, ok := approvedMemory["current_state_refresh_generated_at"].(string)
+	if !ok {
+		t.Fatalf(
+			"expected current_state_refresh_generated_at to round-trip as a string, got %T (%v)",
+			approvedMemory["current_state_refresh_generated_at"],
+			approvedMemory["current_state_refresh_generated_at"],
+		)
+	}
+	expected := time.Date(2026, 4, 15, 12, 34, 56, 0, time.UTC).Format(time.RFC3339)
+	if generatedAt != expected {
+		t.Fatalf("unexpected current_state_refresh_generated_at: got %s want %s", generatedAt, expected)
 	}
 }
 

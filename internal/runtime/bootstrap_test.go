@@ -255,6 +255,79 @@ validation_profile: standard
 	}
 }
 
+func TestBootstrapReturnsErrorForMalformedSupervisorConfig(t *testing.T) {
+	projectRoot := t.TempDir()
+	bootstrapper, err := NewBootstrapper(projectRoot)
+	if err != nil {
+		t.Fatalf("NewBootstrapper returned error: %v", err)
+	}
+
+	for _, relPath := range []string{
+		filepath.Join(".harness", "requests"),
+		filepath.Join(".harness", "supervisor"),
+		filepath.Join("lib"),
+	} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	requestBody := `task_type: bug_fix
+goal: surface malformed supervisor config as a normal error
+context:
+  suspected_files:
+    - lib/profile.dart
+constraints: []
+definition_of_done:
+  - report config errors without crashing
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write request fixture: %v", err)
+	}
+
+	malformedExecutionPolicy := `artifacts:
+  root: 123
+format:
+  command: dart format {files}
+analyze:
+  package_command: flutter analyze . --fatal-infos
+  workspace_fallback: flutter analyze . --fatal-infos
+  smoke_command: dart analyze
+tests:
+  package_command: flutter test {targets}
+  workspace_fallback: flutter test
+  smoke_command: dart test
+runtime:
+  create_placeholders: true
+  create_actor_briefs: true
+  persist_json_snapshots: true
+`
+	if err := os.WriteFile(
+		filepath.Join(projectRoot, ".harness", "supervisor", "execution_policy.yaml"),
+		[]byte(malformedExecutionPolicy),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed to write malformed execution_policy.yaml: %v", err)
+	}
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("Bootstrap panicked for malformed supervisor config: %v", recovered)
+		}
+	}()
+
+	_, err = bootstrapper.Bootstrap(requestPath, "bootstrap-malformed-supervisor-config")
+	if err == nil {
+		t.Fatalf("expected Bootstrap to return an error for malformed supervisor config")
+	}
+	if !strings.Contains(err.Error(), "execution policy") || !strings.Contains(err.Error(), "root") {
+		t.Fatalf("expected execution policy error mentioning root, got %v", err)
+	}
+}
+
 type executionPlanJSON struct {
 	FormatCommand   string   `json:"formatCommand"`
 	AnalyzeCommands []string `json:"analyzeCommands"`

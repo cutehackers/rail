@@ -764,18 +764,62 @@ func executionPolicyFromMap(mapValue map[string]any) (executionPolicy, error) {
 	if err != nil {
 		return executionPolicy{}, err
 	}
+	artifactRoot, err := readStringWithContext(artifactsMap, "root", "execution policy artifacts")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	formatCommand, err := readStringWithContext(formatMap, "command", "execution policy format")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	packageAnalyze, err := readStringWithContext(analyzeMap, "package_command", "execution policy analyze")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	workspaceAnalyze, err := readStringWithContext(analyzeMap, "workspace_fallback", "execution policy analyze")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	smokeAnalyze, err := readStringWithContext(analyzeMap, "smoke_command", "execution policy analyze")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	packageTest, err := readStringWithContext(testsMap, "package_command", "execution policy tests")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	workspaceTest, err := readStringWithContext(testsMap, "workspace_fallback", "execution policy tests")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	smokeTest, err := readStringWithContext(testsMap, "smoke_command", "execution policy tests")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	createPlaceholders, err := readBoolWithContext(runtimeMap, "create_placeholders", "execution policy runtime")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	createActorBriefs, err := readBoolWithContext(runtimeMap, "create_actor_briefs", "execution policy runtime")
+	if err != nil {
+		return executionPolicy{}, err
+	}
+	persistJSONSnapshots, err := readBoolWithContext(runtimeMap, "persist_json_snapshots", "execution policy runtime")
+	if err != nil {
+		return executionPolicy{}, err
+	}
 	return executionPolicy{
-		ArtifactRoot:         mustReadString(artifactsMap, "root"),
-		FormatCommand:        mustReadString(formatMap, "command"),
-		PackageAnalyze:       mustReadString(analyzeMap, "package_command"),
-		WorkspaceAnalyze:     mustReadString(analyzeMap, "workspace_fallback"),
-		SmokeAnalyze:         mustReadString(analyzeMap, "smoke_command"),
-		PackageTest:          mustReadString(testsMap, "package_command"),
-		WorkspaceTest:        mustReadString(testsMap, "workspace_fallback"),
-		SmokeTest:            mustReadString(testsMap, "smoke_command"),
-		CreatePlaceholders:   mustReadBool(runtimeMap, "create_placeholders"),
-		CreateActorBriefs:    mustReadBool(runtimeMap, "create_actor_briefs"),
-		PersistJSONSnapshots: mustReadBool(runtimeMap, "persist_json_snapshots"),
+		ArtifactRoot:         artifactRoot,
+		FormatCommand:        formatCommand,
+		PackageAnalyze:       packageAnalyze,
+		WorkspaceAnalyze:     workspaceAnalyze,
+		SmokeAnalyze:         smokeAnalyze,
+		PackageTest:          packageTest,
+		WorkspaceTest:        workspaceTest,
+		SmokeTest:            smokeTest,
+		CreatePlaceholders:   createPlaceholders,
+		CreateActorBriefs:    createActorBriefs,
+		PersistJSONSnapshots: persistJSONSnapshots,
 	}, nil
 }
 
@@ -793,18 +837,46 @@ func testTargetRulesFromMap(mapValue map[string]any) (testTargetRules, error) {
 		return testTargetRules{}, err
 	}
 	pathRules := make([]testPathRule, 0, len(pathRuleEntries))
-	for _, pathRuleEntry := range pathRuleEntries {
+	for index, pathRuleEntry := range pathRuleEntries {
+		sourceRoot, err := readStringWithContext(pathRuleEntry, "source_root", fmt.Sprintf("test target rules path_rules[%d]", index))
+		if err != nil {
+			return testTargetRules{}, err
+		}
+		sourceSegment, err := readStringWithContext(pathRuleEntry, "source_segment", fmt.Sprintf("test target rules path_rules[%d]", index))
+		if err != nil {
+			return testTargetRules{}, err
+		}
+		testSegment, err := readStringWithContext(pathRuleEntry, "test_segment", fmt.Sprintf("test target rules path_rules[%d]", index))
+		if err != nil {
+			return testTargetRules{}, err
+		}
 		pathRules = append(pathRules, testPathRule{
-			SourceRoot:    mustReadString(pathRuleEntry, "source_root"),
-			SourceSegment: mustReadString(pathRuleEntry, "source_segment"),
-			TestSegment:   mustReadString(pathRuleEntry, "test_segment"),
+			SourceRoot:    sourceRoot,
+			SourceSegment: sourceSegment,
+			TestSegment:   testSegment,
 		})
 	}
+	sourceSuffix, err := readStringWithContext(naming, "source_suffix", "test target rules naming")
+	if err != nil {
+		return testTargetRules{}, err
+	}
+	testSuffix, err := readStringWithContext(naming, "test_suffix", "test target rules naming")
+	if err != nil {
+		return testTargetRules{}, err
+	}
+	featureTestRoot, err := readStringWithContext(fallback, "feature_test_root", "test target rules fallback")
+	if err != nil {
+		return testTargetRules{}, err
+	}
+	packageTestRoot, err := readStringWithContext(fallback, "package_test_root", "test target rules fallback")
+	if err != nil {
+		return testTargetRules{}, err
+	}
 	return testTargetRules{
-		SourceSuffix:    mustReadString(naming, "source_suffix"),
-		TestSuffix:      mustReadString(naming, "test_suffix"),
-		FeatureTestRoot: mustReadString(fallback, "feature_test_root"),
-		PackageTestRoot: mustReadString(fallback, "package_test_root"),
+		SourceSuffix:    sourceSuffix,
+		TestSuffix:      testSuffix,
+		FeatureTestRoot: featureTestRoot,
+		PackageTestRoot: packageTestRoot,
 		PathRules:       pathRules,
 	}, nil
 }
@@ -1142,6 +1214,14 @@ func readString(source map[string]any, key string) (string, error) {
 	return stringValue, nil
 }
 
+func readStringWithContext(source map[string]any, key, context string) (string, error) {
+	value, err := readString(source, key)
+	if err != nil {
+		return "", fmt.Errorf("%s.%s: %w", context, key, err)
+	}
+	return value, nil
+}
+
 func mustReadString(source map[string]any, key string) string {
 	text, err := readString(source, key)
 	if err != nil {
@@ -1205,6 +1285,14 @@ func readBool(source map[string]any, key string) (bool, error) {
 		return false, fmt.Errorf("expected `%s` to be a bool", key)
 	}
 	return boolValue, nil
+}
+
+func readBoolWithContext(source map[string]any, key, context string) (bool, error) {
+	value, err := readBool(source, key)
+	if err != nil {
+		return false, fmt.Errorf("%s.%s: %w", context, key, err)
+	}
+	return value, nil
 }
 
 func mustReadBool(source map[string]any, key string) bool {

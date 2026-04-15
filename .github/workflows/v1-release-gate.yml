@@ -19,3 +19,6 @@ jobs:
 
       - name: Run V1 release gate
         run: ./tool/v1_release_gate.sh
+
+  go-release-gate:
+    uses: ./.github/workflows/go-release-gate.yml

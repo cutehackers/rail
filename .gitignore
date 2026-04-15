@@ -2,6 +2,7 @@
 build/
 pubspec.lock
 .worktrees/
+/rail
 
 .harness/artifacts/
 .harness/requests/

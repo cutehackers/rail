@@ -1,0 +1,74 @@
+version: 1
+
+task_registry:
+  bug_fix:
+    rubric: .harness/rubrics/bug_fix.yaml
+    actors:
+      - planner
+      - context_builder
+      - generator
+      - executor
+      - evaluator
+    retry:
+      generator_max_retry: 2
+      evaluator_recheck: true
+    required_output:
+      - plan
+      - context_pack
+      - implementation_result
+      - execution_report
+      - evaluation_result
+
+  feature_addition:
+    rubric: .harness/rubrics/feature_addition.yaml
+    actors:
+      - planner
+      - context_builder
+      - generator
+      - executor
+      - evaluator
+    retry:
+      generator_max_retry: 2
+      evaluator_recheck: true
+    required_output:
+      - plan
+      - context_pack
+      - implementation_result
+      - execution_report
+      - evaluation_result
+
+  safe_refactor:
+    rubric: .harness/rubrics/safe_refactor.yaml
+    actors:
+      - planner
+      - context_builder
+      - generator
+      - executor
+      - evaluator
+    retry:
+      generator_max_retry: 1
+      evaluator_recheck: true
+    required_output:
+      - plan
+      - context_pack
+      - implementation_result
+      - execution_report
+      - evaluation_result
+
+  test_repair:
+    rubric: .harness/rubrics/test_repair.yaml
+    actors:
+      - planner
+      - context_builder
+      - generator
+      - executor
+      - evaluator
+    retry:
+      generator_max_retry: 2
+      evaluator_recheck: true
+    required_output:
+      - plan
+      - context_pack
+      - implementation_result
+      - execution_report
+      - evaluation_result

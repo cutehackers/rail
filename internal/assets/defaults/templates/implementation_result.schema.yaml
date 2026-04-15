@@ -1,0 +1,28 @@
+type: object
+required:
+  - changed_files
+  - patch_summary
+  - tests_added_or_updated
+  - known_limits
+
+properties:
+  changed_files:
+    type: array
+    items:
+      type: string
+
+  patch_summary:
+    type: array
+    items:
+      type: string
+
+  tests_added_or_updated:
+    type: array
+    items:
+      type: string
+
+  known_limits:
+    type: array
+    items:
+      type: string
+

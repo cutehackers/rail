@@ -1,0 +1,60 @@
+type: object
+required:
+  - baseline_run_ref
+  - follow_up_run_ref
+  - task_family
+  - primary_user_outcome_comparison
+  - supporting_evaluator_delta
+  - reviewer_conclusion
+properties:
+  baseline_run_ref:
+    type: string
+
+  follow_up_run_ref:
+    type: string
+
+  task_family:
+    type: string
+
+  primary_user_outcome_comparison:
+    type: object
+    required:
+      - summary
+      - outcome_class
+    properties:
+      summary:
+        type: string
+      outcome_class:
+        type: string
+        enum:
+          - improved
+          - unchanged
+          - worsened
+      evidence_refs:
+        type: array
+        items:
+          type: string
+    additionalProperties: false
+
+  supporting_evaluator_delta:
+    type: object
+    required:
+      - summary
+    properties:
+      summary:
+        type: string
+      reason_codes:
+        type: array
+        items:
+          type: string
+      confidence_delta:
+        type: number
+    additionalProperties: false
+
+  reviewer_conclusion:
+    type: string
+    enum:
+      - more_production_ready
+      - not_more_production_ready
+      - inconclusive
+additionalProperties: false

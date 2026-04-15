@@ -1,0 +1,23 @@
+name: safe_refactor
+
+checks:
+  requirements:
+    - behavior_remains_unchanged
+    - requested_structural_cleanup_completed
+
+  correctness:
+    - flutter_analyze_pass
+    - related_tests_pass
+
+  architecture:
+    - existing_boundaries_respected
+    - no_state_management_pattern_change
+
+  maintainability:
+    - complexity_reduction
+    - readability_improved
+    - no_opportunistic_redesign
+
+  regression_risk:
+    - blast_radius_low
+

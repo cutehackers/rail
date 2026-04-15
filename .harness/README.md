@@ -1,6 +1,6 @@
 # Rail Harness Bundle
 
-이 저장소의 `.harness/` 는 별도 앱 repo에 종속되지 않는 control-plane harness 번들이다.
+이 저장소의 `.harness/` 는 별도 앱 repo에 종속되지 않는 control-plane harness 번들이다. 현재 내용은 Go 바이너리에 포함되는 기본 harness 자산의 원본이며, 프로젝트 로컬 `.harness/` 파일이 있으면 해당 파일이 우선 적용된다.
 
 핵심 역할은 다음과 같다.
 
@@ -24,6 +24,8 @@
 - `rubrics/`: task type별 평가 기준
 - `templates/`: request/output schema와 template
 - `skills/`: 반복 작업용 보조 skill 문서
+
+상태성 디렉터리인 `.harness/artifacts/`, `.harness/learning/`, `.harness/requests/`, `.harness/fixtures/` 는 기본 자산으로 되돌아가지 않는다.
 
 ## 사용 방식
 

@@ -1,0 +1,77 @@
+version: 1
+policy_version: 1
+
+global:
+  max_files_per_task: 6
+  max_generator_retry: 2
+  require_related_tests: true
+  require_analyze_pass: true
+  prefer_minimal_diff: true
+
+review_boundary:
+  run_end_candidate_emission_allowed: true
+  candidate_promotion_requires_human_authored_learning_review_decision: true
+  hardening_candidates_excluded_from_reusable_family_memory: true
+  policy_changes_are_separate_hardening_work: true
+
+approved_memory_guardrails:
+  approved_memory_is_guidance_only: true
+  approved_memory_must_never_override_current_request: true
+  approved_memory_must_never_override_repository_state: true
+  approved_memory_must_never_override_evaluator_policy: true
+
+freshness_checks:
+  policy_version_required_for_reuse: true
+  approved_memory_reuse_requires_reviewed_memory: true
+
+split_task_if:
+  - likely_files_count > 6
+  - multiple_unrelated_features == true
+  - requires_public_api_change_and_ui_change_and_data_change == true
+
+retry_rules:
+  low:
+    max_generator_retry: 1
+  medium:
+    max_generator_retry: 2
+  high:
+    max_generator_retry: 2
+
+supervisor_loop:
+  max_context_rebuild: 1
+  max_validation_tighten: 1
+  require_current_state_refresh_before_new_generator_attempt: true
+  action_budgets:
+    revise_generator: derived_from_retry_rules_by_risk_tolerance
+    rebuild_context: 1
+    tighten_validation: 1
+  exhausted_status:
+    revise_generator: revise_exhausted
+    rebuild_context: evolution_exhausted
+    tighten_validation: evolution_exhausted
+  no_value_iteration_rule:
+    - repeated generator revisions must either improve quality or terminate as revise_exhausted once the retry budget is exhausted
+    - repeated context rebuilds must refresh stale grounding or terminate as evolution_exhausted once the rebuild budget is exhausted
+    - repeated validation tightening must either narrow the plan or terminate as evolution_exhausted once the tighten budget is exhausted
+    - validation-tightening no-op outcomes should be recorded explicitly when the runtime cannot narrow the validation plan
+    - any additional corrective cycle must refresh current state before the next generator attempt
+
+reject_if:
+  - constraints_violated == true
+  - forbidden_files_touched == true
+  - unrelated_large_blast_radius == true
+
+revise_if:
+  - definition_of_done_not_satisfied == true
+  - analyze_failed == true
+  - related_tests_failed == true
+  - architecture_violation == true
+  - test_coverage_insufficient == true
+  - missing_risk_explanation == true
+
+pass_if:
+  - evaluator_pass_is_evidence_gated == true
+  - definition_of_done_satisfied == true
+  - analyze_passed == true
+  - related_tests_passed == true
+  - architecture_accepted == true

@@ -1,0 +1,22 @@
+version: 1
+
+artifacts:
+  root: .harness/artifacts
+
+format:
+  command: dart format {files}
+
+analyze:
+  package_command: flutter analyze . --fatal-infos
+  workspace_fallback: melos run lint:all
+  smoke_command: "[ -f pubspec.yaml ] || [ -f melos.yaml ]"
+
+tests:
+  package_command: flutter test {targets}
+  workspace_fallback: melos run test:all
+  smoke_command: "[ -d test ] || [ -d integration_test ] || [ -f melos.yaml ]"
+
+runtime:
+  create_placeholders: true
+  create_actor_briefs: true
+  persist_json_snapshots: true

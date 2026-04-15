@@ -1,6 +1,9 @@
 package cli
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 type App struct {
 	commands   []string
@@ -48,7 +51,8 @@ func (a *App) Run(args []string) int {
 	}
 
 	if _, ok := a.commandSet[args[0]]; ok {
-		return 0
+		_, _ = fmt.Fprintf(os.Stderr, "%s is not yet implemented\n", args[0])
+		return 1
 	}
 
 	return 1

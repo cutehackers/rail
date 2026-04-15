@@ -108,6 +108,21 @@ func TestComposeRequestRejectsMissingProjectRoot(t *testing.T) {
 	}
 }
 
+func TestComposeRequestRejectsRelativeProjectRoot(t *testing.T) {
+	_, err := NormalizeDraft(Draft{
+		RequestVersion: "1",
+		ProjectRoot:    "./target-app",
+		TaskType:       "bug_fix",
+		Goal:           "Fix the bug",
+	})
+	if err == nil {
+		t.Fatal("expected relative project_root to return an error")
+	}
+	if !strings.Contains(err.Error(), "project_root must be an absolute path") {
+		t.Fatalf("expected absolute-path error, got %v", err)
+	}
+}
+
 func TestComposeRequestRejectsInvalidRiskTolerance(t *testing.T) {
 	_, err := NormalizeDraft(Draft{
 		ProjectRoot:   "/tmp/target-app",
@@ -135,5 +150,20 @@ func TestComposeRequestRejectsUnknownDraftFields(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "field unknown_field not found") {
 		t.Fatalf("expected unknown field error, got %v", err)
+	}
+}
+
+func TestComposeRequestRejectsUnsupportedRequestVersion(t *testing.T) {
+	_, err := NormalizeDraft(Draft{
+		RequestVersion: "2",
+		ProjectRoot:    "/tmp/target-app",
+		TaskType:       "bug_fix",
+		Goal:           "Fix the bug",
+	})
+	if err == nil {
+		t.Fatal("expected unsupported request_version to return an error")
+	}
+	if !strings.Contains(err.Error(), "unsupported request_version") {
+		t.Fatalf("expected request_version error, got %v", err)
 	}
 }

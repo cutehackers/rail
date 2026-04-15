@@ -21,6 +21,9 @@ func TestRunComposeRequestMaterializesCanonicalRequestFromInput(t *testing.T) {
 	t.Cleanup(func() {
 		_ = os.RemoveAll(composeRequestSmokeProjectRoot)
 	})
+	if err := os.MkdirAll(composeRequestSmokeProjectRoot, 0o755); err != nil {
+		t.Fatalf("failed to create project root: %v", err)
+	}
 
 	var stdout bytes.Buffer
 	if err := RunComposeRequest([]string{"--input", fixturePath}, strings.NewReader(""), &stdout); err != nil {

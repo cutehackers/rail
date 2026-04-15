@@ -43,3 +43,11 @@ func TestAppRunAcceptsKnownCommand(t *testing.T) {
 		t.Fatalf("expected init to create project scaffold: %v", err)
 	}
 }
+
+func TestAppRunRejectsRegisteredButUnimplementedCommands(t *testing.T) {
+	for _, command := range []string{"validate-request", "run", "execute", "route-evaluation"} {
+		if got := NewApp().Run([]string{command}); got == 0 {
+			t.Fatalf("expected non-zero exit code for unimplemented command %q, got %d", command, got)
+		}
+	}
+}

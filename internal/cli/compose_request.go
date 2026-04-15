@@ -55,6 +55,11 @@ func RunComposeRequest(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if info, err := os.Stat(materialized.ProjectRoot); err != nil {
+		return fmt.Errorf("project_root must point to an existing directory: %w", err)
+	} else if !info.IsDir() {
+		return fmt.Errorf("project_root must point to an existing directory")
+	}
 
 	outputPath := request.RequestPath(materialized.ProjectRoot)
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {

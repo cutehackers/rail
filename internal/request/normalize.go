@@ -22,6 +22,11 @@ var allowedRiskTolerance = map[string]struct{}{
 }
 
 func NormalizeDraft(draft Draft) (MaterializedRequest, error) {
+	requestVersion := normalizedRequestVersion(draft.RequestVersion)
+	if requestVersion != defaultRequestVersion {
+		return MaterializedRequest{}, fmt.Errorf("unsupported request_version: %s", requestVersion)
+	}
+
 	taskType := strings.ToLower(strings.TrimSpace(draft.TaskType))
 	if taskType == "" {
 		return MaterializedRequest{}, fmt.Errorf("task_type is required")
@@ -41,6 +46,9 @@ func NormalizeDraft(draft Draft) (MaterializedRequest, error) {
 	if projectRoot == "" {
 		return MaterializedRequest{}, fmt.Errorf("project_root is required")
 	}
+	if !filepath.IsAbs(projectRoot) {
+		return MaterializedRequest{}, fmt.Errorf("project_root must be an absolute path")
+	}
 
 	riskTolerance := strings.ToLower(strings.TrimSpace(draft.RiskTolerance))
 	if riskTolerance == "" {
@@ -49,8 +57,6 @@ func NormalizeDraft(draft Draft) (MaterializedRequest, error) {
 	if _, ok := allowedRiskTolerance[riskTolerance]; !ok {
 		return MaterializedRequest{}, fmt.Errorf("unsupported risk_tolerance: %s", riskTolerance)
 	}
-
-	_ = normalizedRequestVersion(draft.RequestVersion)
 
 	return MaterializedRequest{
 		ProjectRoot: projectRoot,

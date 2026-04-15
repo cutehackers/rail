@@ -219,6 +219,90 @@ func TestRouteEvaluationRecoversSupervisorTraceOnRerun(t *testing.T) {
 	}
 }
 
+func TestRouteEvaluationRecoversMissingTraceAndProcessesEvaluatorRerun(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	firstSummary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("first RouteEvaluation returned error: %v", err)
+	}
+	if !strings.Contains(firstSummary, "status=tightening_validation") {
+		t.Fatalf("expected first summary to include tightening_validation, got %q", firstSummary)
+	}
+
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state after first routing: %v", err)
+	}
+	state.CurrentActor = stringPtr("evaluator")
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to persist evaluator reentry state: %v", err)
+	}
+
+	passEvaluation := `decision: pass
+scores:
+  requirements: 0.9
+  architecture: 0.8
+  regression_risk: 0.8
+quality_confidence: high
+findings:
+  - Validation completed successfully.
+reason_codes: []
+`
+	if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(passEvaluation), 0o644); err != nil {
+		t.Fatalf("failed to write pass evaluation_result.yaml: %v", err)
+	}
+	tracePath := filepath.Join(artifactPath, "supervisor_trace.md")
+	if err := os.Remove(tracePath); err != nil {
+		t.Fatalf("failed to remove supervisor_trace.md: %v", err)
+	}
+
+	secondSummary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("second RouteEvaluation returned error: %v", err)
+	}
+	if !strings.Contains(secondSummary, "status=passed") {
+		t.Fatalf("expected second summary to include passed status, got %q", secondSummary)
+	}
+	if !strings.Contains(secondSummary, "action=pass") {
+		t.Fatalf("expected second summary to include pass action, got %q", secondSummary)
+	}
+
+	executedState, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state after evaluator rerun: %v", err)
+	}
+	if executedState.Status != "passed" {
+		t.Fatalf("unexpected state status after evaluator rerun: got %q want %q", executedState.Status, "passed")
+	}
+	if executedState.CurrentActor != nil {
+		t.Fatalf("expected CurrentActor to be nil after pass, got %v", executedState.CurrentActor)
+	}
+
+	trace, err := os.ReadFile(tracePath)
+	if err != nil {
+		t.Fatalf("expected supervisor_trace.md to exist after rerun: %v", err)
+	}
+	for _, fragment := range []string{
+		"## Iteration 1",
+		"- selected_action: `tighten_validation`",
+		"## Iteration 2",
+		"- decision: `pass`",
+		"- selected_action: `pass`",
+		"- terminal_status: `passed`",
+	} {
+		if !strings.Contains(string(trace), fragment) {
+			t.Fatalf("expected rerun trace to contain %q, got:\n%s", fragment, string(trace))
+		}
+	}
+}
+
 func TestRouteEvaluationWritesConcreteSupervisorTrace(t *testing.T) {
 	projectRoot := t.TempDir()
 	router, err := NewRouter(projectRoot)

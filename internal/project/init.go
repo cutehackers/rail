@@ -2,12 +2,11 @@ package project
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-)
 
-const scaffoldProjectYAML = "schema_version: 1\nproject_name: %s\nrail_compat_version: 1\ndefault_validation_profile: standard\n"
+	"rail/assets/scaffold"
+)
 
 var scaffoldDirectories = []string{
 	".harness/requests",
@@ -52,7 +51,11 @@ func Init(projectRoot string) error {
 	}
 
 	projectName := filepath.Base(root)
-	if err := writeFileIfMissing(projectFile, []byte(fmt.Sprintf(scaffoldProjectYAML, projectName)), 0o644); err != nil {
+	projectYAML, err := scaffold.RenderProjectYAML(projectName)
+	if err != nil {
+		return err
+	}
+	if err := writeFileIfMissing(projectFile, projectYAML, 0o644); err != nil {
 		return err
 	}
 

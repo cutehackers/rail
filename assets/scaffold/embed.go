@@ -3,7 +3,10 @@ package scaffold
 import (
 	"bytes"
 	"embed"
+	"strings"
 	"text/template"
+
+	"gopkg.in/yaml.v3"
 )
 
 // FS exposes the canonical embedded project scaffold.
@@ -11,7 +14,18 @@ import (
 //go:embed project.yaml
 var FS embed.FS
 
-var projectYAMLTemplate = template.Must(template.New("project.yaml").ParseFS(FS, "project.yaml"))
+var projectYAMLTemplate = template.Must(template.New("project.yaml").Funcs(template.FuncMap{
+	"yamlScalar": yamlScalar,
+}).ParseFS(FS, "project.yaml"))
+
+func yamlScalar(value string) (string, error) {
+	data, err := yaml.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(data)), nil
+}
 
 func RenderProjectYAML(projectName string) ([]byte, error) {
 	var buf bytes.Buffer

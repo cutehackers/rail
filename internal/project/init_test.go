@@ -3,8 +3,9 @@ package project
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestInitCreatesMinimalHarnessWorkspace(t *testing.T) {
@@ -20,18 +21,26 @@ func TestInitCreatesMinimalHarnessWorkspace(t *testing.T) {
 		t.Fatalf("failed to read scaffold project file: %v", err)
 	}
 
-	wantProjectName := filepath.Base(projectRoot)
-	wantLines := []string{
-		"schema_version: 1",
-		"project_name: " + wantProjectName,
-		"rail_compat_version: 1",
-		"default_validation_profile: standard",
+	var got struct {
+		SchemaVersion            int    `yaml:"schema_version"`
+		ProjectName              string `yaml:"project_name"`
+		RailCompatVersion        int    `yaml:"rail_compat_version"`
+		DefaultValidationProfile string `yaml:"default_validation_profile"`
 	}
-	got := string(data)
-	for _, want := range wantLines {
-		if !strings.Contains(got, want) {
-			t.Fatalf("project.yaml missing %q in:\n%s", want, got)
-		}
+	if err := yaml.Unmarshal(data, &got); err != nil {
+		t.Fatalf("failed to unmarshal project file: %v", err)
+	}
+	if got.SchemaVersion != 1 {
+		t.Fatalf("unexpected schema version: got %d want %d", got.SchemaVersion, 1)
+	}
+	if got.ProjectName != filepath.Base(projectRoot) {
+		t.Fatalf("unexpected project name: got %q want %q", got.ProjectName, filepath.Base(projectRoot))
+	}
+	if got.RailCompatVersion != 1 {
+		t.Fatalf("unexpected rail compat version: got %d want %d", got.RailCompatVersion, 1)
+	}
+	if got.DefaultValidationProfile != "standard" {
+		t.Fatalf("unexpected validation profile: got %q want %q", got.DefaultValidationProfile, "standard")
 	}
 
 	requiredPaths := []string{
@@ -74,6 +83,33 @@ func TestInitDoesNotCreateOverrideDirectoriesByDefault(t *testing.T) {
 	}
 }
 
+func TestInitQuotesYamlSensitiveProjectName(t *testing.T) {
+	parent := t.TempDir()
+	projectRoot := filepath.Join(parent, "project:one")
+	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
+		t.Fatalf("failed to create project root: %v", err)
+	}
+
+	if err := Init(projectRoot); err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(projectRoot, ".harness", "project.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read project file: %v", err)
+	}
+
+	var got struct {
+		ProjectName string `yaml:"project_name"`
+	}
+	if err := yaml.Unmarshal(data, &got); err != nil {
+		t.Fatalf("failed to unmarshal project file: %v", err)
+	}
+	if got.ProjectName != "project:one" {
+		t.Fatalf("unexpected project name: got %q want %q", got.ProjectName, "project:one")
+	}
+}
+
 func TestDiscoverProjectPrefersHarnessProjectFileOverGitRoot(t *testing.T) {
 	repoRoot := t.TempDir()
 	gitRoot := filepath.Join(repoRoot, "git-root")
@@ -99,5 +135,29 @@ func TestDiscoverProjectPrefersHarnessProjectFileOverGitRoot(t *testing.T) {
 
 	if got.Root != repoRoot {
 		t.Fatalf("unexpected project root: got %q want %q", got.Root, repoRoot)
+	}
+}
+
+func TestInitIsIdempotentWhenProjectFileExists(t *testing.T) {
+	projectRoot := t.TempDir()
+	projectFile := filepath.Join(projectRoot, ".harness", "project.yaml")
+
+	if err := os.MkdirAll(filepath.Dir(projectFile), 0o755); err != nil {
+		t.Fatalf("failed to create harness dir: %v", err)
+	}
+	if err := os.WriteFile(projectFile, []byte("preexisting project file"), 0o644); err != nil {
+		t.Fatalf("failed to seed project file: %v", err)
+	}
+
+	if err := Init(projectRoot); err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(projectFile)
+	if err != nil {
+		t.Fatalf("failed to read project file: %v", err)
+	}
+	if string(data) != "preexisting project file" {
+		t.Fatalf("expected existing project file to be preserved, got %q", string(data))
 	}
 }

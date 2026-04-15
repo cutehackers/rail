@@ -1,4 +1,4 @@
 schema_version: 1
-project_name: {{.ProjectName}}
+project_name: {{yamlScalar .ProjectName}}
 rail_compat_version: 1
 default_validation_profile: standard

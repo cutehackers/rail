@@ -87,6 +87,34 @@ func TestAppRunExecutesArtifactForExecuteCommand(t *testing.T) {
 	}
 }
 
+func TestAppRunRejectsNonEmptyExistingArtifactDirectory(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+	artifactPath := filepath.Join(projectRoot, ".harness", "artifacts", "cli-run-smoke")
+	if err := os.MkdirAll(artifactPath, 0o755); err != nil {
+		t.Fatalf("failed to create artifact directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(artifactPath, "terminal_summary.md"), []byte("stale terminal summary\n"), 0o644); err != nil {
+		t.Fatalf("failed to seed stale terminal summary: %v", err)
+	}
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-run-smoke",
+	}); got == 0 {
+		t.Fatalf("expected non-zero exit code for non-empty artifact directory")
+	}
+
+	summary, err := os.ReadFile(filepath.Join(artifactPath, "terminal_summary.md"))
+	if err != nil {
+		t.Fatalf("expected stale terminal summary to remain readable: %v", err)
+	}
+	if string(summary) != "stale terminal summary\n" {
+		t.Fatalf("expected stale terminal summary to remain unchanged, got %q", string(summary))
+	}
+}
+
 func TestAppRunPrintsComposeRequestErrorsToStderr(t *testing.T) {
 	originalStdin := os.Stdin
 	originalStdout := os.Stdout

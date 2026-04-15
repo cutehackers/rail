@@ -42,6 +42,15 @@ func (r *Runner) Run(requestPath, taskID string) (string, error) {
 	if effectiveTaskID == "" {
 		effectiveTaskID = defaultTaskID(requestPath)
 	}
+
+	artifactDirectory, err := r.resolveArtifactDirectory(effectiveTaskID)
+	if err != nil {
+		return "", err
+	}
+	if err := ensureArtifactDirectoryAvailable(artifactDirectory); err != nil {
+		return "", err
+	}
+
 	return r.bootstrapper.Bootstrap(requestPath, effectiveTaskID)
 }
 
@@ -175,6 +184,39 @@ func defaultTaskID(requestPath string) string {
 	}
 	base = strings.ReplaceAll(base, " ", "-")
 	return base
+}
+
+func (r *Runner) resolveArtifactDirectory(taskID string) (string, error) {
+	executionPolicyMap, err := r.bootstrapper.loadMap(".harness/supervisor/execution_policy.yaml")
+	if err != nil {
+		return "", err
+	}
+	executionPolicy, err := executionPolicyFromMap(executionPolicyMap)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(r.projectRoot, filepath.FromSlash(executionPolicy.ArtifactRoot), taskID), nil
+}
+
+func ensureArtifactDirectoryAvailable(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat artifact directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("artifact path already exists and is not a directory: %s", path)
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("read artifact directory: %w", err)
+	}
+	if len(entries) > 0 {
+		return fmt.Errorf("artifact directory already exists and is not empty: %s", path)
+	}
+	return nil
 }
 
 func readExecutionPlanFile(path string) (ExecutionPlan, error) {

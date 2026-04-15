@@ -80,6 +80,38 @@ func TestExecutePreservesSupervisorTraceability(t *testing.T) {
 	}
 }
 
+func TestRunRejectsNonEmptyExistingArtifactDirectory(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+	artifactPath := filepath.Join(projectRoot, ".harness", "artifacts", "go-smoke")
+	if err := os.MkdirAll(artifactPath, 0o755); err != nil {
+		t.Fatalf("failed to create artifact directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(artifactPath, "supervisor_trace.md"), []byte("stale trace\n"), 0o644); err != nil {
+		t.Fatalf("failed to seed stale supervisor trace: %v", err)
+	}
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	_, err = runner.Run(requestPath, "go-smoke")
+	if err == nil {
+		t.Fatalf("expected Run to reject non-empty artifact directory")
+	}
+	if !strings.Contains(err.Error(), "already exists and is not empty") {
+		t.Fatalf("expected non-empty artifact directory error, got %v", err)
+	}
+
+	trace, err := os.ReadFile(filepath.Join(artifactPath, "supervisor_trace.md"))
+	if err != nil {
+		t.Fatalf("expected stale supervisor trace to remain readable: %v", err)
+	}
+	if string(trace) != "stale trace\n" {
+		t.Fatalf("expected stale supervisor trace to remain unchanged, got %q", string(trace))
+	}
+}
+
 func prepareSmokeProject(t *testing.T) (string, string) {
 	t.Helper()
 

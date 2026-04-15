@@ -169,6 +169,56 @@ func TestRouteEvaluationRecoversTerminalSummaryOnRerun(t *testing.T) {
 	}
 }
 
+func TestRouteEvaluationRecoversSupervisorTraceOnRerun(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	summary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+	if !strings.Contains(summary, "status=tightening_validation") {
+		t.Fatalf("expected initial summary to include tightening_validation, got %q", summary)
+	}
+
+	tracePath := filepath.Join(artifactPath, "supervisor_trace.md")
+	if err := os.Remove(tracePath); err != nil {
+		t.Fatalf("failed to remove supervisor_trace.md: %v", err)
+	}
+
+	summary, err = router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("expected rerun to recover supervisor trace, got error: %v", err)
+	}
+	if strings.Contains(summary, "skipped") {
+		t.Fatalf("expected rerun to refresh supervisor trace instead of skipping, got %q", summary)
+	}
+	if !strings.Contains(summary, "status=tightening_validation") {
+		t.Fatalf("expected rerun summary to include tightening_validation, got %q", summary)
+	}
+	if !strings.Contains(summary, "action=tighten_validation") {
+		t.Fatalf("expected rerun summary to include tighten_validation, got %q", summary)
+	}
+
+	trace, err := os.ReadFile(tracePath)
+	if err != nil {
+		t.Fatalf("expected supervisor_trace.md to exist after recovery: %v", err)
+	}
+	for _, fragment := range []string{
+		"# Supervisor Decision Trace",
+		"## Iteration 1",
+		"- selected_action: `tighten_validation`",
+	} {
+		if !strings.Contains(string(trace), fragment) {
+			t.Fatalf("expected recovered supervisor trace to contain %q, got:\n%s", fragment, string(trace))
+		}
+	}
+}
+
 func TestRouteEvaluationWritesConcreteSupervisorTrace(t *testing.T) {
 	projectRoot := t.TempDir()
 	router, err := NewRouter(projectRoot)

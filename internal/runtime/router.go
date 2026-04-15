@@ -45,10 +45,10 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 		return "", err
 	}
 	state = normalizeEvaluatorEntryState(state)
-	if refreshed, err := r.refreshTerminalOutputsIfNeeded(artifactDirectory, state); err != nil {
+	if refreshed, err := r.refreshPersistedOutputsIfNeeded(artifactDirectory, state); err != nil {
 		return "", err
 	} else if refreshed {
-		return formatExecutionSummary(artifactDirectory, state, "Harness evaluation refreshed terminal outputs"), nil
+		return formatExecutionSummary(artifactDirectory, state, "Harness evaluation refreshed persisted outputs"), nil
 	}
 	if state.CurrentActor == nil || *state.CurrentActor != "evaluator" || shouldTerminate(state) {
 		return fmt.Sprintf(
@@ -141,14 +141,28 @@ func readState(path string) (State, error) {
 	return state, nil
 }
 
-func (r *Router) refreshTerminalOutputsIfNeeded(artifactDirectory string, state State) (bool, error) {
+func (r *Router) refreshPersistedOutputsIfNeeded(artifactDirectory string, state State) (bool, error) {
+	refreshed := false
+
+	tracePath := filepath.Join(artifactDirectory, "supervisor_trace.md")
+	if _, err := os.Stat(tracePath); err == nil {
+		// already present
+	} else if !os.IsNotExist(err) {
+		return false, fmt.Errorf("stat supervisor_trace.md: %w", err)
+	} else if len(state.ActionHistory) > 0 {
+		if err := appendSupervisorDecisionTrace(artifactDirectory, state); err != nil {
+			return false, err
+		}
+		refreshed = true
+	}
+
 	if !shouldTerminate(state) {
-		return false, nil
+		return refreshed, nil
 	}
 
 	summaryPath := filepath.Join(artifactDirectory, "terminal_summary.md")
 	if _, err := os.Stat(summaryPath); err == nil {
-		return false, nil
+		return refreshed, nil
 	} else if !os.IsNotExist(err) {
 		return false, fmt.Errorf("stat terminal_summary.md: %w", err)
 	}

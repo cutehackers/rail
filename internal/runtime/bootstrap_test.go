@@ -394,6 +394,56 @@ validation_profile: standard
 	}
 }
 
+func TestBootstrapRejectsValidationTargetsThatAreDirectories(t *testing.T) {
+	projectRoot := t.TempDir()
+	bootstrapper, err := NewBootstrapper(projectRoot)
+	if err != nil {
+		t.Fatalf("NewBootstrapper returned error: %v", err)
+	}
+
+	for _, relPath := range []string{
+		filepath.Join(".harness", "requests"),
+		filepath.Join("lib"),
+		filepath.Join("packages", "app", "test"),
+	} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+
+	directoryTarget := filepath.Join(projectRoot, "packages", "app", "test")
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	requestBody := `task_type: bug_fix
+goal: reject directory paths in validation_targets
+context:
+  suspected_files:
+    - lib/profile.dart
+  validation_roots:
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app")) + `
+  validation_targets:
+    - ` + filepath.ToSlash(directoryTarget) + `
+constraints: []
+definition_of_done:
+  - reject directory validation targets
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write request fixture: %v", err)
+	}
+
+	_, err = bootstrapper.Bootstrap(requestPath, "bootstrap-rejects-directory-validation-target")
+	if err == nil {
+		t.Fatalf("expected Bootstrap to reject directory-based validation_targets")
+	}
+	if !strings.Contains(err.Error(), "context.validation_targets") {
+		t.Fatalf("expected validation_targets error context, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "file") {
+		t.Fatalf("expected file validation error, got %v", err)
+	}
+}
+
 func TestBootstrapReturnsErrorForMalformedSupervisorConfig(t *testing.T) {
 	projectRoot := t.TempDir()
 	bootstrapper, err := NewBootstrapper(projectRoot)

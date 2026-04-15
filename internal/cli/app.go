@@ -31,6 +31,13 @@ func (a *App) Run(args []string) int {
 		return 1
 	}
 
+	if args[0] == "init" {
+		if err := RunInit(args[1:]); err != nil {
+			return 1
+		}
+		return 0
+	}
+
 	if _, ok := a.commandSet[args[0]]; ok {
 		return 0
 	}

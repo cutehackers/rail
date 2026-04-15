@@ -5,11 +5,9 @@ description: Use when bootstrapping and executing the Rail harness workflow agai
 
 # Rail
 
-Use this skill from the local `Rail` control repository root on the current machine.
+Use this skill through the installed `rail` binary.
 
-Do not assume `rail` is installed at a fixed absolute path. Treat the current checkout as the runtime root for `rail` commands.
-
-The target application repository is not this repo. It is passed as `--project-root`.
+The target application repository is not the Rail source repository. It is carried in the request draft as `project_root`.
 
 ## Purpose
 
@@ -20,12 +18,13 @@ You then:
 
 1. infer the harness request fields
 2. ask at most one concise clarification only if a missing field makes the request unsafe
-3. write the structured request file
-4. validate the request
-5. bootstrap the workflow against the target repo
-6. summarize the artifact location and next actor step
+3. emit a structured request draft
+4. materialize the normalized request with `rail compose-request`
+5. validate the request
+6. bootstrap the workflow against the target repo
+7. summarize the artifact location and next actor step
 
-Do not make the user write YAML by hand unless they explicitly ask to.
+Do not make the user write YAML by hand unless they explicitly ask to. Natural-language interpretation remains the primary UX; the CLI validates and materializes the official request file.
 
 ## Required runtime assumption
 
@@ -37,6 +36,8 @@ If the user has not already made it explicit, ask for the target repo path once.
 
 Convert the user request into:
 
+- `request_version`
+- `project_root`
 - `task_type`
 - `goal`
 - `context`
@@ -46,6 +47,7 @@ Convert the user request into:
 
 Defaults:
 
+- `request_version=1`
 - `bug_fix`, `feature_addition`, `test_repair` -> `risk_tolerance=low`
 - `safe_refactor` -> `risk_tolerance=medium`
 - `definition_of_done` should include:
@@ -53,44 +55,57 @@ Defaults:
   - related test expectation
   - analyze expectation
 
-## Commands
+## Structured Draft Contract
 
-From the local `rail` repo root, run:
+Emit a draft like:
 
-```bash
-dart run bin/rail.dart compose-request --goal <goal> --task-type <task_type> ...
-dart run bin/rail.dart validate-request --request <request-file>
-dart run bin/rail.dart run --request <request-file> --project-root <target-repo>
+```json
+{
+  "request_version": "1",
+  "project_root": "/absolute/path/to/target-repo",
+  "task_type": "bug_fix",
+  "goal": "Describe the requested outcome",
+  "context": [
+    "Short factual context item"
+  ],
+  "constraints": [
+    "Short concrete constraint"
+  ],
+  "definition_of_done": [
+    "Observable requested behavior",
+    "Related test expectation",
+    "Analyze expectation"
+  ],
+  "risk_tolerance": "low"
+}
 ```
 
-When you need to refer to paths in explanations or examples, use placeholders such as `<rail-repo-root>` and `/absolute/path/to/target-repo` instead of machine-specific home-directory paths.
+Only emit fields you can support from the user request or a single safety clarification. Keep `context`, `constraints`, and `definition_of_done` concise and concrete.
 
-Only use `--force` when the user explicitly wants to overwrite an existing artifact.
+## Commands
+
+Use the installed binary:
+
+```bash
+rail compose-request --stdin
+rail compose-request --input /absolute/path/to/request-draft.json
+rail validate-request --request /absolute/path/to/target-repo/.harness/requests/request.yaml
+rail run --request /absolute/path/to/target-repo/.harness/requests/request.yaml --project-root /absolute/path/to/target-repo
+```
+
+When you need to refer to paths in explanations or examples, use placeholders such as `/absolute/path/to/request-draft.json` and `/absolute/path/to/target-repo` instead of machine-specific home-directory paths.
 
 ## Compose Request
 
 Prefer `compose-request` over manually writing YAML.
 
-Map inferred fields to:
+The preferred flow is:
 
-- `--task-type`
-- `--goal`
-- `--feature`
-- `--suspected-file`
-- `--related-file`
-- `--validation-root`
-- `--validation-target`
-- `--constraint`
-- `--dod`
-- `--risk-tolerance`
-- `--validation-profile`
-- `--priority`
+1. infer the draft from the natural-language request
+2. send the draft to `rail compose-request --stdin` or save it and pass `--input`
+3. let `rail` normalize defaults and write the request file under the target repo
 
-If the user did not give reliable file hints, omit them instead of inventing them.
-
-Use `--validation-profile smoke` only for harness smoke or control-plane verification tasks where full target-repo lint/test would be disproportionate.
-In `smoke` mode, rail may satisfy actor execution through deterministic control-plane outputs instead of full nested actor generation.
-For `standard` mode, prefer passing `--validation-root` and `--validation-target` when you already know the affected package or test path so executor validation stays narrow.
+If the user did not give reliable file hints or extra context, omit them instead of inventing them.
 
 ## Output To User
 
@@ -111,6 +126,7 @@ When execution continues, supervisor routing should be described in action terms
 - Do not invent constraints the user did not state.
 - Keep `definition_of_done` testable.
 - Keep `constraints` short and concrete.
+- Do not assume a local Rail checkout is the runtime root.
 
 For examples, see:
 

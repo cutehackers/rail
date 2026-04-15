@@ -1,0 +1,16 @@
+{
+  "request_version": "1",
+  "task_type": "bug_fix",
+  "goal": "Normalize a structured request draft into a request file",
+  "context": [
+    "compose-request should read draft input from stdin"
+  ],
+  "constraints": [
+    "keep the output deterministic"
+  ],
+  "definition_of_done": [
+    "the normalized request file is written",
+    "default risk tolerance is applied",
+    "the command reports the request path"
+  ]
+}

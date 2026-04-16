@@ -1,38 +1,44 @@
 # rail
 
-`rail` is a harness control-plane for Codex. It helps you turn a natural-language engineering request into a structured, reviewable workflow against a separate target repository.
+`rail` is an installed harness control-plane for Codex. It turns a natural-language engineering request into a bounded, reviewable workflow that runs against a separate target repository.
 
-The main result is simple: instead of manually coordinating prompts, task boundaries, and review handoffs, you can use the Rail skill to run a bounded workflow that produces artifacts, decisions, and a clear supervisor-managed outcome.
+The product model is simple:
+
+- install `rail` once as a normal CLI
+- use the bundled Rail skill from Codex
+- keep project-specific state inside the target repository
+- rely on embedded product defaults unless the project overrides them
+
+This source repository is the development and release origin for Rail. It is not the required runtime root for end users.
 
 ## Install
 
-Requirements:
+Install Rail as a packaged product:
 
-- Homebrew
-- Codex
+```bash
+brew install rail
+```
 
-Setup:
-For end-user installs, use a published Rail release or release tap. The Homebrew formula under `packaging/homebrew/rail.rb` is release-packaging material and is not a supported direct install path from a development checkout.
+The packaged install includes:
 
-Packaged releases bundle the Rail Codex skill under the installation prefix. This source repository remains the development and release origin, not the required runtime root.
+- the `rail` CLI
+- the built-in Rail Codex skill
+- embedded default harness assets used at runtime
 
-## What You Get From Rail
+There is no separate manual skill-install step for end users.
 
-Rail is designed for operators who want a predictable harness, not an ad hoc prompt chain.
+## First Use
 
-With Rail, you can:
+Initialize Rail inside the repository you want to operate on:
 
-- start from intent instead of hand-writing harness YAML
-- run a bounded supervisor workflow against a separate project repository
-- keep planning, execution, evaluation, and integration outputs in one traceable place
-- separate the `v1` release gate from the `v2` learning and review flow
-- make supervisor decisions explicit enough to review and improve over time
+```bash
+cd /absolute/path/to/target-repo
+rail init
+```
 
-## Using Rail Through The Codex Skill
+`rail init` creates the minimal project-local `.harness/` workspace that Rail needs for requests, artifacts, and reviewed learning state.
 
-The main merit of Rail is not the CLI by itself. The main merit is that the Rail Codex skill lets the user stay at the level of goal, constraints, and done criteria while the harness handles structure and routing.
-
-Typical skill usage looks like this:
+After initialization, a typical Rail workflow starts from the bundled Codex skill:
 
 ```text
 Use the Rail skill.
@@ -42,79 +48,90 @@ Constraint: Do not change the API contract.
 Definition of done: refresh completes reliably and related tests still pass.
 ```
 
-```text
-Use the Rail skill.
-Target repo: /absolute/path/to/target-repo
-Goal: Refactor the settings flow safely without changing user-visible behavior.
-Constraint: Keep the existing analytics events unchanged.
-Definition of done: behavior is preserved and the change remains easy to review.
-```
+The skill structures the request. The `rail` CLI validates it, materializes the workflow, and records reviewable outputs.
 
-```text
-Use the Rail skill.
-Target repo: /absolute/path/to/target-repo
-Goal: Implement the first pass of offline retry handling for failed uploads.
-Constraint: Keep the scope small and release-safe.
-Definition of done: failed uploads can be retried and the change includes clear follow-up risks.
-```
+## Project-Local `.harness`
 
-In practice, the skill structures the request, applies the repo-owned harness policy, and starts the correct workflow for the target repository.
+Each target repository owns its own `.harness/` directory. This is the project-local control-plane surface, not a global shared checkout.
 
-## V1 Workflow
+The local workspace holds:
 
-`v1` is the core supervisor gate.
+- `.harness/project.yaml`
+- `.harness/requests/`
+- `.harness/artifacts/`
+- `.harness/learning/`
 
-At a high level:
+These paths always belong to the target repository because they capture project-specific configuration, execution history, evidence, and reviewed memory.
 
-1. Rail turns the user request into a structured task.
-2. The supervisor routes the task through bounded actors such as planning, context building, generation, execution, and evaluation.
-3. The evaluator decides whether the run passes, needs a bounded retry, or should stop.
-4. The result is a reviewable artifact set for the target repository.
+Rail also ships embedded defaults for reusable control-plane assets such as:
 
-`v1` is focused on getting to a controlled execution outcome.
+- actor instructions
+- supervisor policy
+- rules and rubrics
+- request and artifact templates
 
-## V2 Workflow
+If a project does not override those files locally, Rail resolves them from the embedded defaults in the installed product.
 
-`v2` builds on `v1` by adding explicit integration and learning review flows.
+## Advanced Overrides
 
-At a high level:
+Advanced users can override selected control-plane files in the target repository without forking the product install.
 
-1. A passed `v1` run can produce an integration handoff.
-2. Operators can review outcome feedback, learning candidates, and hardening candidates.
-3. Rail regenerates queue and evidence state from reviewed files instead of relying on hidden mutable state.
-4. Approved learning can be promoted in a controlled, same-family way.
+Supported override areas include:
 
-`v2` is focused on making improvement loops explicit, reviewable, and safe to evolve.
+- `.harness/supervisor/`
+- `.harness/actors/`
+- `.harness/rules/`
+- `.harness/rubrics/`
+- `.harness/templates/`
 
-## Architecture
+Override precedence is explicit:
 
-The user guide stays intentionally lightweight. If you want the system-level explanation of how the supervisor, actors, rubrics, artifacts, and learning state work together, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+1. If a project-local `.harness` file exists, Rail uses it.
+2. Otherwise Rail falls back to the embedded defaults bundled with the installed product.
+3. Override resolution is a file-level override, not a deep merge.
+4. Stateful project data stays project-local even when no override exists.
 
-For Korean documentation, see [README-kr.md](README-kr.md) and [docs/ARCHITECTURE-kr.md](docs/ARCHITECTURE-kr.md).
+The file-level override rule is deliberate. It keeps provenance obvious during debugging, makes upgrades reviewable, and avoids hidden merge behavior between project customizations and packaged defaults.
 
-## Current Scope
+Example:
 
-The `v1` runtime supports:
+- `.harness/supervisor/policy.yaml` present: use the project version
+- `.harness/supervisor/policy.yaml` absent: use the embedded default
+- `.harness/artifacts/`: always local project state, never satisfied by global fallback
+
+The architecture details behind embedded defaults, project-local `.harness`, and file-level override behavior are documented in [docs/ARCHITECTURE.md](/Users/junhyounglee/workspace/rail/docs/ARCHITECTURE.md).
+
+## What Rail Owns
+
+Rail owns the control-plane, not the downstream product under change.
+
+In practice that means Rail owns:
 
 - request composition and validation
-- artifact bootstrap
-- actor brief generation
-- sequential actor execution with `codex exec`
-- evaluator-driven `revise` handling back to generator
-- validation profiles (`standard`, `smoke`) for executor planning
-- deterministic smoke fast-path execution for planner/context_builder/generator/executor/evaluator
-- request-level validation roots and targets for narrowing standard-profile executor scope
-- supervisor action loops that can route from evaluator back to generator, context_builder, or executor with bounded budgets
-- review drafts are operator-authored, while queue, evidence, and approved-memory files are rail-derived snapshots
-- approved memory is same-family only, with one active approved file per family
-- pending review backlog is allowed, but broken derived state is not
+- artifact bootstrap and reporting
+- supervisor policy and actor routing
+- evaluation and bounded corrective loops
+- reviewable learning and hardening workflows
 
-The `v1` scope is intentionally constrained and does not treat these as in-gate:
+The target repository remains the place where application code is inspected, changed, and validated.
 
-- parallel actor orchestration
-- project-specific adapters beyond the default Flutter + Riverpod profile
-- `integrator`
-- quality-learning review and apply flows
-- hardened end-to-end validation across all task types
+## Source Repository Role
 
-The `v2` operator surface now includes explicit file-based `init-*` and `apply-*` learning workflows. Operators edit the draft and decision files; rail regenerates the queue and evidence snapshots, and updates approved memory only on `promote` at `.harness/learning/approved/<task_family>.yaml`.
+This repository exists for contributors and release engineers who are developing Rail itself.
+
+It is the source of truth for:
+
+- the Go CLI implementation
+- embedded default assets under `assets/`
+- the bundled Rail skill source
+- packaging and release configuration
+- architecture, release, and operator documentation
+
+You do not need a local checkout of this repository to use Rail as a product. You only need an installed `rail` binary and a target repository with a project-local `.harness/` workspace.
+
+## More Detail
+
+- System architecture: [docs/ARCHITECTURE.md](/Users/junhyounglee/workspace/rail/docs/ARCHITECTURE.md)
+- Korean architecture guide: [docs/ARCHITECTURE-kr.md](/Users/junhyounglee/workspace/rail/docs/ARCHITECTURE-kr.md)
+- Release contracts: [docs/releases/](/Users/junhyounglee/workspace/rail/docs/releases)
+- Active release tasks: [docs/tasks.md](/Users/junhyounglee/workspace/rail/docs/tasks.md)

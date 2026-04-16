@@ -6,20 +6,22 @@
 
 Supported in `v1`:
 
-- `compose-request`
-- `validate-request`
-- `run --request ... --project-root ...`
-- `execute --artifact ...`
-- `route-evaluation`
+- `rail init`
+- `rail compose-request`
+- `rail validate-request`
+- `rail run --request ... --project-root ...`
+- `rail execute --artifact ...`
+- `rail route-evaluation`
 - sequential execution of:
   - `planner`
   - `context_builder`
   - `generator`
   - `executor`
   - `evaluator`
-- evaluator-driven bounded corrective loop
+- evaluator-driven bounded corrective loops
 - deterministic supervisor actions
-- terminal artifacts and release verification
+- reviewable terminal artifacts
+- packaged distribution that includes the bundled Rail skill and embedded defaults
 
 Deferred to `v2`:
 
@@ -27,18 +29,19 @@ Deferred to `v2`:
 - `apply-user-outcome-feedback`
 - `apply-learning-review`
 - `apply-hardening-review`
-- approved-memory / review-queue / hardening-queue operations
+- approved-memory, review-queue, and hardening-queue operations
 - quality-improvement-over-time workflows
 
 ## Core Supervisor Gate
 
 The supported `v1` runtime behavior is:
 
-1. bootstrap a request and artifact set
-2. execute `planner -> context_builder -> generator -> executor -> evaluator`
-3. let `evaluator` select a deterministic next action
-4. continue only within explicit retry budgets
-5. stop in a visible terminal state
+1. initialize a project-local `.harness/` workspace when needed
+2. compose or validate a request
+3. execute `planner -> context_builder -> generator -> executor -> evaluator`
+4. let `evaluator` choose a deterministic next action
+5. continue only within explicit retry budgets
+6. stop in a visible terminal state
 
 The bounded corrective loop is part of `v1`.
 
@@ -46,40 +49,42 @@ The self-learning loop is not part of `v1`.
 
 ## Operator Commands
 
+For the installed product, the canonical operator commands are:
+
 ```bash
-dart pub get
-dart run bin/rail.dart compose-request --goal <goal> --task-type <type>
-dart run bin/rail.dart validate-request --request <request-file>
-dart run bin/rail.dart run --request <request-file> --project-root <target-repo>
-dart run bin/rail.dart execute --artifact <artifact-dir>
-dart run bin/rail.dart route-evaluation --artifact <artifact-or-evaluation-result>
+rail init
+rail compose-request --goal <goal> --task-type <type>
+rail validate-request --request <request-file>
+rail run --request <request-file> --project-root <target-repo>
+rail execute --artifact <artifact-dir>
+rail route-evaluation --artifact <artifact-or-evaluation-result>
 ```
+
+Those commands operate on the target repository and its project-local `.harness/` workspace. They do not require the Rail source repository as the runtime root.
 
 ## Release Gate
 
 Production release requires all of the following:
 
-```bash
-dart analyze
-dart test
-dart compile exe bin/rail.dart -o build/rail
-./tool/v1_release_gate.sh
-```
-
-And:
-
+- the packaged `rail` binary exposes the `v1` command surface above
+- the bundled Rail skill is included with the shipped product
+- embedded defaults resolve correctly when a project does not override files locally
+- project-local `.harness` state remains local and reviewable
 - fresh smoke verification succeeds with `run -> execute`
-- representative standard route verification succeeds against current schemas
-  - covered by `test/runtime/standard_route_fixtures_test.dart`
-  - fixtures live under `test/fixtures/standard_route/`
+- representative standard-route verification succeeds against the current request and artifact contracts
 - terminal artifacts remain readable without raw actor log inspection
 - no deferred `v2` field or flow is required for the `v1` path
 
-The canonical local release command is `./tool/v1_release_gate.sh`.
+Repository verification remains explicit and automated through:
 
-The canonical CI gate is `.github/workflows/v1-release-gate.yml`.
+- `./tool/v1_release_gate.sh`
+- `.github/workflows/v1-release-gate.yml`
+- `.github/workflows/go-release-gate.yml`
+
+Those repository checks are release-engineering evidence for the product. They are not the end-user operating model.
 
 ## Operational Notes
 
 - `v1` is intentionally conservative. Weak evidence should refuse or route to a corrective action rather than pass.
 - `v1` only claims the core supervisor gate. It does not claim post-pass integration or review-driven learning behavior.
+- Project customization in `v1` is file-level override only. If a project-local harness file exists, it replaces the embedded default for that file.

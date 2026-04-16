@@ -5,8 +5,8 @@ This checklist tracks the remaining work to make `rail` release-ready at the
 
 Scope of this checklist:
 
-- includes repository-local runtime, CI, docs, and operator-process work
-- excludes packaging, installer strategy, and external distribution format
+- includes repository-local runtime, CI, docs, packaging, and operator-process work
+- includes installer and distribution alignment for the installed Rail product
 - treats `v1 core supervisor gate` as already shipped and closed
 
 Current baseline:
@@ -15,8 +15,8 @@ Current baseline:
 - `v1` verification gaps: none
 - `v2` runtime surface is implemented locally
 - `v2` now has CI coverage and a canonical operating model
-- `v2` local gate is CI-covered, documented, and verified in the current baseline
-- remaining follow-up is release-surface polish, not a ship blocker
+- the installed-product direction is now fixed: packaged `rail`, bundled skill, project-local `.harness`
+- remaining follow-up is release-surface polish, packaging consistency, and migration cleanup
 
 ## Must
 
@@ -49,8 +49,8 @@ Current baseline:
 
 ## Later
 
-- [ ] Revisit packaging and distribution strategy
-  This is intentionally excluded from the current release-ready definition.
+- [ ] Retire transitional documentation and tooling that still assumes a checkout-era runtime
+  The installed product model is now the user-facing contract, but some contributor and migration material may still reference the older path.
 
-- [ ] Reassess language/runtime choice for long-term delivery
-  The current repo is Dart-based, but that decision is no longer assumed to be permanent.
+- [ ] Continue reducing the transitional Dart compatibility surface in the source repository
+  The release target is the installed Go product; any remaining Dart-era code should be treated as migration debt, not the long-term delivery model.

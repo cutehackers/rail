@@ -2,107 +2,165 @@
 
 ## Overview
 
-Rail is a harness control-plane. It does not contain the downstream product being changed. Instead, it owns the runtime, supervisor policy, actor instructions, schemas, and reviewable artifact flow used to operate on another repository.
+Rail is an installed harness control-plane product. It does not host the downstream application being changed. Instead, Rail provides the packaged CLI, the bundled Rail skill, embedded default control-plane assets, and the runtime that operates against another repository.
 
-The system is designed around a simple idea: a user states intent, the supervisor routes bounded actor work, and Rail records the result as explicit artifacts that can be inspected and evolved over time.
+The governing model is:
 
-## Core Concepts
+- the installed product owns reusable defaults and orchestration logic
+- the target repository owns project-local state under `.harness/`
+- the supervisor keeps workflow decisions explicit and reviewable
 
-### Supervisor
+## Product Runtime Model
 
-The supervisor is the control layer. It decides which actor should run next, when a run should stop, and whether evaluator feedback should trigger a bounded retry.
+Rail is intended to be installed and used like any other developer tool:
 
-Its job is not to generate code directly. Its job is to manage the workflow, apply policy, and keep decisions explicit.
+```bash
+brew install rail
+cd /absolute/path/to/target-repo
+rail init
+```
 
-### Actors
+The installed product includes:
 
-Actors are the bounded specialists inside the workflow. In the current Rail model, they are responsible for steps such as:
+- the native `rail` CLI
+- the bundled Rail Codex skill
+- embedded defaults for supervisor policy, actors, rules, rubrics, and templates
 
-- planning the work
-- gathering context
-- generating a candidate change
-- executing validation
-- evaluating the result
-- producing an integration handoff in the `v2` flow
+The source repository is the development and contribution origin for those assets. It is not the required runtime root for end users.
 
-Each actor has a narrow responsibility and produces structured output that the rest of the system can inspect.
+## Core Runtime Components
 
-### Rubrics And Rules
+### Rail CLI
 
-Rubrics and rules define how Rail judges outcomes. They make the workflow reviewable by expressing expectations in configuration instead of burying them in hidden decisions.
+The CLI is the execution engine. It is responsible for:
 
-In practice, they answer questions such as:
+- request composition and normalization
+- schema validation
+- project initialization
+- artifact bootstrap
+- actor orchestration
+- evaluation routing
+- terminal reporting
 
-- what counts as a pass
-- when a retry is allowed
-- when a run should be blocked
-- how learning and hardening reviews should be interpreted
+### Bundled Rail Skill
 
-### Artifacts
+The Rail skill is the natural-language entrypoint. It interprets the user goal, constraints, and definition of done, then hands a structured draft to the CLI. The skill assumes `rail` is installed on `PATH`; it does not assume a local source checkout.
 
-Artifacts are the persistent record of a run. They capture the request, plan, context, implementation result, execution report, evaluation result, and, in `v2`, the integration result and learning review files.
+### Embedded Defaults
 
-This gives Rail a traceable chain from user intent to supervisor outcome.
+Rail ships embedded defaults for reusable harness assets. These packaged defaults cover:
+
+- supervisor policy
+- actor instructions
+- rules and rubrics
+- request and artifact templates
+
+Embedded defaults are part of the product contract. They give every initialized project a known baseline even when the project has not customized its own harness files.
+
+### Project-Local `.harness`
+
+Each target repository owns a project-local `.harness/` workspace. This is the project-specific control-plane surface.
+
+Required local state:
+
+- `.harness/project.yaml`
+- `.harness/requests/`
+- `.harness/artifacts/`
+- `.harness/learning/`
+
+Those paths remain local because they hold project identity, run history, evidence, and reviewed memory. They are never satisfied by global fallback.
 
 ## Runtime Flow
 
-The main flow is straightforward.
+The runtime flow stays explicit:
 
-1. A user request is converted into a structured task.
-2. Rail creates an artifact workspace for that task.
-3. The supervisor dispatches actors in sequence.
-4. Each actor writes structured output back into the artifact set.
-5. The evaluator decides whether the run passes, retries within policy, or stops.
-6. If the run passes and the operator wants the extended `v2` flow, Rail can create an integration handoff and learning review inputs.
+1. The user invokes the bundled Rail skill or the CLI directly.
+2. Rail converts the request into a structured task.
+3. Rail materializes or updates artifact state in the target repository.
+4. The supervisor dispatches bounded actors in sequence.
+5. Each actor writes structured output back into the artifact set.
+6. The evaluator decides whether the run passes, retries within budget, or stops.
+7. Optional `v2` integration and learning flows extend the result after a passing core run.
 
-The important property is that every transition is visible. The system is intentionally biased toward explicit routing and explicit outputs.
+This design deliberately favors reviewable transitions over hidden automation.
 
-## How Supervisor, Actors, And Rubrics Work Together
+## Supervisor, Actors, And Rubrics
 
-The relationship is:
+The control relationship is stable:
 
-- the supervisor owns control
+- the supervisor owns workflow control
 - actors own bounded execution
-- rubrics and rules define how outcomes are judged
+- rubrics and rules define how results are judged
 
-An actor does not decide the whole workflow. It performs its step and returns structured output. The supervisor reads that output, applies rules and rubrics, and decides the next action.
+Actors do not own the whole workflow. They perform a narrow step and return structured output. The supervisor reads that output, applies policy, and decides what happens next.
 
-This separation matters because it keeps the system maintainable:
+That separation keeps the system maintainable:
 
-- actor prompts can evolve without rewriting the whole control flow
+- actor behavior can evolve without rewriting the whole control loop
 - routing policy can change without rewriting every actor
-- release decisions stay reviewable because the evaluation criteria are explicit
+- release decisions remain inspectable because evaluation criteria are explicit
+
+## Advanced Overrides
+
+Rail supports advanced customization through project-local `.harness` files. This is the intended advanced override surface.
+
+Common override locations:
+
+- `.harness/supervisor/`
+- `.harness/actors/`
+- `.harness/rules/`
+- `.harness/rubrics/`
+- `.harness/templates/`
+
+Resolution follows a simple precedence model:
+
+1. Use the project-local file when it exists.
+2. Otherwise use the embedded defaults from the installed product.
+3. Treat the result as a file-level override, not a deep merge.
+4. Keep stateful directories project-local regardless of defaults.
+
+### Why File-Level Override
+
+The file-level override rule is intentional.
+
+- it keeps override provenance obvious
+- it makes debugging straightforward
+- it avoids hidden merge semantics across product upgrades
+- it keeps advanced customization explicit and reviewable
+
+The product does not attempt partial merges of policy or template files. If a project wants to change a file, it owns the full file.
 
 ## Artifacts And Learning State
 
-Rail separates run artifacts from learning state.
+Rail separates run artifacts from reviewed learning state.
 
-- run artifacts describe what happened during a specific task
+- run artifacts describe what happened for one task
 - learning state describes what the system should remember after reviewed outcomes
 
-In `v2`, operators edit review files such as feedback or learning decisions. Rail then regenerates queue and evidence state from those reviewed files. This keeps derived state reproducible and easier to audit.
+In `v2`, operators edit review files such as feedback or learning decisions. Rail then regenerates queue and evidence state from those reviewed files so the derived state remains reproducible.
 
-Approved memory is family-scoped. A promoted review updates the active approved memory for that task family instead of creating a hidden chain of mutable state.
+Approved memory is family-scoped. Promotion updates the active approved memory for a task family rather than building a hidden chain of mutable state.
 
 ## V1 And V2 Boundary
 
-`v1` is the core supervisor gate. It is concerned with bounded execution and pass-or-revise control.
+`v1` is the bounded core supervisor gate. It focuses on deterministic execution, corrective loops, and explicit terminal outcomes.
 
-`v2` adds two things on top:
+`v2` builds on `v1` with:
 
 - an explicit integration handoff after a passing run
-- explicit learning and hardening review flows for continuous improvement
+- explicit learning and hardening review flows
 
-This boundary is intentional. It lets Rail keep the release gate focused while still supporting longer-term quality improvement in a separate, reviewable layer.
+That boundary keeps the release gate focused while allowing improvement loops to remain reviewable and separately governed.
 
-## Repository Structure
+## Source Repository Structure
 
-At a high level, the repository is organized like this:
+For contributors, this repository is organized around the product build and its packaged defaults:
 
-- [bin/rail.dart](bin/rail.dart) exposes the runtime entrypoint
-- `lib/src/runtime/` contains runtime execution and supervisor logic
-- `.harness/` contains actor instructions, rules, rubrics, templates, and learning state
-- `skills/Rail/` contains the repo-owned Codex skill
-- `docs/` contains release contracts, architecture notes, and operator-facing references
+- `cmd/rail/` contains the product entrypoint
+- `internal/` contains the runtime, request, validation, install, and reporting packages
+- `assets/defaults/` contains embedded default harness assets
+- `assets/skill/` contains the bundled Rail skill source
+- `packaging/` contains release packaging material such as the Homebrew formula
+- `docs/` contains architecture, release, and operator documentation
 
-The design goal is not novelty. The design goal is a control-plane that stays explicit enough to review, evolve, and trust.
+Some transitional Dart-era files may still exist while the product finishes the migration, but they are not the user-facing runtime model.

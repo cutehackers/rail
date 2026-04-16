@@ -2,107 +2,165 @@
 
 ## 개요
 
-Rail은 하네스 control-plane입니다. 실제로 변경되는 다운스트림 제품 코드는 이 저장소 안에 있지 않습니다. 대신 Rail은 다른 저장소를 대상으로 동작하기 위한 runtime, supervisor policy, actor instruction, schema, reviewable artifact flow를 소유합니다.
+Rail은 설치형 하네스 control-plane 제품입니다. 실제로 변경되는 다운스트림 애플리케이션 코드는 이 저장소에 있지 않습니다. 대신 Rail은 패키지된 CLI, 번들 Rail skill, embedded default control-plane asset, 그리고 다른 저장소를 대상으로 실행되는 runtime을 제공합니다.
 
-시스템의 핵심 아이디어는 단순합니다. 사용자가 의도를 말하면, supervisor가 bounded actor workflow를 라우팅하고, Rail은 그 결과를 시간이 지나도 검토하고 발전시킬 수 있는 명시적 artifact로 남깁니다.
+핵심 모델은 다음과 같습니다.
 
-## 핵심 개념
+- 설치된 제품이 재사용 가능한 기본값과 orchestration logic을 소유함
+- 대상 저장소가 `.harness/` 아래의 project-local state를 소유함
+- supervisor가 workflow 결정을 명시적이고 reviewable하게 유지함
 
-### Supervisor
+## 제품 Runtime 모델
 
-Supervisor는 control layer입니다. 어떤 actor를 다음에 실행할지, 언제 실행을 멈출지, evaluator feedback에 따라 bounded retry를 허용할지를 결정합니다.
+Rail은 일반적인 개발 도구처럼 설치해서 사용하도록 설계되었습니다.
 
-Supervisor의 역할은 직접 코드를 생성하는 것이 아니라 workflow를 관리하고, policy를 적용하고, 결정을 명시적으로 남기는 것입니다.
+```bash
+brew install rail
+cd /absolute/path/to/target-repo
+rail init
+```
 
-### Actors
+설치된 제품에는 다음이 포함됩니다.
 
-Actor는 workflow 안의 bounded specialist입니다. 현재 Rail 모델에서 actor는 대체로 다음 역할을 맡습니다.
+- 네이티브 `rail` CLI
+- 번들 Rail Codex skill
+- supervisor policy, actor, rule, rubric, template를 위한 embedded defaults
 
-- 작업 계획 수립
-- 필요한 context 수집
-- 후보 변경 생성
-- validation 실행
-- 결과 평가
-- `v2` 흐름에서 integration handoff 생성
+소스 저장소는 이 자산들의 개발 및 기여 출처입니다. 최종 사용자가 반드시 checkout 해야 하는 runtime root는 아닙니다.
 
-각 actor는 좁은 책임을 가지고, 나머지 시스템이 확인할 수 있는 구조화된 출력을 남깁니다.
+## 핵심 Runtime 구성 요소
 
-### Rubric 과 Rule
+### Rail CLI
 
-Rubric과 rule은 Rail이 결과를 어떻게 판단하는지를 정의합니다. 기대치를 숨겨진 결정에 묻지 않고 설정 파일로 표현함으로써 workflow를 reviewable하게 유지합니다.
+CLI는 실행 엔진입니다. 다음 책임을 가집니다.
 
-실제로는 다음과 같은 질문에 답합니다.
+- request 구성 및 정규화
+- schema validation
+- project 초기화
+- artifact bootstrap
+- actor orchestration
+- evaluation routing
+- terminal reporting
 
-- 무엇을 pass로 볼 것인가
-- 언제 retry가 허용되는가
-- 언제 run을 blocked로 볼 것인가
-- learning 및 hardening review를 어떻게 해석할 것인가
+### 번들 Rail Skill
 
-### Artifacts
+Rail skill은 자연어 진입점입니다. 사용자의 goal, constraint, definition of done을 해석한 뒤 구조화된 draft를 CLI에 전달합니다. 이 skill은 `rail`이 `PATH`에 있다고 가정하지만, 로컬 소스 checkout은 가정하지 않습니다.
 
-Artifact는 실행의 영속 기록입니다. request, plan, context, implementation result, execution report, evaluation result를 담고, `v2`에서는 integration result와 learning review 파일까지 포함합니다.
+### Embedded Defaults
 
-이 구조 덕분에 Rail은 사용자 의도부터 supervisor outcome까지 추적 가능한 흐름을 유지합니다.
+Rail은 재사용 가능한 하네스 자산을 embedded defaults 형태로 배포합니다. 패키지 기본값에는 다음이 포함됩니다.
+
+- supervisor policy
+- actor instruction
+- rule과 rubric
+- request 및 artifact template
+
+Embedded defaults는 제품 계약의 일부입니다. 프로젝트가 자체 하네스 파일을 아직 커스터마이즈하지 않았더라도, 설치된 제품만으로 알려진 baseline을 제공합니다.
+
+### Project-Local `.harness`
+
+각 대상 저장소는 project-local `.harness/` workspace를 소유합니다. 이것이 프로젝트별 control-plane 표면입니다.
+
+반드시 로컬에 있어야 하는 상태:
+
+- `.harness/project.yaml`
+- `.harness/requests/`
+- `.harness/artifacts/`
+- `.harness/learning/`
+
+이 경로들은 프로젝트 식별자, 실행 이력, evidence, reviewed memory를 담기 때문에 항상 로컬로 유지됩니다. 전역 fallback으로 대체되지 않습니다.
 
 ## Runtime 흐름
 
-주요 흐름은 다음과 같습니다.
+Runtime 흐름은 명시적으로 유지됩니다.
 
-1. 사용자 요청이 구조화된 task로 변환됩니다.
-2. Rail이 해당 task를 위한 artifact workspace를 만듭니다.
-3. Supervisor가 actor를 순차적으로 dispatch합니다.
-4. 각 actor는 구조화된 출력을 artifact set에 기록합니다.
-5. Evaluator가 pass, policy 안의 retry, stop 중 하나를 결정합니다.
-6. 실행이 pass이고 운영자가 확장된 `v2` 흐름을 원하면, Rail은 integration handoff와 learning review 입력을 생성할 수 있습니다.
+1. 사용자가 번들 Rail skill 또는 CLI를 직접 호출합니다.
+2. Rail이 요청을 구조화된 task로 변환합니다.
+3. Rail이 대상 저장소 안의 artifact state를 생성하거나 갱신합니다.
+4. Supervisor가 bounded actor를 순차적으로 dispatch합니다.
+5. 각 actor는 구조화된 출력을 artifact set에 기록합니다.
+6. Evaluator가 pass, budget 안의 retry, stop 중 하나를 결정합니다.
+7. 선택적인 `v2` integration 및 learning flow는 core run이 통과한 뒤 결과를 확장합니다.
 
-중요한 점은 모든 전이가 보인다는 것입니다. 이 시스템은 의도적으로 explicit routing과 explicit output을 선호합니다.
+이 설계는 숨겨진 자동화보다 review 가능한 전이를 우선합니다.
 
-## Supervisor, Actors, Rubrics 의 관계
+## Supervisor, Actors, Rubrics
 
-관계는 다음과 같습니다.
+제어 관계는 다음과 같습니다.
 
-- supervisor는 control을 소유함
+- supervisor는 workflow control을 소유함
 - actor는 bounded execution을 소유함
 - rubric과 rule은 결과 판단 기준을 정의함
 
-Actor는 전체 workflow를 결정하지 않습니다. 자신의 단계를 수행하고 구조화된 출력을 반환합니다. Supervisor는 그 출력을 읽고, rule과 rubric을 적용하고, 다음 action을 결정합니다.
+Actor는 전체 workflow를 소유하지 않습니다. 좁은 범위의 단계를 수행하고 구조화된 출력을 반환합니다. Supervisor는 그 출력을 읽고 policy를 적용해 다음 동작을 결정합니다.
 
-이 분리는 유지보수 측면에서 중요합니다.
+이 분리는 유지보수에 중요합니다.
 
-- actor prompt는 전체 control flow를 다시 쓰지 않고도 진화할 수 있음
-- routing policy는 모든 actor를 수정하지 않고도 바꿀 수 있음
-- release 판단은 평가 기준이 명시적이기 때문에 review 가능하게 유지됨
+- actor 동작은 전체 control loop를 다시 쓰지 않고도 진화할 수 있음
+- routing policy는 모든 actor를 수정하지 않고도 변경할 수 있음
+- release 판단은 평가 기준이 명시적이어서 계속 검토 가능함
+
+## Advanced Overrides
+
+Rail은 project-local `.harness` 파일을 통한 고급 커스터마이징을 지원합니다. 이것이 의도된 advanced override surface입니다.
+
+대표적인 override 위치:
+
+- `.harness/supervisor/`
+- `.harness/actors/`
+- `.harness/rules/`
+- `.harness/rubrics/`
+- `.harness/templates/`
+
+해결 순서는 단순합니다.
+
+1. project-local 파일이 있으면 그것을 사용합니다.
+2. 없으면 설치된 제품의 embedded defaults를 사용합니다.
+3. 결과는 deep merge가 아니라 file-level override로 취급합니다.
+4. stateful directory는 기본값과 무관하게 항상 project-local로 유지합니다.
+
+### File-Level Override를 사용하는 이유
+
+file-level override 규칙은 의도적입니다.
+
+- override 출처를 명확하게 유지할 수 있음
+- 디버깅이 단순해짐
+- 제품 업그레이드 과정에서 숨겨진 merge semantics를 피할 수 있음
+- 고급 커스터마이징을 명시적이고 reviewable하게 유지할 수 있음
+
+제품은 policy나 template 파일의 부분 병합을 시도하지 않습니다. 프로젝트가 어떤 파일을 바꾸고 싶다면 그 파일 전체를 소유합니다.
 
 ## Artifacts 와 Learning State
 
-Rail은 run artifact와 learning state를 분리합니다.
+Rail은 run artifact와 reviewed learning state를 분리합니다.
 
-- run artifact는 특정 task 동안 무슨 일이 일어났는지를 설명합니다
-- learning state는 리뷰된 결과 이후 시스템이 무엇을 기억해야 하는지를 설명합니다
+- run artifact는 한 task에서 실제로 무슨 일이 일어났는지를 설명함
+- learning state는 검토된 결과 이후 시스템이 무엇을 기억해야 하는지를 설명함
 
-`v2`에서는 운영자가 feedback이나 learning decision 같은 review 파일을 편집합니다. 그 다음 Rail이 그 리뷰 파일로부터 queue와 evidence 상태를 다시 생성합니다. 이렇게 하면 derived state가 재현 가능하고 감사하기 쉬워집니다.
+`v2`에서는 운영자가 feedback이나 learning decision 같은 review 파일을 편집합니다. 이후 Rail이 그 reviewed file로부터 queue와 evidence state를 다시 생성해 derived state를 재현 가능하게 유지합니다.
 
-Approved memory는 family 단위로 관리됩니다. 어떤 review가 promote되면 숨겨진 mutable state 체인을 만드는 대신, 해당 task family의 활성 approved memory가 갱신됩니다.
+Approved memory는 family 단위입니다. promote는 숨겨진 mutable state 체인을 만드는 대신 특정 task family의 활성 approved memory를 갱신합니다.
 
 ## V1 과 V2 의 경계
 
-`v1`은 core supervisor gate입니다. bounded execution과 pass-or-revise control에 집중합니다.
+`v1`은 bounded core supervisor gate입니다. deterministic execution, corrective loop, explicit terminal outcome에 집중합니다.
 
-`v2`는 그 위에 두 가지를 더합니다.
+`v2`는 `v1` 위에 다음을 추가합니다.
 
 - pass 이후의 explicit integration handoff
-- 지속적인 품질 개선을 위한 explicit learning/hardening review flow
+- explicit learning 및 hardening review flow
 
-이 경계는 의도적입니다. release gate는 집중된 상태로 유지하면서도, 장기적인 quality improvement는 별도의 reviewable layer에서 운영할 수 있게 합니다.
+이 경계는 release gate를 집중된 상태로 유지하면서, 개선 루프는 별도의 reviewable layer로 다룰 수 있게 합니다.
 
-## 저장소 구조
+## 소스 저장소 구조
 
-상위 수준에서 저장소 구조는 다음과 같습니다.
+기여자 관점에서 이 저장소는 제품 빌드와 패키지 기본값 중심으로 구성됩니다.
 
-- [bin/rail.dart](../bin/rail.dart)는 runtime entrypoint를 노출합니다
-- `lib/src/runtime/`는 runtime execution과 supervisor logic을 담습니다
-- `.harness/`는 actor instruction, rule, rubric, template, learning state를 담습니다
-- `skills/Rail/`는 repo-owned Codex skill을 담습니다
-- `docs/`는 release contract, architecture note, operator-facing reference를 담습니다
+- `cmd/rail/`는 제품 entrypoint를 담습니다
+- `internal/`은 runtime, request, validation, install, reporting 패키지를 담습니다
+- `assets/defaults/`는 embedded default harness asset을 담습니다
+- `assets/skill/`은 번들 Rail skill source를 담습니다
+- `packaging/`은 Homebrew formula 같은 release packaging material을 담습니다
+- `docs/`는 architecture, release, operator 문서를 담습니다
 
-설계 목표는 새로움이 아닙니다. 설계 목표는 충분히 명시적이어서 review, evolution, trust가 가능한 control-plane을 만드는 것입니다.
+마이그레이션이 완전히 끝날 때까지 일부 Dart-era 파일이 남아 있을 수 있지만, 그것이 사용자-facing runtime 모델은 아닙니다.

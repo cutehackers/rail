@@ -6,7 +6,7 @@ checks:
     - all_definition_of_done_items_satisfied
 
   correctness:
-    - flutter_analyze_pass
+    - build_or_analyze_pass
     - related_tests_pass
     - new_or_updated_tests_for_new_behavior
 
@@ -17,4 +17,3 @@ checks:
   maintainability:
     - diff_minimal
     - no_unnecessary_abstractions
-

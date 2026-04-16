@@ -12,12 +12,22 @@ type App struct {
 
 func NewApp() *App {
 	commands := []string{
+		"init-request",
 		"compose-request",
 		"validate-request",
+		"validate-artifact",
 		"init",
+		"init-user-outcome-feedback",
+		"init-learning-review",
+		"init-hardening-review",
 		"run",
 		"execute",
 		"route-evaluation",
+		"integrate",
+		"apply-user-outcome-feedback",
+		"apply-learning-review",
+		"apply-hardening-review",
+		"verify-learning-state",
 	}
 	commandSet := make(map[string]struct{}, len(commands))
 	for _, command := range commands {
@@ -44,6 +54,14 @@ func (a *App) Run(args []string) int {
 		return 0
 	}
 
+	if args[0] == "init-request" {
+		if err := RunInitRequest(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
 	if args[0] == "compose-request" {
 		if err := RunComposeRequest(args[1:], os.Stdin, os.Stdout); err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
@@ -54,6 +72,38 @@ func (a *App) Run(args []string) int {
 
 	if args[0] == "validate-request" {
 		if err := RunValidateRequest(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "validate-artifact" {
+		if err := RunValidateArtifact(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "init-user-outcome-feedback" {
+		if err := RunInitUserOutcomeFeedback(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "init-learning-review" {
+		if err := RunInitLearningReview(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "init-hardening-review" {
+		if err := RunInitHardeningReview(args[1:], os.Stdout); err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
@@ -78,6 +128,46 @@ func (a *App) Run(args []string) int {
 
 	if args[0] == "execute" {
 		if err := RunExecute(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "integrate" {
+		if err := RunIntegrate(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "apply-user-outcome-feedback" {
+		if err := RunApplyUserOutcomeFeedback(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "apply-learning-review" {
+		if err := RunApplyLearningReview(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "apply-hardening-review" {
+		if err := RunApplyHardeningReview(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "verify-learning-state" {
+		if err := RunVerifyLearningState(args[1:], os.Stdout); err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			return 1
 		}

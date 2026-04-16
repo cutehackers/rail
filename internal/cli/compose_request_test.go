@@ -48,7 +48,7 @@ func TestRunComposeRequestMaterializesCanonicalRequestFromStdin(t *testing.T) {
 	  "goal": "Write the normalized request into the target project",
 	  "context": {
 	    "feature": "profile",
-	    "validation_targets": ["packages/app/test/profile_test.dart"]
+	    "validation_targets": ["internal/profile/service_test.go"]
 	  },
 	  "definition_of_done": [
 	    "request file lands in the target repo"

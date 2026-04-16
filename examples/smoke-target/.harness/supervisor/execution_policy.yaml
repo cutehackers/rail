@@ -1,0 +1,22 @@
+version: 1
+
+artifacts:
+  root: .harness/artifacts
+
+format:
+  command: "true"
+
+analyze:
+  package_command: "true"
+  workspace_fallback: "true"
+  smoke_command: "true"
+
+tests:
+  package_command: "true"
+  workspace_fallback: "true"
+  smoke_command: "true"
+
+runtime:
+  create_placeholders: true
+  create_actor_briefs: true
+  persist_json_snapshots: true

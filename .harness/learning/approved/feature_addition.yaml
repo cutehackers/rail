@@ -35,7 +35,7 @@ repository_compatibility:
   required_paths_exist:
     - '.harness/templates/approved_family_memory.schema.yaml'
     - '.harness/templates/context_pack.schema.yaml'
-    - 'bin/rail.dart'
+    - 'cmd/rail/main.go'
   required_paths_absent: []
 latest_family_evidence_expectations:
   lookup_key: 'feature_addition::task_type'

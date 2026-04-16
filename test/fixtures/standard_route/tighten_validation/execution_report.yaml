@@ -7,4 +7,4 @@ tests:
 failure_details:
   - The executor validated the wrong target set for this request.
 logs:
-  - flutter test test
+  - go test ./...

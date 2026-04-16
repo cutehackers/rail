@@ -6,7 +6,7 @@
   "context": {
     "feature": "harness_request",
     "validation_targets": [
-      "test/fixtures/request_validation_test.dart"
+      "internal/request/normalize_test.go"
     ]
   },
   "constraints": [

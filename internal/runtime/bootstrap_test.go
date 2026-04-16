@@ -41,8 +41,8 @@ func TestBootstrapCreatesExpectedArtifactSkeleton(t *testing.T) {
 
 	for _, relPath := range []string{
 		filepath.Join(".harness", "requests"),
-		filepath.Join("lib"),
-		filepath.Join("packages", "app", "test"),
+		filepath.Join("internal", "runtime"),
+		filepath.Join("cmd", "rail"),
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
 			t.Fatalf("failed to create %q: %v", relPath, err)
@@ -53,15 +53,15 @@ func TestBootstrapCreatesExpectedArtifactSkeleton(t *testing.T) {
 	requestBody := `task_type: bug_fix
 goal: tighten the validation plan for profile changes
 context:
-  feature: profile
+  feature: runtime
   suspected_files:
-    - ` + filepath.ToSlash(filepath.Join(projectRoot, "lib", "profile.dart")) + `
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "internal", "runtime", "runner.go")) + `
   related_files:
-    - packages/app/lib/profile_state.dart
+    - cmd/rail/main.go
   validation_roots:
-    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app")) + `
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "internal")) + `
   validation_targets:
-    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app", "test", "profile_test.dart")) + `
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "internal", "runtime", "runner_test.go")) + `
 constraints: []
 definition_of_done:
   - validate the intended target set
@@ -79,7 +79,7 @@ validation_profile: standard
 
 	for _, relPath := range []string{
 		"request.yaml",
-		"resolved_workflow.json",
+		workflowArtifactFileName,
 		"state.json",
 		"execution_plan.json",
 		"workflow_steps.md",
@@ -101,9 +101,10 @@ validation_profile: standard
 		}
 	}
 
-	workflow, err := readResolvedWorkflow(filepath.Join(artifactPath, "resolved_workflow.json"))
+	workflowPath := filepath.Join(artifactPath, workflowArtifactFileName)
+	workflow, err := readWorkflow(workflowPath)
 	if err != nil {
-		t.Fatalf("failed to read resolved workflow: %v", err)
+		t.Fatalf("failed to read workflow: %v", err)
 	}
 	if workflow.TaskType != "bug_fix" {
 		t.Fatalf("unexpected taskType: got %q want %q", workflow.TaskType, "bug_fix")
@@ -121,10 +122,10 @@ validation_profile: standard
 			workflow.ValidationTightenBudget,
 		)
 	}
-	if got, want := workflow.ChangedFileHints, []string{"lib/profile.dart", "packages/app/lib/profile_state.dart"}; !slices.Equal(got, want) {
+	if got, want := workflow.ChangedFileHints, []string{"cmd/rail/main.go", "internal/runtime/runner.go"}; !slices.Equal(got, want) {
 		t.Fatalf("unexpected changedFileHints: got %v want %v", got, want)
 	}
-	if got, want := workflow.InferredTestTargets, []string{"packages/app/test/profile_test.dart"}; !slices.Equal(got, want) {
+	if got, want := workflow.InferredTestTargets, []string{"internal/runtime/runner_test.go"}; !slices.Equal(got, want) {
 		t.Fatalf("unexpected inferredTestTargets: got %v want %v", got, want)
 	}
 	if got, want := workflow.TerminationConditions, []string{
@@ -139,15 +140,15 @@ validation_profile: standard
 	if err != nil {
 		t.Fatalf("failed to read execution plan: %v", err)
 	}
-	wantFormat := "dart format 'lib/profile.dart' 'packages/app/lib/profile_state.dart'"
+	wantFormat := "gofmt -w 'cmd/rail/main.go' 'internal/runtime/runner.go'"
 	if executionPlan.FormatCommand != wantFormat {
 		t.Fatalf("unexpected formatCommand: got %q want %q", executionPlan.FormatCommand, wantFormat)
 	}
-	wantAnalyze := []string{"cd '" + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app")) + "' && flutter analyze . --fatal-infos"}
+	wantAnalyze := []string{"cd '" + filepath.ToSlash(filepath.Join(projectRoot, "internal")) + "' && go build ./..."}
 	if !slices.Equal(executionPlan.AnalyzeCommands, wantAnalyze) {
 		t.Fatalf("unexpected analyzeCommands: got %v want %v", executionPlan.AnalyzeCommands, wantAnalyze)
 	}
-	wantTests := []string{"cd '" + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app")) + "' && flutter test 'test/profile_test.dart'"}
+	wantTests := []string{"cd '" + filepath.ToSlash(filepath.Join(projectRoot, "internal", "runtime")) + "' && go test ./..."}
 	if !slices.Equal(executionPlan.TestCommands, wantTests) {
 		t.Fatalf("unexpected testCommands: got %v want %v", executionPlan.TestCommands, wantTests)
 	}
@@ -169,8 +170,8 @@ validation_profile: standard
 	}
 	for _, fragment := range []string{
 		"# Workflow Steps",
-		"`lib/profile.dart`",
-		"`packages/app/test/profile_test.dart`",
+		"`internal/runtime/runner.go`",
+		"`internal/runtime/runner_test.go`",
 		"`evaluator_decision == pass`",
 	} {
 		if !strings.Contains(string(workflowSteps), fragment) {
@@ -224,9 +225,8 @@ func TestBootstrapNormalizesCanonicalPathsWithinSymlinkedRoot(t *testing.T) {
 
 	for _, relPath := range []string{
 		filepath.Join(".harness", "requests"),
-		filepath.Join("lib"),
-		filepath.Join("packages", "app", "lib"),
-		filepath.Join("packages", "app", "test"),
+		filepath.Join("internal", "runtime"),
+		filepath.Join("cmd", "rail"),
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
 			t.Fatalf("failed to create %q: %v", relPath, err)
@@ -237,15 +237,15 @@ func TestBootstrapNormalizesCanonicalPathsWithinSymlinkedRoot(t *testing.T) {
 	requestBody := `task_type: bug_fix
 goal: normalize canonical inputs in a symlinked checkout
 context:
-  feature: profile
+  feature: runtime
   suspected_files:
-    - ` + filepath.ToSlash(filepath.Join(projectRoot, "lib", "profile.dart")) + `
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "internal", "runtime", "runner.go")) + `
   related_files:
-    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app", "lib", "profile_state.dart")) + `
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "cmd", "rail", "main.go")) + `
   validation_roots:
-    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app")) + `
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "internal")) + `
   validation_targets:
-    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app", "test", "profile_test.dart")) + `
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "internal", "runtime", "runner_test.go")) + `
 constraints: []
 definition_of_done:
   - keep normalized paths inside the repo
@@ -261,17 +261,18 @@ validation_profile: standard
 		t.Fatalf("Bootstrap returned error: %v", err)
 	}
 
-	workflow, err := readResolvedWorkflow(filepath.Join(artifactPath, "resolved_workflow.json"))
+	workflowPath := filepath.Join(artifactPath, workflowArtifactFileName)
+	workflow, err := readWorkflow(workflowPath)
 	if err != nil {
-		t.Fatalf("failed to read resolved workflow: %v", err)
+		t.Fatalf("failed to read workflow: %v", err)
 	}
 	if workflow.RequestPath != ".harness/requests/request.yaml" {
 		t.Fatalf("unexpected requestPath: got %q want %q", workflow.RequestPath, ".harness/requests/request.yaml")
 	}
-	if got, want := workflow.ChangedFileHints, []string{"lib/profile.dart", "packages/app/lib/profile_state.dart"}; !slices.Equal(got, want) {
+	if got, want := workflow.ChangedFileHints, []string{"cmd/rail/main.go", "internal/runtime/runner.go"}; !slices.Equal(got, want) {
 		t.Fatalf("unexpected changedFileHints: got %v want %v", got, want)
 	}
-	if got, want := workflow.InferredTestTargets, []string{"packages/app/test/profile_test.dart"}; !slices.Equal(got, want) {
+	if got, want := workflow.InferredTestTargets, []string{"internal/runtime/runner_test.go"}; !slices.Equal(got, want) {
 		t.Fatalf("unexpected inferredTestTargets: got %v want %v", got, want)
 	}
 	for _, got := range append(append([]string{}, workflow.ChangedFileHints...), workflow.InferredTestTargets...) {
@@ -284,11 +285,11 @@ validation_profile: standard
 	if err != nil {
 		t.Fatalf("failed to read execution plan: %v", err)
 	}
-	wantAnalyze := []string{"cd '" + filepath.ToSlash(filepath.Join(symlinkRoot, "packages", "app")) + "' && flutter analyze . --fatal-infos"}
+	wantAnalyze := []string{"cd '" + filepath.ToSlash(filepath.Join(symlinkRoot, "internal")) + "' && go build ./..."}
 	if !slices.Equal(executionPlan.AnalyzeCommands, wantAnalyze) {
 		t.Fatalf("unexpected analyzeCommands: got %v want %v", executionPlan.AnalyzeCommands, wantAnalyze)
 	}
-	wantTests := []string{"cd '" + filepath.ToSlash(filepath.Join(symlinkRoot, "packages", "app")) + "' && flutter test 'test/profile_test.dart'"}
+	wantTests := []string{"cd '" + filepath.ToSlash(filepath.Join(symlinkRoot, "internal", "runtime")) + "' && go test ./..."}
 	if !slices.Equal(executionPlan.TestCommands, wantTests) {
 		t.Fatalf("unexpected testCommands: got %v want %v", executionPlan.TestCommands, wantTests)
 	}
@@ -304,7 +305,7 @@ func TestBootstrapRejectsEscapingValidationInputs(t *testing.T) {
 	outsideRoot := t.TempDir()
 	for _, relPath := range []string{
 		filepath.Join(".harness", "requests"),
-		filepath.Join("lib"),
+		filepath.Join("internal", "runtime"),
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
 			t.Fatalf("failed to create %q: %v", relPath, err)
@@ -316,11 +317,11 @@ func TestBootstrapRejectsEscapingValidationInputs(t *testing.T) {
 goal: reject validation paths that escape the project root
 context:
   suspected_files:
-    - lib/profile.dart
+    - internal/runtime/runner.go
   validation_roots:
     - ../outside
   validation_targets:
-    - ` + filepath.ToSlash(filepath.Join(outsideRoot, "test", "evil_test.dart")) + `
+    - ` + filepath.ToSlash(filepath.Join(outsideRoot, "internal", "evil_test.go")) + `
 constraints: []
 definition_of_done:
   - reject unsafe validation paths
@@ -349,16 +350,15 @@ func TestBootstrapRejectsValidationRootsThatAreFiles(t *testing.T) {
 
 	for _, relPath := range []string{
 		filepath.Join(".harness", "requests"),
-		filepath.Join("lib"),
-		filepath.Join("packages", "app", "test"),
+		filepath.Join("internal", "runtime"),
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
 			t.Fatalf("failed to create %q: %v", relPath, err)
 		}
 	}
 
-	fileRoot := filepath.Join(projectRoot, "lib", "profile.dart")
-	if err := os.WriteFile(fileRoot, []byte("class Profile {}\n"), 0o644); err != nil {
+	fileRoot := filepath.Join(projectRoot, "internal", "runtime", "runner.go")
+	if err := os.WriteFile(fileRoot, []byte("package runtime\n"), 0o644); err != nil {
 		t.Fatalf("failed to write file-based validation root: %v", err)
 	}
 
@@ -367,11 +367,11 @@ func TestBootstrapRejectsValidationRootsThatAreFiles(t *testing.T) {
 goal: reject file paths in validation_roots
 context:
   suspected_files:
-    - lib/profile.dart
+    - internal/runtime/runner.go
   validation_roots:
     - ` + filepath.ToSlash(fileRoot) + `
   validation_targets:
-    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app", "test", "profile_test.dart")) + `
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "internal", "runtime", "runner_test.go")) + `
 constraints: []
 definition_of_done:
   - reject file validation roots
@@ -403,23 +403,22 @@ func TestBootstrapRejectsValidationTargetsThatAreDirectories(t *testing.T) {
 
 	for _, relPath := range []string{
 		filepath.Join(".harness", "requests"),
-		filepath.Join("lib"),
-		filepath.Join("packages", "app", "test"),
+		filepath.Join("internal", "runtime"),
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
 			t.Fatalf("failed to create %q: %v", relPath, err)
 		}
 	}
 
-	directoryTarget := filepath.Join(projectRoot, "packages", "app", "test")
+	directoryTarget := filepath.Join(projectRoot, "internal", "runtime")
 	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
 	requestBody := `task_type: bug_fix
 goal: reject directory paths in validation_targets
 context:
   suspected_files:
-    - lib/profile.dart
+    - internal/runtime/runner.go
   validation_roots:
-    - ` + filepath.ToSlash(filepath.Join(projectRoot, "packages", "app")) + `
+    - ` + filepath.ToSlash(filepath.Join(projectRoot, "internal")) + `
   validation_targets:
     - ` + filepath.ToSlash(directoryTarget) + `
 constraints: []
@@ -454,7 +453,7 @@ func TestBootstrapReturnsErrorForMalformedSupervisorConfig(t *testing.T) {
 	for _, relPath := range []string{
 		filepath.Join(".harness", "requests"),
 		filepath.Join(".harness", "supervisor"),
-		filepath.Join("lib"),
+		filepath.Join("internal", "runtime"),
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
 			t.Fatalf("failed to create %q: %v", relPath, err)
@@ -466,7 +465,7 @@ func TestBootstrapReturnsErrorForMalformedSupervisorConfig(t *testing.T) {
 goal: surface malformed supervisor config as a normal error
 context:
   suspected_files:
-    - lib/profile.dart
+    - internal/runtime/runner.go
 constraints: []
 definition_of_done:
   - report config errors without crashing
@@ -480,15 +479,15 @@ validation_profile: standard
 	malformedExecutionPolicy := `artifacts:
   root: 123
 format:
-  command: dart format {files}
+  command: gofmt -w {files}
 analyze:
-  package_command: flutter analyze . --fatal-infos
-  workspace_fallback: flutter analyze . --fatal-infos
-  smoke_command: dart analyze
+  package_command: go build ./...
+  workspace_fallback: go build ./...
+  smoke_command: go build ./...
 tests:
-  package_command: flutter test {targets}
-  workspace_fallback: flutter test
-  smoke_command: dart test
+  package_command: go test ./...
+  workspace_fallback: go test ./...
+  smoke_command: go test ./...
 runtime:
   create_placeholders: true
   create_actor_briefs: true

@@ -128,7 +128,7 @@ func prepareReportingSmokeProject(t *testing.T) (string, string) {
 	for _, relPath := range []string{
 		filepath.Join(".harness", "requests"),
 		filepath.Join(".harness", "artifacts"),
-		"test",
+		"smoke",
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
 			t.Fatalf("failed to create %q: %v", relPath, err)
@@ -137,8 +137,14 @@ func prepareReportingSmokeProject(t *testing.T) (string, string) {
 	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
 		t.Fatalf("failed to write git marker: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(projectRoot, "pubspec.yaml"), []byte("name: smoke_project\n"), 0o644); err != nil {
-		t.Fatalf("failed to write pubspec.yaml: %v", err)
+	if err := os.WriteFile(filepath.Join(projectRoot, "go.mod"), []byte("module smokeproject\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("failed to write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "smoke", "smoke.go"), []byte("package smoke\n\nfunc Ready() bool { return true }\n"), 0o644); err != nil {
+		t.Fatalf("failed to write smoke.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "smoke", "smoke_test.go"), []byte("package smoke\n\nimport \"testing\"\n\nfunc TestReady(t *testing.T) {\n\tif !Ready() {\n\t\tt.Fatal(\"expected Ready to return true\")\n\t}\n}\n"), 0o644); err != nil {
+		t.Fatalf("failed to write smoke_test.go: %v", err)
 	}
 
 	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))

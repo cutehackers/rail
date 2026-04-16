@@ -18,9 +18,10 @@ Run validation commands and report facts only.
 - Keep command summaries in `logs` concise and factual.
 
 ## Standard validation sequence
-1. `dart format --set-exit-if-changed <changed files>`
-2. `flutter analyze`
-3. `flutter test <target path or related tests>`
+1. Follow `.harness/supervisor/execution_policy.yaml`.
+2. Prefer focused formatting on changed files first.
+3. Run the narrowest credible build/analyze command.
+4. Run the narrowest credible test command.
 
 ## Output (YAML)
 - `format`: pass | fail

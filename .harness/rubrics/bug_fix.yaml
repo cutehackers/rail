@@ -6,7 +6,7 @@ checks:
     - all_definition_of_done_items_satisfied
 
   correctness:
-    - flutter_analyze_pass
+    - build_or_analyze_pass
     - related_tests_pass
     - regression_test_or_equivalent_added_when_feasible
 
@@ -18,4 +18,3 @@ checks:
   regression_risk:
     - fix_is_localized
     - unrelated_behavior_not_modified
-

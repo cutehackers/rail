@@ -6,7 +6,7 @@
 
 ## What To Change
 
-- Runtime entrypoint: `bin/rail.dart`
+- Runtime entrypoint: `cmd/rail`
 - Harness behavior and policy: `.harness/`
 - Repo-owned skill: `skills/Rail/SKILL.md`
 - Project docs, plans, and specs: `docs/`
@@ -16,29 +16,30 @@ Prefer changing the smallest set of files that actually own the behavior.
 
 ## Working Rules
 
-- Do not treat this as a Flutter app repo. It is a Dart CLI control-plane project.
+- Do not treat this as a Flutter app repo. It is a Go CLI control-plane project.
 - Do not implement downstream product code here. Changes here should affect request composition, validation, orchestration, routing, reporting, skills, or harness policy.
 - Preserve the current file layout. The hidden `.harness/` tree is part of the product, not incidental config.
 - Keep supervisor behavior explicit and reviewable. Favor deterministic routing and traceable outputs over clever automation.
 - Documentation security rule: **DO NOT** include a user's home directory path in docs or examples. Treat any home-folder path like `/Users/<name>/...` or `~/<...>` in documentation as a warning-level lint issue and replace it with a sanitized placeholder such as `/absolute/path/to/...`.
 - Avoid editing generated artifacts in `.harness/artifacts/` unless the task is specifically about fixtures, evidence, or checked-in examples.
 - Avoid editing `.worktrees/` or `.git/worktrees/` content from the main worktree.
-- Treat untracked patch rejects like `bin/rail.dart.rej` as local leftovers unless the task explicitly asks you to inspect or resolve them.
+- Treat untracked patch rejects or stale migration leftovers as local artifacts unless the task explicitly asks you to inspect or resolve them.
 
 ## Core Commands
 
 Run all commands from the repo root.
 
 ```bash
-dart pub get
-dart run bin/rail.dart compose-request --goal "<goal>" --task-type <task_type>
-dart run bin/rail.dart validate-request --request .harness/requests/<file>.yaml
-dart run bin/rail.dart run --request .harness/requests/<file>.yaml --project-root /absolute/path/to/target-repo
-dart run bin/rail.dart execute --artifact .harness/artifacts/<task-id>
-dart run bin/rail.dart route-evaluation --artifact .harness/artifacts/<task-id>
+go test ./...
+go build -o build/rail ./cmd/rail
+./build/rail compose-request --stdin
+./build/rail validate-request --request .harness/requests/<file>.yaml
+./build/rail run --request .harness/requests/<file>.yaml --project-root /absolute/path/to/target-repo
+./build/rail execute --artifact .harness/artifacts/<task-id>
+./build/rail route-evaluation --artifact .harness/artifacts/<task-id>
 ```
 
-If you need command syntax, `bin/rail.dart` contains the authoritative usage text.
+If you need command syntax, `cmd/rail` and `internal/cli/` contain the authoritative usage text.
 
 ## Editing Guidance
 
@@ -52,7 +53,7 @@ If you need command syntax, `bin/rail.dart` contains the authoritative usage tex
 
 Use the lightest validation that proves the change.
 
-- For CLI or schema changes, run the relevant `dart run bin/rail.dart ...` command against an existing request or fixture.
+- For CLI or schema changes, run the relevant `./build/rail ...` or `go test ./...` command against an existing request or fixture.
 - For request-shape changes, validate a real request file with `validate-request`.
 - For routing or artifact changes, exercise the smallest relevant harness flow and inspect the produced artifact output.
 - If a task changes documented launch behavior or supervisor outcomes, update the matching docs in `docs/tasks.md` or `docs/superpowers/`.
@@ -60,7 +61,9 @@ Use the lightest validation that proves the change.
 ## Repo Map
 
 - `README.md`: operator-facing overview and quick start
-- `bin/rail.dart`: CLI surface and runtime wiring
+- `cmd/rail`: CLI entrypoint
+- `internal/cli/`: CLI surface and dispatch
+- `internal/runtime/`: runtime wiring and harness execution
 - `.harness/actors/`: actor instructions
 - `.harness/supervisor/`: routing and policy configuration
 - `.harness/templates/`: YAML schema definitions

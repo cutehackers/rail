@@ -29,23 +29,27 @@
 
 ## 사용 방식
 
-`rail` 저장소는 harness root이고, 실제 앱 저장소는 target project다.
+개발 중인 이 source repo에서는 `.harness/` 원본을 수정하지만, 제품 사용 시에는 target repo 안의 프로젝트 로컬 `.harness/` 가 실제 상태 저장소가 된다.
 
-즉 두 경로가 항상 분리된다.
+즉 운영 관점에서는 두 역할이 분리된다.
 
-- harness root: 이 저장소
-- target project root: `--project-root` 로 지정하는 외부 repo
+- source repo: Rail 제품과 기본 harness 자산의 원본
+- target project root: `rail init` 또는 `--project-root` 로 지정되는 실제 작업 repo
 
 ## 실행 순서
 
 1. request 생성
-   - `dart run bin/rail.dart compose-request ...`
+   - `./build/rail compose-request --stdin`
 2. request 검증
-   - `dart run bin/rail.dart validate-request --request ...`
+   - `./build/rail validate-request --request ...`
 3. workflow bootstrap
-   - `dart run bin/rail.dart run --request ... --project-root /abs/path/to/app-repo`
+   - `./build/rail run --request ... --project-root /absolute/path/to/app-repo`
 4. actor 실행
-   - `dart run bin/rail.dart execute --artifact .harness/artifacts/<task-id>`
+   - `./build/rail execute --artifact .harness/artifacts/<task-id>`
+5. 평가 라우팅 / handoff / learning 검증
+   - `./build/rail route-evaluation --artifact ...`
+   - `./build/rail integrate --artifact ...`
+   - `./build/rail verify-learning-state`
 
 `run` 시점에 target project root가 workflow에 기록되므로, 보통 `execute` 에서는 다시 넘기지 않아도 된다.
 
@@ -53,11 +57,13 @@
 
 현재 runtime은 다음까지 수행한다.
 
-- request compose/validate
+- request template/init compose/validate
 - workflow artifact 생성
 - actor brief 생성
 - `codex exec` 기반 actor 순차 실행
 - evaluator의 `revise` 시 generator 재시도
+- file-based review flow (`init-*`, `apply-*`)
+- derived learning snapshot 검증
 
 아직 다음은 완성되지 않았다.
 

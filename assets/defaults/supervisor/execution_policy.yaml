@@ -4,17 +4,17 @@ artifacts:
   root: .harness/artifacts
 
 format:
-  command: dart format {files}
+  command: gofmt -w {files}
 
 analyze:
-  package_command: flutter analyze . --fatal-infos
-  workspace_fallback: melos run lint:all
-  smoke_command: "[ -f pubspec.yaml ] || [ -f melos.yaml ]"
+  package_command: go build ./...
+  workspace_fallback: go build ./...
+  smoke_command: go build ./...
 
 tests:
-  package_command: flutter test {targets}
-  workspace_fallback: melos run test:all
-  smoke_command: "[ -d test ] || [ -d integration_test ] || [ -f melos.yaml ]"
+  package_command: go test ./...
+  workspace_fallback: go test ./...
+  smoke_command: go test ./...
 
 runtime:
   create_placeholders: true

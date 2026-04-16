@@ -1,15 +1,19 @@
 # rail
 
-`rail` is an installed harness control-plane for Codex. It turns a natural-language engineering request into a bounded, reviewable workflow that runs against a separate target repository.
+`rail` is an installed control-plane for Codex. It turns a natural-language engineering request into a bounded, reviewable harness workflow that runs against a separate target repository.
 
-The product model is simple:
+Rail is not the app under change. Rail owns the workflow, policy, artifacts, and reviewed learning state around that app.
 
-- install `rail` once as a normal CLI
+## Product Model
+
+Rail is designed to be used as a normal installed tool:
+
+- install `rail` once
 - use the bundled Rail skill from Codex
 - keep project-specific state inside the target repository
-- rely on embedded product defaults unless the project overrides them
+- rely on embedded defaults unless the project overrides them locally
 
-This source repository is the development and release origin for Rail. It is not the required runtime root for end users.
+The source repository is the development and release origin for Rail. It is not the required runtime root for end users.
 
 ## Install
 
@@ -22,12 +26,12 @@ brew install rail
 The packaged install includes:
 
 - the `rail` CLI
-- the built-in Rail Codex skill
-- embedded default harness assets used at runtime
+- the bundled Rail Codex skill
+- embedded default harness assets
 
-There is no separate manual skill-install step for end users.
+There is no separate manual Codex skill install step for end users.
 
-## First Use
+## Quick Start
 
 Initialize Rail inside the repository you want to operate on:
 
@@ -36,9 +40,14 @@ cd /absolute/path/to/target-repo
 rail init
 ```
 
-`rail init` creates the minimal project-local `.harness/` workspace that Rail needs for requests, artifacts, and reviewed learning state.
+`rail init` creates the minimal project-local `.harness/` workspace:
 
-After initialization, a typical Rail workflow starts from the bundled Codex skill:
+- `.harness/project.yaml`
+- `.harness/requests/`
+- `.harness/artifacts/`
+- `.harness/learning/`
+
+After that, the normal entrypoint is the bundled Rail skill in Codex:
 
 ```text
 Use the Rail skill.
@@ -48,35 +57,125 @@ Constraint: Do not change the API contract.
 Definition of done: refresh completes reliably and related tests still pass.
 ```
 
-The skill structures the request. The `rail` CLI validates it, materializes the workflow, and records reviewable outputs.
+The skill structures the request. Rail then materializes the workflow, validates it, and records reviewable outputs in the target repository.
+
+## Standard Workflow
+
+The common operator flow is:
+
+1. initialize a target repository with `rail init`
+2. draft a request with the Rail skill, `rail compose-request`, or `rail init-request`
+3. validate the request with `rail validate-request`
+4. bootstrap an artifact with `rail run`
+5. execute the actor workflow with `rail execute`
+6. if needed, refresh or re-run routing with `rail route-evaluation`
+7. for `v2`, produce an integration handoff and reviewed learning updates
+
+Direct CLI flow example:
+
+```bash
+rail init --project-root /absolute/path/to/target-repo
+
+cat /absolute/path/to/request-draft.json | rail compose-request --stdin
+
+rail validate-request --request /absolute/path/to/target-repo/.harness/requests/request.yaml
+
+rail run \
+  --request /absolute/path/to/target-repo/.harness/requests/request.yaml \
+  --project-root /absolute/path/to/target-repo
+
+rail execute \
+  --artifact /absolute/path/to/target-repo/.harness/artifacts/request
+```
+
+## Command Surface
+
+Rail currently exposes these operator commands:
+
+- `init`
+  - create the project-local `.harness` workspace
+- `init-request`
+  - write a request template into the current workspace
+- `compose-request`
+  - normalize a JSON request draft into `.harness/requests/request.yaml`
+- `validate-request`
+  - validate a request against Rail request schema
+- `run`
+  - bootstrap an artifact directory for a request
+- `execute`
+  - run the bounded actor chain for an artifact
+- `route-evaluation`
+  - re-evaluate or refresh persisted routing outputs for an artifact
+- `validate-artifact`
+  - validate an artifact file against a named schema
+- `integrate`
+  - produce the `v2` integration handoff after a passing run
+- `init-user-outcome-feedback`
+  - create a draft user outcome feedback file from an artifact
+- `init-learning-review`
+  - create a draft learning review file from a candidate
+- `init-hardening-review`
+  - create a draft hardening review file from a candidate
+- `apply-user-outcome-feedback`
+  - apply a reviewed feedback file and refresh derived state
+- `apply-learning-review`
+  - apply a reviewed learning decision and refresh derived state
+- `apply-hardening-review`
+  - apply a reviewed hardening decision and refresh derived state
+- `verify-learning-state`
+  - verify that derived learning state is coherent
+
+## V1 And V2
+
+Rail keeps the release surface explicit.
+
+### V1
+
+`v1` is the bounded core supervisor gate. It focuses on:
+
+- request normalization
+- artifact bootstrap
+- deterministic actor execution
+- evaluator-driven bounded retries
+- explicit terminal outcomes
+
+### V2
+
+`v2` extends `v1` with:
+
+- integration handoff generation
+- explicit user outcome feedback files
+- explicit learning review files
+- explicit hardening review files
+- derived learning-state verification
+
+The important design choice is that review artifacts are operator-authored, while queues, evidence indexes, and approved family memory are Rail-derived state.
 
 ## Project-Local `.harness`
 
-Each target repository owns its own `.harness/` directory. This is the project-local control-plane surface, not a global shared checkout.
+Each target repository owns its own `.harness/` directory. This is project-local state, not a shared global checkout.
 
-The local workspace holds:
+Project-local state is where Rail stores:
 
-- `.harness/project.yaml`
-- `.harness/requests/`
-- `.harness/artifacts/`
-- `.harness/learning/`
+- project identity
+- requests
+- artifacts
+- reviewed feedback
+- reviewed learning decisions
+- approved family memory
 
-These paths always belong to the target repository because they capture project-specific configuration, execution history, evidence, and reviewed memory.
+These paths remain local because they are project-specific evidence, not reusable product defaults.
 
-Rail also ships embedded defaults for reusable control-plane assets such as:
+## Embedded Defaults And Overrides
 
-- actor instructions
+Rail ships embedded defaults for reusable control-plane assets such as:
+
 - supervisor policy
+- actor instructions
 - rules and rubrics
 - request and artifact templates
 
-If a project does not override those files locally, Rail resolves them from the embedded defaults in the installed product.
-
-## Advanced Overrides
-
-Advanced users can override selected control-plane files in the target repository without forking the product install.
-
-Supported override areas include:
+Advanced users can override selected defaults by adding full files under the target repository:
 
 - `.harness/supervisor/`
 - `.harness/actors/`
@@ -86,52 +185,44 @@ Supported override areas include:
 
 Override precedence is explicit:
 
-1. If a project-local `.harness` file exists, Rail uses it.
-2. Otherwise Rail falls back to the embedded defaults bundled with the installed product.
-3. Override resolution is a file-level override, not a deep merge.
-4. Stateful project data stays project-local even when no override exists.
+1. if a project-local file exists, Rail uses it
+2. otherwise Rail falls back to the embedded default
+3. overrides are file-level, not deep merges
+4. stateful paths such as `.harness/artifacts/`, `.harness/learning/`, and `.harness/requests/` are always local
 
-The file-level override rule is deliberate. It keeps provenance obvious during debugging, makes upgrades reviewable, and avoids hidden merge behavior between project customizations and packaged defaults.
+This keeps provenance reviewable and avoids hidden merge behavior during upgrades.
 
-Example:
+## Bundled Rail Skill
 
-- `.harness/supervisor/policy.yaml` present: use the project version
-- `.harness/supervisor/policy.yaml` absent: use the embedded default
-- `.harness/artifacts/`: always local project state, never satisfied by global fallback
+The bundled Rail skill is the normal natural-language entrypoint for Codex.
 
-The architecture details behind embedded defaults, project-local `.harness`, and file-level override behavior are documented in [docs/ARCHITECTURE.md](/Users/junhyounglee/workspace/rail/docs/ARCHITECTURE.md).
+Its role is to:
 
-## What Rail Owns
+- interpret the user goal, constraints, and definition of done
+- infer a structured request draft
+- ask for clarification only when a missing field would make the request unsafe
+- hand the normalized draft to `rail compose-request`
 
-Rail owns the control-plane, not the downstream product under change.
-
-In practice that means Rail owns:
-
-- request composition and validation
-- artifact bootstrap and reporting
-- supervisor policy and actor routing
-- evaluation and bounded corrective loops
-- reviewable learning and hardening workflows
-
-The target repository remains the place where application code is inspected, changed, and validated.
+The user should not need to hand-author harness YAML for normal use.
 
 ## Source Repository Role
 
-This repository exists for contributors and release engineers who are developing Rail itself.
+This repository exists for contributors and release engineers working on Rail itself.
 
 It is the source of truth for:
 
 - the Go CLI implementation
-- embedded default assets under `assets/`
-- the bundled Rail skill source
-- packaging and release configuration
-- architecture, release, and operator documentation
+- embedded default harness assets under `assets/defaults/`
+- the bundled Rail skill source under `assets/skill/`
+- repo-owned skill sources under `skills/`
+- release tooling and packaging
+- architecture and release documentation
 
-You do not need a local checkout of this repository to use Rail as a product. You only need an installed `rail` binary and a target repository with a project-local `.harness/` workspace.
+You do not need a checkout of this repository to use Rail as a product. You need an installed `rail` binary and a target repository with project-local `.harness` state.
 
 ## More Detail
 
-- System architecture: [docs/ARCHITECTURE.md](/Users/junhyounglee/workspace/rail/docs/ARCHITECTURE.md)
-- Korean architecture guide: [docs/ARCHITECTURE-kr.md](/Users/junhyounglee/workspace/rail/docs/ARCHITECTURE-kr.md)
-- Release contracts: [docs/releases/](/Users/junhyounglee/workspace/rail/docs/releases)
-- Active release tasks: [docs/tasks.md](/Users/junhyounglee/workspace/rail/docs/tasks.md)
+- architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Korean architecture guide: [docs/ARCHITECTURE-kr.md](docs/ARCHITECTURE-kr.md)
+- release docs: [docs/releases/](docs/releases/)
+- active release tasks: [docs/tasks.md](docs/tasks.md)

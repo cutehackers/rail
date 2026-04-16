@@ -1,18 +1,22 @@
 version: 1
 
 naming:
-  source_suffix: .dart
-  test_suffix: _test.dart
+  source_suffix: .go
+  test_suffix: _test.go
 
 path_rules:
-  - source_root: apps
-    source_segment: lib
-    test_segment: test
+  - source_root: cmd
+    source_segment: cmd
+    test_segment: cmd
 
-  - source_root: packages
-    source_segment: lib
-    test_segment: test
+  - source_root: internal
+    source_segment: internal
+    test_segment: internal
+
+  - source_root: pkg
+    source_segment: pkg
+    test_segment: pkg
 
 fallback:
-  feature_test_root: test
-  package_test_root: test
+  feature_test_root: .
+  package_test_root: .

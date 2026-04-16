@@ -6,7 +6,7 @@ checks:
     - requested_structural_cleanup_completed
 
   correctness:
-    - flutter_analyze_pass
+    - build_or_analyze_pass
     - related_tests_pass
 
   architecture:
@@ -20,4 +20,3 @@ checks:
 
   regression_risk:
     - blast_radius_low
-

@@ -1,17 +1,10 @@
-# Architecture Rules (Flutter + Riverpod / feature-based)
+# Architecture Rules
 
-- Preserve existing feature-based module boundaries (`lib/ui`, `lib/data`, `lib/core`, `lib/utils`).
-- Keep Riverpod provider patterns consistent with current project.
-- `AsyncNotifier`, `AutoDisposeAsyncNotifier`, `StateNotifier`, `StateProvider`, `Provider` based on existing usage.
-- `AutoDisposeAsyncNotifier` or `AsyncNotifier` are prefered for new Controllers. Use other type of Notifiers, if it's necessary to use other notifers for particulary case.
-- Repository implementations remain in the data layer.
-- Do not move files across architecture layers without explicit permission.
-- Domain layer must not import Flutter UI framework APIs.
-- Keep dependency direction (UI -> Controller -> Repository -> API) unless explicitly required.
-- Prefer existing provider wiring and extension points; avoid re-plumbing DI at the app shell level.
-- Reuse existing test patterns in adjacent feature tests.
-- Keep shared shell UI (global tab navigation) unchanged unless requested.
-- Do not introduce generated code edits; avoid touching `.g.dart` / `.freezed.dart` directly.
-- Prefer immutable state and minimal diff for low-risk tasks.
-- For list pages, keep `AppSmartRefresher` usage when pagination exists.
-- Do not add helper methods named `_build*` inside `build()` to satisfy legacy constraints from repo guidance.
+- Preserve the current control-plane boundaries across `cmd/`, `internal/`, `.harness/`, `skills/`, and `docs/`.
+- Keep request composition, runtime orchestration, routing, reporting, and learning-state operations explicit and reviewable.
+- Do not move files across architecture boundaries without explicit permission.
+- Keep dependency direction simple: CLI entrypoint -> internal runtime/services -> contracts/assets.
+- Prefer deterministic data flow and traceable artifact outputs over hidden automation.
+- Reuse adjacent test patterns and keep verification close to the behavior under change.
+- Do not introduce generated code edits unless the task explicitly requires regeneration.
+- Prefer minimal diffs for low-risk tasks.

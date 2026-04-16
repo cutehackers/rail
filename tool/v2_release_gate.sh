@@ -9,12 +9,8 @@ SMOKE_TASK_ID="$(
   rail_validate_smoke_task_id \
     "${RAIL_RELEASE_SMOKE_TASK_ID:-v2-integrator-smoke-ci}"
 )"
-ARTIFACT_PATH=".harness/artifacts/${SMOKE_TASK_ID}"
-MISSING_GO_COMMANDS=(
-  "integrate"
-  "validate-artifact"
-  "verify-learning-state"
-)
+TARGET_ROOT="$REPO_ROOT/examples/smoke-target"
+ARTIFACT_PATH="$TARGET_ROOT/.harness/artifacts/${SMOKE_TASK_ID}"
 
 cd "$REPO_ROOT"
 
@@ -25,13 +21,18 @@ go build -o build/rail ./cmd/rail
 
 rm -rf "$ARTIFACT_PATH"
 ./build/rail run \
-  --request test/fixtures/valid_request.yaml \
-  --project-root "$REPO_ROOT" \
+  --request "$TARGET_ROOT/.harness/requests/valid_request.yaml" \
+  --project-root "$TARGET_ROOT" \
   --task-id "$SMOKE_TASK_ID"
 ./build/rail execute --artifact "$ARTIFACT_PATH"
-
-printf '%s\n' \
-  "Go CLI parity is incomplete for v2 release gate." \
-  "Missing commands: ${MISSING_GO_COMMANDS[*]}" \
-  "Blocked after Go-first verification and smoke execution." >&2
-exit 1
+./build/rail integrate --artifact "$ARTIFACT_PATH"
+./build/rail validate-artifact \
+  --file "$ARTIFACT_PATH/integration_result.yaml" \
+  --schema integration_result
+if grep -q '^release_readiness: blocked$' "$ARTIFACT_PATH/integration_result.yaml"; then
+  printf '%s\n' \
+    "v2 release gate blocked: integration_result.yaml reported release_readiness=blocked" \
+    "Inspect $ARTIFACT_PATH/integration_result.yaml and resolve blocking issues before continuing." >&2
+  exit 1
+fi
+./build/rail verify-learning-state

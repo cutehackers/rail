@@ -1,14 +1,14 @@
 # Allowed Commands
 
-The executor should use these commands in this order for standard validation:
+The executor should follow `.harness/supervisor/execution_policy.yaml` and stay scoped to the smallest credible validation set.
 
-1. `dart format <files>` (minimal scope first, then broader if needed)
-2. `flutter analyze`
-3. `flutter test <target-test-path>`
-4. `flutter test` (when broad validation is necessary)
+The default Rail profile uses this order for standard validation:
+
+1. `gofmt -w <changed files>`
+2. `go build ./...`
+3. `go test ./...`
 
 Disallow by default:
-- `flutter pub global` operations
 - destructive git commands (`git reset --hard`, `git checkout -- <path>`)
 - unrelated dependency updates
-
+- ad-hoc global tool installation during validation

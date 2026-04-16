@@ -13,10 +13,10 @@ func TestComposeRequestNormalizesDraftIntoCanonicalRequestShape(t *testing.T) {
 		"goal": "  Fix the loading indicator  ",
 		"context": {
 			"feature": " profile ",
-			"suspected_files": [" lib/profile.dart ", ""],
-			"related_files": [" lib/profile_state.dart "],
-			"validation_roots": [" packages/app "],
-			"validation_targets": [" packages/app/test/profile_test.dart "]
+			"suspected_files": [" internal/profile/service.go ", ""],
+			"related_files": [" cmd/rail/main.go "],
+			"validation_roots": [" internal/profile "],
+			"validation_targets": [" internal/profile/service_test.go "]
 		},
 		"constraints": [" no new deps ", " "],
 		"definition_of_done": [" spinner clears ", " regression test added "]
@@ -44,16 +44,16 @@ func TestComposeRequestNormalizesDraftIntoCanonicalRequestShape(t *testing.T) {
 	if request.Context.Feature != "profile" {
 		t.Fatalf("expected trimmed feature, got %q", request.Context.Feature)
 	}
-	if got, want := strings.Join(request.Context.SuspectedFiles, "|"), "lib/profile.dart"; got != want {
+	if got, want := strings.Join(request.Context.SuspectedFiles, "|"), "internal/profile/service.go"; got != want {
 		t.Fatalf("unexpected suspected_files: want %q got %q", want, got)
 	}
-	if got, want := strings.Join(request.Context.RelatedFiles, "|"), "lib/profile_state.dart"; got != want {
+	if got, want := strings.Join(request.Context.RelatedFiles, "|"), "cmd/rail/main.go"; got != want {
 		t.Fatalf("unexpected related_files: want %q got %q", want, got)
 	}
-	if got, want := strings.Join(request.Context.ValidationRoots, "|"), "packages/app"; got != want {
+	if got, want := strings.Join(request.Context.ValidationRoots, "|"), "internal/profile"; got != want {
 		t.Fatalf("unexpected validation_roots: want %q got %q", want, got)
 	}
-	if got, want := strings.Join(request.Context.ValidationTargets, "|"), "packages/app/test/profile_test.dart"; got != want {
+	if got, want := strings.Join(request.Context.ValidationTargets, "|"), "internal/profile/service_test.go"; got != want {
 		t.Fatalf("unexpected validation_targets: want %q got %q", want, got)
 	}
 	if request.Priority != "medium" {

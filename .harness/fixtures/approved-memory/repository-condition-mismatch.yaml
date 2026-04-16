@@ -17,7 +17,7 @@ request_compatibility:
   constraint_must_exclude_any: []
 repository_compatibility:
   required_paths_exist:
-    - lib/feature_quality_learning_does_not_exist.dart
+    - internal/feature_quality_learning_does_not_exist.go
   required_paths_absent: []
 latest_family_evidence_expectations:
   lookup_key: feature_addition::task_type

@@ -67,7 +67,7 @@ Emit a draft like:
   "context": {
     "feature": "profile",
     "suspected_files": [
-      "lib/profile_screen.dart"
+      "internal/profile/service.go"
     ],
     "related_files": [],
     "validation_roots": [],

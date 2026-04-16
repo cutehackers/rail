@@ -17,7 +17,7 @@ func TestResolveUsesEmbeddedDefaultWhenLocalOverrideMissing(t *testing.T) {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
 
-	if !strings.Contains(string(got), "Flutter + Riverpod project profile") {
+	if !strings.Contains(string(got), "Go control-plane project profile") {
 		t.Fatalf("unexpected content: %q", string(got))
 	}
 	if source != "embedded" {

@@ -87,7 +87,10 @@ func (v *Validator) ValidateArtifactFile(filePath, schemaName string) (map[strin
 }
 
 func (v *Validator) loadSchema(schemaName string) (*SchemaValidator, error) {
-	schemaPath := schemaPathForName(schemaName)
+	schemaPath, err := schemaPathForName(schemaName)
+	if err != nil {
+		return nil, err
+	}
 	data, _, err := assets.Resolve(v.projectRoot, schemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("load schema %q: %w", schemaName, err)
@@ -217,16 +220,44 @@ func isWithinRoot(root, candidate string) bool {
 	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
 }
 
-func schemaPathForName(schemaName string) string {
+func schemaPathForName(schemaName string) (string, error) {
 	switch schemaName {
 	case "request":
-		return ".harness/templates/user_request.schema.yaml"
+		return ".harness/templates/user_request.schema.yaml", nil
+	case "plan":
+		return ".harness/templates/plan.schema.yaml", nil
+	case "context_pack":
+		return ".harness/templates/context_pack.schema.yaml", nil
+	case "implementation_result":
+		return ".harness/templates/implementation_result.schema.yaml", nil
 	case "evaluation_result":
-		return ".harness/templates/evaluation_result.schema.yaml"
+		return ".harness/templates/evaluation_result.schema.yaml", nil
 	case "execution_report":
-		return ".harness/templates/execution_report.schema.yaml"
+		return ".harness/templates/execution_report.schema.yaml", nil
+	case "integration_result":
+		return ".harness/templates/integration_result.schema.yaml", nil
+	case "quality_learning_candidate":
+		return ".harness/templates/quality_learning_candidate.schema.yaml", nil
+	case "hardening_candidate":
+		return ".harness/templates/hardening_candidate.schema.yaml", nil
+	case "approved_family_memory":
+		return ".harness/templates/approved_family_memory.schema.yaml", nil
+	case "learning_review_decision":
+		return ".harness/templates/learning_review_decision.schema.yaml", nil
+	case "hardening_review_decision":
+		return ".harness/templates/hardening_review_decision.schema.yaml", nil
+	case "user_outcome_feedback":
+		return ".harness/templates/user_outcome_feedback.schema.yaml", nil
+	case "family_evidence_index":
+		return ".harness/templates/family_evidence_index.schema.yaml", nil
+	case "learning_review_queue":
+		return ".harness/templates/learning_review_queue.schema.yaml", nil
+	case "hardening_review_queue":
+		return ".harness/templates/hardening_review_queue.schema.yaml", nil
+	case "quality_improvement_comparison":
+		return ".harness/templates/quality_improvement_comparison.schema.yaml", nil
 	default:
-		panic(fmt.Sprintf("unsupported schema: %s", schemaName))
+		return "", fmt.Errorf("unsupported schema: %s", schemaName)
 	}
 }
 
@@ -360,8 +391,10 @@ func (v *SchemaValidator) validateNode(schema map[string]any, value any, path st
 		if required, ok := schema["required"].([]any); ok {
 			for _, field := range required {
 				fieldName, ok := field.(string)
-				if ok && objectValue[fieldName] == nil {
-					validationErrors = append(validationErrors, fmt.Sprintf("%s missing required field `%s`", path, fieldName))
+				if ok {
+					if _, exists := objectValue[fieldName]; !exists {
+						validationErrors = append(validationErrors, fmt.Sprintf("%s missing required field `%s`", path, fieldName))
+					}
 				}
 			}
 		}

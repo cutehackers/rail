@@ -62,6 +62,136 @@ func TestResolvePathWithinRootCanonicalizesSymlinkedPaths(t *testing.T) {
 	}
 }
 
+func TestValidateArtifactFileSupportsLearningAndIntegrationSchemas(t *testing.T) {
+	projectRoot := t.TempDir()
+	if err := copyDirectory(
+		filepath.Join(testRepoRootFromContracts(t), ".harness", "templates"),
+		filepath.Join(projectRoot, ".harness", "templates"),
+	); err != nil {
+		t.Fatalf("failed to copy templates: %v", err)
+	}
+
+	validator, err := NewValidator(projectRoot)
+	if err != nil {
+		t.Fatalf("NewValidator returned error: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		filePath   string
+		schemaName string
+		content    string
+	}{
+		{
+			name:       "integration_result",
+			filePath:   filepath.Join(".harness", "artifacts", "sample", "integration_result.yaml"),
+			schemaName: "integration_result",
+			content: `summary: handoff
+files_changed: []
+validation: []
+risks: []
+follow_up: []
+evidence_quality: draft
+release_readiness: ready
+blocking_issues: []
+`,
+		},
+		{
+			name:       "approved_family_memory",
+			filePath:   filepath.Join(".harness", "learning", "approved", "feature_addition.yaml"),
+			schemaName: "approved_family_memory",
+			content: `task_family: feature_addition
+task_family_source: task_type
+approved_observation: reusable guidance
+applicability_conditions: []
+evidence_basis: []
+guardrail_note: baseline guardrail note
+request_compatibility:
+  required_context_features: ["feature_addition"]
+  goal_must_include_any: ["feature"]
+  goal_must_exclude_any: []
+  constraint_must_include_any: []
+  constraint_must_exclude_any: []
+repository_compatibility:
+  required_paths_exist: ["cmd/rail/main.go"]
+  required_paths_absent: []
+latest_family_evidence_expectations:
+  lookup_key: feature_addition::task_type
+  baseline_approved_memory_ref: .harness/learning/approved/feature_addition.yaml
+  required_latest_success_ref: ~
+  required_latest_failure_ref: ~
+  forbid_any_latest_failure: true
+freshness_marker:
+  contract_version: 1
+  policy_version: 1
+  memory_schema_version: 3
+  repository_assumptions_ref: .harness/learning/approved/feature_addition.yaml
+  repository_state_ref: .harness/learning/approved/feature_addition.yaml
+  refreshed_at: "2026-04-16T00:00:00Z"
+  freshness_sequence: 1
+disposition_history: []
+originating_candidate_refs: []
+reviewed_user_outcome_feedback_refs: []
+`,
+		},
+		{
+			name:       "family_evidence_index",
+			filePath:   filepath.Join(".harness", "learning", "family_evidence_index.yaml"),
+			schemaName: "family_evidence_index",
+			content: `latest_approved_memory_refs_by_family: {}
+latest_confirmed_success_refs_by_family: {}
+latest_failure_refs_by_family: {}
+latest_review_decision_refs_by_family: {}
+latest_provisional_candidate_dispositions_by_family: {}
+index_generated_at: derived:empty
+index_sequence: 0
+`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			filePath := filepath.Join(projectRoot, tc.filePath)
+			if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+				t.Fatalf("failed to create %s: %v", filePath, err)
+			}
+			if err := os.WriteFile(filePath, []byte(tc.content), 0o644); err != nil {
+				t.Fatalf("failed to write %s: %v", filePath, err)
+			}
+			if _, err := validator.ValidateArtifactFile(tc.filePath, tc.schemaName); err != nil {
+				t.Fatalf("ValidateArtifactFile returned error: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateArtifactFileRejectsUnknownSchemaName(t *testing.T) {
+	projectRoot := t.TempDir()
+	if err := copyDirectory(
+		filepath.Join(testRepoRootFromContracts(t), ".harness", "templates"),
+		filepath.Join(projectRoot, ".harness", "templates"),
+	); err != nil {
+		t.Fatalf("failed to copy templates: %v", err)
+	}
+
+	validator, err := NewValidator(projectRoot)
+	if err != nil {
+		t.Fatalf("NewValidator returned error: %v", err)
+	}
+
+	filePath := filepath.Join(projectRoot, ".harness", "artifacts", "sample", "integration_result.yaml")
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		t.Fatalf("failed to create artifact directory: %v", err)
+	}
+	if err := os.WriteFile(filePath, []byte("summary: test\nfiles_changed: []\nvalidation: []\nrisks: []\nfollow_up: []\nevidence_quality: draft\nrelease_readiness: ready\nblocking_issues: []\n"), 0o644); err != nil {
+		t.Fatalf("failed to write artifact fixture: %v", err)
+	}
+
+	if _, err := validator.ValidateArtifactFile(filepath.Join(".harness", "artifacts", "sample", "integration_result.yaml"), "does_not_exist"); err == nil {
+		t.Fatalf("expected unknown schema error")
+	}
+}
+
 func testRepoRootFromContracts(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))
@@ -69,4 +199,28 @@ func testRepoRootFromContracts(t *testing.T) string {
 		t.Fatalf("failed to resolve repo root: %v", err)
 	}
 	return root
+}
+
+func copyDirectory(sourcePath, destinationPath string) error {
+	if err := os.MkdirAll(destinationPath, 0o755); err != nil {
+		return err
+	}
+	return filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(sourcePath, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(destinationPath, relative)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode())
+	})
 }

@@ -17,7 +17,7 @@ Suggested draft:
   "context": {
     "feature": "profile",
     "suspected_files": [
-      "lib/profile_screen.dart"
+      "internal/profile/service.go"
     ],
     "related_files": [],
     "validation_roots": [],

@@ -6,7 +6,7 @@ checks:
 
   correctness:
     - related_tests_pass
-    - flutter_analyze_pass
+    - build_or_analyze_pass
 
   architecture:
     - no_unrelated_test_or_prod_file_changes
@@ -14,4 +14,3 @@ checks:
   maintainability:
     - test_change_is_targeted
     - no_overbroad_assertions
-

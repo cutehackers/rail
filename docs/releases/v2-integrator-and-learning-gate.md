@@ -37,11 +37,16 @@ Recommended local gate:
 
 The script should ensure:
 
-- dependency/runtime hygiene checks are clean (`pub get`, `analyze`, `test`)
-- binary compilation still succeeds
-- a deterministic v1 smoke route reaches terminal state
+- Go test and build complete cleanly
+- the built Rail binary is used end-to-end
+- a deterministic smoke route against the checked-in example target reaches terminal state
 - explicit post-pass `integrate` is runnable
 - `integration_result.yaml` validates against `.harness/templates/integration_result.schema.yaml`
+- reviewed learning state validates after the integrator run
+
+The current smoke target used by the release gate is:
+
+- `examples/smoke-target/`
 
 After running the script, operators should also confirm:
 

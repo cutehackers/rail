@@ -27,8 +27,9 @@ func TestRunBootstrapsSmokeArtifact(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(artifactPath, "request.yaml")); err != nil {
 		t.Fatalf("expected request snapshot to exist: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(artifactPath, "resolved_workflow.json")); err != nil {
-		t.Fatalf("expected resolved_workflow.json to exist: %v", err)
+	workflowPath := filepath.Join(artifactPath, workflowArtifactFileName)
+	if _, err := os.Stat(workflowPath); err != nil {
+		t.Fatalf("expected workflow artifact %q to exist: %v", workflowPath, err)
 	}
 	if _, err := os.Stat(filepath.Join(artifactPath, "state.json")); err != nil {
 		t.Fatalf("expected state.json to exist: %v", err)
@@ -231,8 +232,8 @@ func TestBuildSmokeEvaluationResultRejectsFormatFailure(t *testing.T) {
 			"passed": 1,
 			"failed": 0,
 		},
-		"failure_details": []string{"Format command failed: dart format foo.dart"},
-		"logs":            []string{"dart format foo.dart (exit=1)"},
+		"failure_details": []string{"Format command failed: gofmt -w foo.go"},
+		"logs":            []string{"gofmt -w foo.go (exit=1)"},
 	}
 	data, err := yaml.Marshal(executionReport)
 	if err != nil {
@@ -263,7 +264,7 @@ func prepareSmokeProject(t *testing.T) (string, string) {
 	for _, relPath := range []string{
 		filepath.Join(".harness", "requests"),
 		filepath.Join(".harness", "artifacts"),
-		"test",
+		"smoke",
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
 			t.Fatalf("failed to create %q: %v", relPath, err)
@@ -272,8 +273,14 @@ func prepareSmokeProject(t *testing.T) (string, string) {
 	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
 		t.Fatalf("failed to write git marker: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(projectRoot, "pubspec.yaml"), []byte("name: smoke_project\n"), 0o644); err != nil {
-		t.Fatalf("failed to write pubspec.yaml: %v", err)
+	if err := os.WriteFile(filepath.Join(projectRoot, "go.mod"), []byte("module smokeproject\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("failed to write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "smoke", "smoke.go"), []byte("package smoke\n\nfunc Ready() bool { return true }\n"), 0o644); err != nil {
+		t.Fatalf("failed to write smoke.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "smoke", "smoke_test.go"), []byte("package smoke\n\nimport \"testing\"\n\nfunc TestReady(t *testing.T) {\n\tif !Ready() {\n\t\tt.Fatal(\"expected Ready to return true\")\n\t}\n}\n"), 0o644); err != nil {
+		t.Fatalf("failed to write smoke_test.go: %v", err)
 	}
 
 	requestBody, err := os.ReadFile(filepath.Join(testRepoRoot(t), ".harness", "requests", "rail-bootstrap-smoke.yaml"))

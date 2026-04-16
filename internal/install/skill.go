@@ -2,9 +2,13 @@ package install
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
+	"sort"
+	"strings"
+
+	skillassets "rail/assets/skill"
 )
 
 const (
@@ -12,17 +16,11 @@ const (
 	codexSkillDirName    = "rail"
 )
 
-var bundledSkillPaths = []string{
-	"SKILL.md",
-	"references/examples.md",
-}
-
 type Layout struct {
 	Prefix          string
 	RailBinary      string
 	PackageRoot     string
 	PackageSkillDir string
-	CodexHome       string
 	CodexSkillDir   string
 }
 
@@ -31,46 +29,80 @@ type SkillFile struct {
 	Contents     []byte
 }
 
-func InstallLayout(prefix, codexHome string) Layout {
+func InstallLayout(prefix string) Layout {
 	cleanPrefix := filepath.Clean(prefix)
-	cleanCodexHome := filepath.Clean(codexHome)
 
 	return Layout{
 		Prefix:          cleanPrefix,
 		RailBinary:      filepath.Join(cleanPrefix, "bin", "rail"),
 		PackageRoot:     filepath.Join(cleanPrefix, "share", "rail"),
 		PackageSkillDir: filepath.Join(cleanPrefix, "share", "rail", "skill", packagedSkillDirName),
-		CodexHome:       cleanCodexHome,
-		CodexSkillDir:   filepath.Join(cleanCodexHome, "skills", codexSkillDirName),
+		CodexSkillDir:   filepath.Join(cleanPrefix, "share", "codex", "skills", codexSkillDirName),
 	}
 }
 
 func BundledSkillFiles() ([]SkillFile, error) {
-	sourceDir, err := bundledSkillSourceDir()
+	files := make([]SkillFile, 0, 4)
+	err := fs.WalkDir(skillassets.FS, packagedSkillDirName, func(assetPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+
+		contents, err := fs.ReadFile(skillassets.FS, assetPath)
+		if err != nil {
+			return fmt.Errorf("read bundled skill asset %q: %w", assetPath, err)
+		}
+
+		files = append(files, SkillFile{
+			RelativePath: strings.TrimPrefix(assetPath, packagedSkillDirName+"/"),
+			Contents:     contents,
+		})
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	files := make([]SkillFile, 0, len(bundledSkillPaths))
-	for _, relPath := range bundledSkillPaths {
-		contents, err := os.ReadFile(filepath.Join(sourceDir, filepath.FromSlash(relPath)))
-		if err != nil {
-			return nil, fmt.Errorf("read bundled skill asset %q: %w", relPath, err)
-		}
-		files = append(files, SkillFile{
-			RelativePath: relPath,
-			Contents:     contents,
-		})
-	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].RelativePath < files[j].RelativePath
+	})
 
 	return files, nil
 }
 
-func bundledSkillSourceDir() (string, error) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", fmt.Errorf("resolve bundled skill source: runtime caller unavailable")
+func MaterializeBundledSkill(layout Layout) error {
+	files, err := BundledSkillFiles()
+	if err != nil {
+		return err
 	}
 
-	return filepath.Join(filepath.Dir(filename), "..", "..", "assets", "skill", packagedSkillDirName), nil
+	for _, targetDir := range []string{layout.PackageSkillDir, layout.CodexSkillDir} {
+		if err := materializeSkillDir(targetDir, files); err != nil {
+			return fmt.Errorf("materialize bundled skill in %q: %w", targetDir, err)
+		}
+	}
+
+	return nil
+}
+
+func materializeSkillDir(targetDir string, files []SkillFile) error {
+	if targetDir == "" {
+		return fmt.Errorf("target directory is required")
+	}
+	if err := os.RemoveAll(targetDir); err != nil {
+		return err
+	}
+	for _, file := range files {
+		targetPath := filepath.Join(targetDir, filepath.FromSlash(file.RelativePath))
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(targetPath, file.Contents, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }

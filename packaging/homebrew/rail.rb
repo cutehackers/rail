@@ -1,57 +1,22 @@
-require "digest"
-require "tmpdir"
-
 class Rail < Formula
-  source_repo = if ENV["HOMEBREW_RAIL_SOURCE_REPO"].to_s.empty?
-    (Pathname.new(__dir__) / "../..").realpath
-  else
-    Pathname.new(ENV["HOMEBREW_RAIL_SOURCE_REPO"]).realpath
-  end
-  source_archive_dir = Pathname.new(Dir.mktmpdir("rail-formula-source"))
-  source_archive = source_archive_dir/"rail-0.0.0.tar.gz"
-
-  system "tar", "-czf", source_archive.to_s, "-C", source_repo.to_s, "."
-
   desc "Harness control-plane for Codex"
+  # Release template: replace metadata with a published release before shipping.
   homepage "https://example.com/rail"
-  url "file://#{source_archive}"
+  url "https://example.com/rail/archive/refs/tags/v0.0.0.tar.gz"
   version "0.0.0"
-  sha256 Digest::SHA256.file(source_archive).hexdigest
+  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   license "MIT"
-
-  SOURCE_REPO = source_repo
-  CODEX_HOME = if ENV["HOMEBREW_RAIL_CODEX_HOME"].to_s.empty?
-    File.join(Dir.home, ".codex")
-  else
-    ENV["HOMEBREW_RAIL_CODEX_HOME"]
-  end
 
   depends_on "go" => :build
 
   def install
-    source_dir = buildpath/"source-tree"
-    source_dir.mkpath
+    system "go", "build", "-trimpath", "-o", bin/"rail", "./cmd/rail"
 
-    SOURCE_REPO.children.each do |path|
-      next if [".git", ".dart_tool", ".worktrees", "build"].include?(path.basename.to_s)
+    pkgshare.install "assets/skill"
 
-      cp_r path, source_dir
-    end
-
-    cd source_dir do
-      system "go", "build", "-trimpath", "-o", bin/"rail", "./cmd/rail"
-      pkgshare.install "assets/skill"
-    end
-  end
-
-  def post_install
-    target = Pathname.new(CODEX_HOME)/"skills"/"rail"
-    source = pkgshare/"skill"/"Rail"
-
-    rm_rf target
-    target.parent.mkpath
-    target.mkpath
-    cp_r source.children, target
+    codex_skill_dir = prefix/"share/codex/skills/rail"
+    codex_skill_dir.mkpath
+    cp_r (buildpath/"assets/skill/Rail").children, codex_skill_dir
   end
 
   def caveats
@@ -59,13 +24,14 @@ class Rail < Formula
       Rail installs its packaged Codex skill assets under:
         #{opt_pkgshare}/skill/Rail
 
-      A Codex-discoverable copy is also materialized under:
-        #{CODEX_HOME}/skills/rail
+      A prefix-local Codex-facing copy is also installed under:
+        #{opt_prefix}/share/codex/skills/rail
     EOS
   end
 
   test do
     assert_match "compose-request", shell_output("#{bin}/rail compose-request 2>&1", 1)
     assert_predicate pkgshare/"skill"/"Rail"/"SKILL.md", :exist?
+    assert_predicate prefix/"share/codex/skills/rail"/"SKILL.md", :exist?
   end
 end

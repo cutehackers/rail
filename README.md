@@ -12,12 +12,9 @@ Requirements:
 - Codex
 
 Setup:
+For end-user installs, use a published Rail release or release tap. The Homebrew formula under `packaging/homebrew/rail.rb` is release-packaging material and is not a supported direct install path from a development checkout.
 
-```bash
-brew install rail
-```
-
-Packaged installs bundle the Rail Codex skill automatically. The bundled Homebrew formula lives under `packaging/homebrew/rail.rb`. This source repository remains the development and release origin, not the required runtime root.
+Packaged releases bundle the Rail Codex skill under the installation prefix. This source repository remains the development and release origin, not the required runtime root.
 
 ## What You Get From Rail
 

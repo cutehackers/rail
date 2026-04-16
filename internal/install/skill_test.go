@@ -1,41 +1,68 @@
 package install
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestInstallLayoutIncludesRailSkillAssets(t *testing.T) {
+func TestInstallLayoutIncludesPrefixLocalRailSkillAssets(t *testing.T) {
 	prefix := "/opt/homebrew/Cellar/rail/0.1.0"
-	codexHome := "/tmp/codex-home"
 
-	layout := InstallLayout(prefix, codexHome)
+	layout := InstallLayout(prefix)
 
 	if got, want := layout.PackageSkillDir, filepath.Join(prefix, "share", "rail", "skill", "Rail"); got != want {
 		t.Fatalf("unexpected packaged skill dir: got %q want %q", got, want)
 	}
-	if got, want := layout.CodexSkillDir, filepath.Join(codexHome, "skills", "rail"); got != want {
+	if got, want := layout.CodexSkillDir, filepath.Join(prefix, "share", "codex", "skills", "rail"); got != want {
 		t.Fatalf("unexpected codex skill dir: got %q want %q", got, want)
+	}
+}
+
+func TestMaterializeBundledSkillCreatesPackagedAndCodexFacingLayouts(t *testing.T) {
+	layout := InstallLayout(t.TempDir())
+
+	stalePackageFile := filepath.Join(layout.PackageSkillDir, "stale.txt")
+	if err := os.MkdirAll(filepath.Dir(stalePackageFile), 0o755); err != nil {
+		t.Fatalf("create stale package dir: %v", err)
+	}
+	if err := os.WriteFile(stalePackageFile, []byte("stale"), 0o644); err != nil {
+		t.Fatalf("write stale package file: %v", err)
+	}
+
+	staleCodexFile := filepath.Join(layout.CodexSkillDir, "old.txt")
+	if err := os.MkdirAll(filepath.Dir(staleCodexFile), 0o755); err != nil {
+		t.Fatalf("create stale codex dir: %v", err)
+	}
+	if err := os.WriteFile(staleCodexFile, []byte("stale"), 0o644); err != nil {
+		t.Fatalf("write stale codex file: %v", err)
 	}
 
 	files, err := BundledSkillFiles()
 	if err != nil {
 		t.Fatalf("BundledSkillFiles returned error: %v", err)
 	}
-
 	indexed := indexBundledSkillFiles(t, files)
-	for _, relPath := range []string{
-		"SKILL.md",
-		"references/examples.md",
-	} {
-		if _, ok := indexed[relPath]; !ok {
-			t.Fatalf("expected bundled skill asset %q to be present", relPath)
-		}
+
+	if err := MaterializeBundledSkill(layout); err != nil {
+		t.Fatalf("MaterializeBundledSkill returned error: %v", err)
 	}
+
+	if _, err := os.Stat(stalePackageFile); !os.IsNotExist(err) {
+		t.Fatalf("expected stale packaged file to be removed, got %v", err)
+	}
+	if _, err := os.Stat(staleCodexFile); !os.IsNotExist(err) {
+		t.Fatalf("expected stale codex file to be removed, got %v", err)
+	}
+
+	assertMaterializedFile(t, layout.PackageSkillDir, "SKILL.md", indexed["SKILL.md"])
+	assertMaterializedFile(t, layout.PackageSkillDir, filepath.Join("references", "examples.md"), indexed["references/examples.md"])
+	assertMaterializedFile(t, layout.CodexSkillDir, "SKILL.md", indexed["SKILL.md"])
+	assertMaterializedFile(t, layout.CodexSkillDir, filepath.Join("references", "examples.md"), indexed["references/examples.md"])
 }
 
-func TestBundledSkillReferencesInstalledRailBinary(t *testing.T) {
+func TestBundledSkillMatchesCurrentCLIWorkflow(t *testing.T) {
 	files, err := BundledSkillFiles()
 	if err != nil {
 		t.Fatalf("BundledSkillFiles returned error: %v", err)
@@ -46,6 +73,12 @@ func TestBundledSkillReferencesInstalledRailBinary(t *testing.T) {
 	skillDoc := indexed["SKILL.md"]
 	if !strings.Contains(skillDoc, "Use this skill through the installed `rail` binary.") {
 		t.Fatalf("expected skill doc to reference the installed rail binary, got %q", skillDoc)
+	}
+	if !strings.Contains(skillDoc, "`rail validate-request` and `rail run`") {
+		t.Fatalf("expected skill doc to acknowledge validate-request and run, got %q", skillDoc)
+	}
+	if strings.Contains(skillDoc, "unless later Go workflow tasks have implemented them") {
+		t.Fatalf("expected stale command gating to be removed, got %q", skillDoc)
 	}
 	if strings.Contains(skillDoc, "local Rail checkout") {
 		t.Fatalf("expected skill doc to avoid checkout-era runtime guidance, got %q", skillDoc)
@@ -68,4 +101,16 @@ func indexBundledSkillFiles(t *testing.T, files []SkillFile) map[string]string {
 		indexed[file.RelativePath] = string(file.Contents)
 	}
 	return indexed
+}
+
+func assertMaterializedFile(t *testing.T, root, relativePath, want string) {
+	t.Helper()
+
+	got, err := os.ReadFile(filepath.Join(root, relativePath))
+	if err != nil {
+		t.Fatalf("read materialized file %q: %v", relativePath, err)
+	}
+	if string(got) != want {
+		t.Fatalf("unexpected content for %q", relativePath)
+	}
 }

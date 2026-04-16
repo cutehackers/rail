@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TARGET_DIR="${HOME}/.codex/skills/rail"
+cat <<'EOF' >&2
+scripts/install_skill.sh is deprecated.
 
-mkdir -p "${TARGET_DIR}"
-ln -sfn "${ROOT_DIR}/skills/rail/SKILL.md" "${TARGET_DIR}/SKILL.md"
+Rail packaged installs now bundle the Codex skill automatically.
+Use a packaged install instead:
 
-echo "Installed rail skill symlink at ${TARGET_DIR}/SKILL.md"
+  brew install rail
+
+For local source checkouts, the bundled skill source lives under:
+
+  assets/skill/Rail/
+
+This script no longer creates ~/.codex skill symlinks from a checkout.
+EOF
+
+exit 1

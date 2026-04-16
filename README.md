@@ -8,19 +8,22 @@ The main result is simple: instead of manually coordinating prompts, task bounda
 
 Requirements:
 
-- Dart SDK `^3.9.0`
+- Homebrew
 - Codex
 
 Setup:
 
 ```bash
-git clone <repo-url> rail
-cd rail
-dart pub get
-./scripts/install_skill.sh
+brew install rail
 ```
 
-After installation, the recommended way to use Rail is through the repo-owned Codex skill.
+For local verification from this source checkout, you can also build from the bundled formula:
+
+```bash
+brew install --build-from-source ./packaging/homebrew/rail.rb
+```
+
+Packaged installs bundle the Rail Codex skill automatically. This source repository remains the development and release origin, not the required runtime root.
 
 ## What You Get From Rail
 
@@ -41,7 +44,7 @@ The main merit of Rail is not the CLI by itself. The main merit is that the Rail
 Typical skill usage looks like this:
 
 ```text
-Use the Rail skill from the local Rail checkout.
+Use the Rail skill.
 Target repo: /absolute/path/to/target-repo
 Goal: Fix the intermittent profile refresh loading issue.
 Constraint: Do not change the API contract.

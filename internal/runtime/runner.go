@@ -74,6 +74,9 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		return "", err
 	}
 	if currentState.CurrentActor == nil {
+		if needsPersistedOutputRefresh(artifactDirectory, currentState) {
+			return r.router.RouteEvaluation(artifactDirectory)
+		}
 		return fmt.Sprintf("Harness execution already completed for %s", artifactDirectory), nil
 	}
 
@@ -101,10 +104,7 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 
 		outputName := canonicalOutputForActor(actorName)
 		outputPath := filepath.Join(artifactDirectory, artifactFileName(outputName))
-		logPath := filepath.Join(
-			runsDirectory,
-			fmt.Sprintf("%02d_%s-last-message.txt", actorIndex+1, actorName),
-		)
+		logPath := filepath.Join(runsDirectory, actorLogFileName(actorIndex, actorName, currentState.CompletedActors))
 
 		response, err := r.runActor(actorName, artifactDirectory, requestValue, executionPlan)
 		if err != nil {
@@ -252,6 +252,33 @@ func writeActorLog(path string, value map[string]any) error {
 		return fmt.Errorf("write actor log %s: %w", path, err)
 	}
 	return nil
+}
+
+func actorLogFileName(actorIndex int, actorName string, completedActors []string) string {
+	visit := countActor(completedActors, actorName) + 1
+	if visit == 1 {
+		return fmt.Sprintf("%02d_%s-last-message.txt", actorIndex+1, actorName)
+	}
+	return fmt.Sprintf("%02d_%s-visit-%02d-last-message.txt", actorIndex+1, actorName, visit)
+}
+
+func needsPersistedOutputRefresh(artifactDirectory string, state State) bool {
+	tracePath := filepath.Join(artifactDirectory, "supervisor_trace.md")
+	if len(state.ActionHistory) > 0 && persistedOutputMissing(tracePath) {
+		return true
+	}
+
+	if !shouldTerminate(state) {
+		return false
+	}
+
+	summaryPath := filepath.Join(artifactDirectory, "terminal_summary.md")
+	return persistedOutputMissing(summaryPath)
+}
+
+func persistedOutputMissing(path string) bool {
+	_, err := os.Stat(path)
+	return os.IsNotExist(err)
 }
 
 func advanceAfterActor(state State, workflow ResolvedWorkflow, actorName string) State {

@@ -3,8 +3,10 @@ package runtime
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -78,6 +80,111 @@ func TestExecutePreservesSupervisorTraceability(t *testing.T) {
 	} {
 		if !strings.Contains(string(trace), fragment) {
 			t.Fatalf("expected supervisor trace to contain %q, got:\n%s", fragment, string(trace))
+		}
+	}
+}
+
+func TestExecutePreservesDistinctLogsAcrossRepeatedActorPasses(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+	runner.commands = &stubCommandRunner{
+		results: []CommandResult{
+			{ExitCode: 0},
+			{ExitCode: 1},
+			{ExitCode: 0},
+			{ExitCode: 0},
+		},
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-smoke")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") {
+		t.Fatalf("expected execution summary to contain passed status, got %q", summary)
+	}
+
+	runEntries, err := os.ReadDir(filepath.Join(artifactPath, "runs"))
+	if err != nil {
+		t.Fatalf("failed to read runs directory: %v", err)
+	}
+
+	executorLogs := []string{}
+	for _, entry := range runEntries {
+		if entry.IsDir() {
+			continue
+		}
+		if strings.Contains(entry.Name(), "executor") && strings.HasSuffix(entry.Name(), "-last-message.txt") {
+			executorLogs = append(executorLogs, entry.Name())
+		}
+	}
+	slices.Sort(executorLogs)
+	if len(executorLogs) != 2 {
+		t.Fatalf("expected 2 executor logs after repeated executor passes, got %d (%v)", len(executorLogs), executorLogs)
+	}
+
+	firstLog, err := os.ReadFile(filepath.Join(artifactPath, "runs", executorLogs[0]))
+	if err != nil {
+		t.Fatalf("failed to read first executor log: %v", err)
+	}
+	secondLog, err := os.ReadFile(filepath.Join(artifactPath, "runs", executorLogs[1]))
+	if err != nil {
+		t.Fatalf("failed to read second executor log: %v", err)
+	}
+	if !strings.Contains(string(firstLog), `"analyze": "pass"`) || !strings.Contains(string(firstLog), `"tests": {`) || !strings.Contains(string(firstLog), `"failed": 1`) {
+		t.Fatalf("expected first executor log to preserve the failing pass, got:\n%s", string(firstLog))
+	}
+	if !strings.Contains(string(secondLog), `"analyze": "pass"`) || !strings.Contains(string(secondLog), `"tests": {`) || !strings.Contains(string(secondLog), `"failed": 0`) {
+		t.Fatalf("expected second executor log to preserve the passing pass, got:\n%s", string(secondLog))
+	}
+}
+
+func TestExecuteRefreshesPersistedOutputsForCompletedArtifacts(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-smoke")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if _, err := runner.Execute(artifactPath); err != nil {
+		t.Fatalf("initial Execute returned error: %v", err)
+	}
+
+	for _, name := range []string{"supervisor_trace.md", "terminal_summary.md"} {
+		if err := os.Remove(filepath.Join(artifactPath, name)); err != nil {
+			t.Fatalf("failed to remove %s: %v", name, err)
+		}
+	}
+
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("refresh Execute returned error: %v", err)
+	}
+	if strings.Contains(summary, "already completed") {
+		t.Fatalf("expected Execute to refresh persisted outputs instead of returning early, got %q", summary)
+	}
+	if !strings.Contains(summary, "status=passed") {
+		t.Fatalf("expected refresh summary to include passed status, got %q", summary)
+	}
+
+	for _, name := range []string{"supervisor_trace.md", "terminal_summary.md"} {
+		if _, err := os.Stat(filepath.Join(artifactPath, name)); err != nil {
+			t.Fatalf("expected %s to be recreated: %v", name, err)
 		}
 	}
 }
@@ -179,4 +286,18 @@ func prepareSmokeProject(t *testing.T) (string, string) {
 	}
 
 	return projectRoot, requestPath
+}
+
+type stubCommandRunner struct {
+	results []CommandResult
+	call    int
+}
+
+func (s *stubCommandRunner) RunShell(command, workingDirectory string, timeout time.Duration) (CommandResult, error) {
+	if s.call >= len(s.results) {
+		return CommandResult{}, nil
+	}
+	result := s.results[s.call]
+	s.call++
+	return result, nil
 }

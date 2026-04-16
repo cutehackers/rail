@@ -102,7 +102,7 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 		return "", err
 	}
 
-	resolvedWorkflow, err := buildResolvedWorkflow(
+	workflow, err := buildWorkflow(
 		b.projectRoot,
 		requestFile,
 		taskID,
@@ -140,25 +140,25 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 		return "", fmt.Errorf("write request snapshot: %w", err)
 	}
 
-	materializedInputs, err := b.materializeStaticInputs(artifactDirectory, resolvedWorkflow.RubricPath)
+	materializedInputs, err := b.materializeStaticInputs(artifactDirectory, workflow.RubricPath)
 	if err != nil {
 		return "", err
 	}
 
 	if executionPolicy.PersistJSONSnapshots {
-		if err := writeJSON(filepath.Join(artifactDirectory, "resolved_workflow.json"), resolvedWorkflow); err != nil {
+		if err := writeJSON(filepath.Join(artifactDirectory, "workflow.json"), workflow); err != nil {
 			return "", err
 		}
 		if err := writeJSON(filepath.Join(artifactDirectory, "execution_plan.json"), executionPlan); err != nil {
 			return "", err
 		}
-		if err := writeJSON(filepath.Join(artifactDirectory, "state.json"), initialState(resolvedWorkflow)); err != nil {
+		if err := writeJSON(filepath.Join(artifactDirectory, "state.json"), initialState(workflow)); err != nil {
 			return "", err
 		}
 	}
 
 	if executionPolicy.CreatePlaceholders {
-		for _, output := range resolvedWorkflow.RequiredOutputs {
+		for _, output := range workflow.RequiredOutputs {
 			if err := writeYAML(filepath.Join(artifactDirectory, artifactFileName(output)), placeholderContent(output)); err != nil {
 				return "", err
 			}
@@ -167,14 +167,14 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 
 	if err := os.WriteFile(
 		filepath.Join(artifactDirectory, "workflow_steps.md"),
-		[]byte(buildWorkflowSteps(resolvedWorkflow, executionPlan)),
+		[]byte(buildWorkflowSteps(workflow, executionPlan)),
 		0o644,
 	); err != nil {
 		return "", fmt.Errorf("write workflow steps: %w", err)
 	}
 
 	if executionPolicy.CreateActorBriefs {
-		for index, actorName := range resolvedWorkflow.Actors {
+		for index, actorName := range workflow.Actors {
 			actorInstructions, err := b.loadTextAsset(filepath.ToSlash(filepath.Join(".harness", "actors", actorName+".md")))
 			if err != nil {
 				return "", err
@@ -190,7 +190,7 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 			)
 			if err := os.WriteFile(
 				briefPath,
-				[]byte(buildActorBrief(actorName, actorInstructions, resolvedWorkflow, executionPlan, actorContract, artifactDirectory, materializedInputs)),
+				[]byte(buildActorBrief(actorName, actorInstructions, workflow, executionPlan, actorContract, artifactDirectory, materializedInputs)),
 				0o644,
 			); err != nil {
 				return "", fmt.Errorf("write actor brief %s: %w", actorName, err)
@@ -201,7 +201,7 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 	return artifactDirectory, nil
 }
 
-type ResolvedWorkflow struct {
+type Workflow struct {
 	TaskID                  string   `json:"taskId"`
 	TaskType                string   `json:"taskType"`
 	TaskFamily              string   `json:"taskFamily"`
@@ -304,7 +304,7 @@ type materializedInputs struct {
 	RequestPath           string
 }
 
-func buildResolvedWorkflow(
+func buildWorkflow(
 	projectRoot string,
 	requestPath string,
 	taskID string,
@@ -315,101 +315,101 @@ func buildResolvedWorkflow(
 	contextContract contextContract,
 	fileHints []string,
 	testTargets []string,
-) (ResolvedWorkflow, error) {
+) (Workflow, error) {
 	taskRegistry, err := readMap(registry, "task_registry")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	taskConfig, err := readMap(taskRegistry, requestValue.TaskType)
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	requiredOutputs, err := readStringList(taskConfig, "required_output")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	rubricPath, err := readString(taskConfig, "rubric")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	taskRetryBudget, err := readIntFromMap(taskConfig, "retry", "generator_max_retry")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 
 	routes, err := readMap(taskRouter, "routes")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	routeConfig, err := readMap(routes, requestValue.TaskType)
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	actors, err := readStringList(routeConfig, "actors")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	defaults, err := readMap(taskRouter, "defaults")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	routeRiskBudgets, err := readMap(defaults, "risk_tolerance")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	routeRiskRule, err := readMap(routeRiskBudgets, requestValue.RiskTolerance)
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	routeRetryBudget, err := readInt(routeRiskRule, "retry_budget")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 
 	retryRules, err := readMap(policy, "retry_rules")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	policyRiskRule, err := readMap(retryRules, requestValue.RiskTolerance)
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	policyRetryBudget, err := readInt(policyRiskRule, "max_generator_retry")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	supervisorLoop, err := readMap(policy, "supervisor_loop")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	contextBudget, err := readInt(supervisorLoop, "max_context_rebuild")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	validationBudget, err := readInt(supervisorLoop, "max_validation_tighten")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 
 	passIf, err := readStringList(policy, "pass_if")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	reviseIf, err := readStringList(policy, "revise_if")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 	rejectIf, err := readStringList(policy, "reject_if")
 	if err != nil {
-		return ResolvedWorkflow{}, err
+		return Workflow{}, err
 	}
 
 	requestRelative, err := projectRelativePath(projectRoot, requestPath)
 	if err != nil {
-		return ResolvedWorkflow{}, fmt.Errorf("relativize request path: %w", err)
+		return Workflow{}, fmt.Errorf("relativize request path: %w", err)
 	}
 
-	return ResolvedWorkflow{
+	return Workflow{
 		TaskID:                  taskID,
 		TaskType:                requestValue.TaskType,
 		TaskFamily:              requestValue.TaskType,
@@ -431,7 +431,7 @@ func buildResolvedWorkflow(
 	}, nil
 }
 
-func initialState(workflow ResolvedWorkflow) State {
+func initialState(workflow Workflow) State {
 	var currentActor *string
 	if len(workflow.Actors) > 0 {
 		currentActor = &workflow.Actors[0]
@@ -567,7 +567,7 @@ func (b *Bootstrapper) materializeStaticInputs(artifactDirectory, rubricPath str
 	}, nil
 }
 
-func buildWorkflowSteps(workflow ResolvedWorkflow, executionPlan ExecutionPlan) string {
+func buildWorkflowSteps(workflow Workflow, executionPlan ExecutionPlan) string {
 	var builder strings.Builder
 	builder.WriteString("# Workflow Steps\n\n")
 	builder.WriteString(fmt.Sprintf("- Task ID: `%s`\n", workflow.TaskID))
@@ -632,7 +632,7 @@ func buildWorkflowSteps(workflow ResolvedWorkflow, executionPlan ExecutionPlan) 
 func buildActorBrief(
 	actorName string,
 	actorInstructions string,
-	workflow ResolvedWorkflow,
+	workflow Workflow,
 	executionPlan ExecutionPlan,
 	contract actorContract,
 	artifactDirectory string,
@@ -1078,6 +1078,10 @@ func inferPackageRoots(fileHints []string) []string {
 			packageRoots[filepath.ToSlash(filepath.Join(segments[0], segments[1]))] = struct{}{}
 			continue
 		}
+		if len(segments) >= 2 && (segments[0] == "cmd" || segments[0] == "internal" || segments[0] == "pkg") {
+			packageRoots[filepath.ToSlash(filepath.Join(segments[0], segments[1]))] = struct{}{}
+			continue
+		}
 		if len(segments) > 0 && (segments[0] == "lib" || segments[0] == "test") {
 			packageRoots["."] = struct{}{}
 		}
@@ -1099,6 +1103,15 @@ func groupTargetsByPackage(targets []string) map[string][]string {
 			packageRoot := filepath.ToSlash(filepath.Join(segments[0], segments[1]))
 			localTarget := filepath.ToSlash(strings.TrimPrefix(normalized, packageRoot+"/"))
 			grouped[packageRoot] = append(grouped[packageRoot], localTarget)
+			continue
+		}
+		if len(segments) >= 2 && strings.HasSuffix(normalized, ".go") {
+			packageRoot := filepath.ToSlash(filepath.Dir(normalized))
+			grouped[packageRoot] = append(grouped[packageRoot], ".")
+			continue
+		}
+		if len(segments) >= 1 && !strings.Contains(filepath.Base(normalized), ".") {
+			grouped[normalized] = append(grouped[normalized], ".")
 			continue
 		}
 		grouped["."] = append(grouped["."], normalized)

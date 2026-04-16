@@ -60,7 +60,7 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		return "", err
 	}
 
-	workflow, err := readResolvedWorkflow(filepath.Join(artifactDirectory, "resolved_workflow.json"))
+	workflow, err := readWorkflow(filepath.Join(artifactDirectory, "workflow.json"))
 	if err != nil {
 		return "", err
 	}
@@ -281,7 +281,7 @@ func persistedOutputMissing(path string) bool {
 	return os.IsNotExist(err)
 }
 
-func advanceAfterActor(state State, workflow ResolvedWorkflow, actorName string) State {
+func advanceAfterActor(state State, workflow Workflow, actorName string) State {
 	nextState := state
 	nextState.CompletedActors = append(append([]string{}, state.CompletedActors...), actorName)
 
@@ -308,7 +308,7 @@ func advanceAfterActor(state State, workflow ResolvedWorkflow, actorName string)
 	return nextState
 }
 
-func workflowActorIndex(workflow ResolvedWorkflow, actorName string) int {
+func workflowActorIndex(workflow Workflow, actorName string) int {
 	for index, candidate := range workflow.Actors {
 		if candidate == actorName {
 			return index
@@ -317,7 +317,7 @@ func workflowActorIndex(workflow ResolvedWorkflow, actorName string) int {
 	return -1
 }
 
-func maxExecutionSteps(workflow ResolvedWorkflow) int {
+func maxExecutionSteps(workflow Workflow) int {
 	return len(workflow.Actors)*4 + workflow.GeneratorRetryBudget + workflow.ContextRebuildBudget + workflow.ValidationTightenBudget + 8
 }
 
@@ -330,7 +330,7 @@ func buildSmokePlan(
 	return map[string]any{
 		"summary": "Smoke-profile plan for `" + requestValue.Goal + "` focused on validating the separated rail control-plane actor chain without broad repository changes.",
 		"likely_files": []string{
-			filepath.Join(projectRoot, "bin", "rail.dart"),
+			filepath.Join(projectRoot, "cmd", "rail", "main.go"),
 			filepath.Join(projectRoot, ".harness", "supervisor", "execution_policy.yaml"),
 			requestFile,
 		},

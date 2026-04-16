@@ -36,7 +36,7 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 		return "", err
 	}
 
-	workflow, err := readResolvedWorkflow(filepath.Join(artifactDirectory, "resolved_workflow.json"))
+	workflow, err := readWorkflow(filepath.Join(artifactDirectory, "workflow.json"))
 	if err != nil {
 		return "", err
 	}
@@ -106,14 +106,14 @@ func (r *Router) resolveArtifactDirectory(artifactPath string) (string, error) {
 	return "", fmt.Errorf("artifact path must be a directory or evaluation_result.yaml: %s", artifactPath)
 }
 
-func readResolvedWorkflow(path string) (ResolvedWorkflow, error) {
+func readWorkflow(path string) (Workflow, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return ResolvedWorkflow{}, fmt.Errorf("read resolved workflow: %w", err)
+		return Workflow{}, fmt.Errorf("read workflow: %w", err)
 	}
-	var workflow ResolvedWorkflow
+	var workflow Workflow
 	if err := json.Unmarshal(data, &workflow); err != nil {
-		return ResolvedWorkflow{}, fmt.Errorf("decode resolved workflow: %w", err)
+		return Workflow{}, fmt.Errorf("decode workflow: %w", err)
 	}
 	return workflow, nil
 }
@@ -195,7 +195,7 @@ func normalizeEvaluatorEntryState(state State) State {
 	return nextState
 }
 
-func advanceState(state State, workflow ResolvedWorkflow, evaluation map[string]any) (State, error) {
+func advanceState(state State, workflow Workflow, evaluation map[string]any) (State, error) {
 	nextState := state
 	nextState.CompletedActors = append(append([]string{}, state.CompletedActors...), "evaluator")
 

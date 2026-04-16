@@ -108,15 +108,48 @@ func TestBundledSkillMatchesRepoOwnedSkillFiles(t *testing.T) {
 	}
 
 	repoRoot := repoRoot(t)
-	for _, file := range files {
-		repoPath := filepath.Join(repoRoot, "skills", "rail", filepath.FromSlash(file.RelativePath))
-		repoContents, err := os.ReadFile(repoPath)
-		if err != nil {
-			t.Fatalf("read repo-owned skill file %q: %v", file.RelativePath, err)
+	repoFiles := make(map[string]string)
+	err = filepath.Walk(filepath.Join(repoRoot, "skills", "rail"), func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-		if string(repoContents) != string(file.Contents) {
+		if info.IsDir() {
+			return nil
+		}
+
+		relativePath, err := filepath.Rel(filepath.Join(repoRoot, "skills", "rail"), path)
+		if err != nil {
+			return err
+		}
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		repoFiles[filepath.ToSlash(relativePath)] = string(contents)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk repo-owned skill files: %v", err)
+	}
+
+	if got, want := len(files), len(repoFiles); got != want {
+		t.Fatalf("repo-owned skill file set drifted from bundled asset set: got %d files, want %d", got, want)
+	}
+
+	for _, file := range files {
+		repoContents, ok := repoFiles[file.RelativePath]
+		if !ok {
+			t.Fatalf("repo-owned skill file %q missing from repo-owned set", file.RelativePath)
+		}
+		if repoContents != string(file.Contents) {
 			t.Fatalf("repo-owned skill file %q drifted from bundled asset", file.RelativePath)
 		}
+		delete(repoFiles, file.RelativePath)
+	}
+
+	for relativePath := range repoFiles {
+		t.Fatalf("repo-owned skill file %q has no bundled counterpart", relativePath)
 	}
 }
 
@@ -164,6 +197,16 @@ func TestInstallLayoutRejectsEmptyOrRelativePrefix(t *testing.T) {
 	}
 }
 
+func TestInstallLayoutRejectsWhitespaceOnlyPrefix(t *testing.T) {
+	for _, prefix := range []string{" ", "\t\n"} {
+		t.Run(fmt.Sprintf("prefix=%q", prefix), func(t *testing.T) {
+			if _, err := InstallLayout(prefix); err == nil {
+				t.Fatalf("expected InstallLayout to reject whitespace-only prefix %q", prefix)
+			}
+		})
+	}
+}
+
 func TestMaterializeBundledSkillRejectsRelativeTargets(t *testing.T) {
 	err := MaterializeBundledSkill(Layout{
 		PackageSkillDir: filepath.Join("relative", "pkg"),
@@ -174,6 +217,17 @@ func TestMaterializeBundledSkillRejectsRelativeTargets(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "absolute") {
 		t.Fatalf("expected absolute path validation error, got %v", err)
+	}
+}
+
+func TestMaterializeSkillDirRejectsEmptyTargetDir(t *testing.T) {
+	files, err := BundledSkillFiles()
+	if err != nil {
+		t.Fatalf("BundledSkillFiles returned error: %v", err)
+	}
+
+	if err := materializeSkillDir("", files); err == nil {
+		t.Fatal("expected materializeSkillDir to reject an empty target dir")
 	}
 }
 

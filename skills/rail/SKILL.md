@@ -120,9 +120,9 @@ After bootstrapping, report:
 - created request file
 - target project root
 - defaults that were applied
-- that validation and bootstrap follow in later workflow steps
+- that validation and execution follow in later workflow steps
 
-Do not present `rail validate-request` or `rail run` as available in this step unless later Go workflow tasks have implemented them.
+Keep `compose-request` as the focus of this skill. `rail validate-request` and `rail run` are available once request materialization is complete, but they belong to the later workflow steps rather than the initial draft-composition step.
 
 ## Guardrails
 
@@ -130,7 +130,7 @@ Do not present `rail validate-request` or `rail run` as available in this step u
 - Do not invent constraints the user did not state.
 - Keep `definition_of_done` testable.
 - Keep `constraints` short and concrete.
-- Do not assume a local Rail checkout is the runtime root.
+- Do not assume a source checkout is the runtime root.
 
 For examples, see:
 

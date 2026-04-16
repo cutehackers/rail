@@ -1,8 +1,10 @@
 package install
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -10,7 +12,10 @@ import (
 func TestInstallLayoutIncludesPrefixLocalRailSkillAssets(t *testing.T) {
 	prefix := "/opt/homebrew/Cellar/rail/0.1.0"
 
-	layout := InstallLayout(prefix)
+	layout, err := InstallLayout(prefix)
+	if err != nil {
+		t.Fatalf("InstallLayout returned error: %v", err)
+	}
 
 	if got, want := layout.PackageSkillDir, filepath.Join(prefix, "share", "rail", "skill", "Rail"); got != want {
 		t.Fatalf("unexpected packaged skill dir: got %q want %q", got, want)
@@ -21,7 +26,10 @@ func TestInstallLayoutIncludesPrefixLocalRailSkillAssets(t *testing.T) {
 }
 
 func TestMaterializeBundledSkillCreatesPackagedAndCodexFacingLayouts(t *testing.T) {
-	layout := InstallLayout(t.TempDir())
+	layout, err := InstallLayout(t.TempDir())
+	if err != nil {
+		t.Fatalf("InstallLayout returned error: %v", err)
+	}
 
 	stalePackageFile := filepath.Join(layout.PackageSkillDir, "stale.txt")
 	if err := os.MkdirAll(filepath.Dir(stalePackageFile), 0o755); err != nil {
@@ -93,6 +101,82 @@ func TestBundledSkillMatchesCurrentCLIWorkflow(t *testing.T) {
 	}
 }
 
+func TestBundledSkillMatchesRepoOwnedSkillFiles(t *testing.T) {
+	files, err := BundledSkillFiles()
+	if err != nil {
+		t.Fatalf("BundledSkillFiles returned error: %v", err)
+	}
+
+	repoRoot := repoRoot(t)
+	for _, file := range files {
+		repoPath := filepath.Join(repoRoot, "skills", "rail", filepath.FromSlash(file.RelativePath))
+		repoContents, err := os.ReadFile(repoPath)
+		if err != nil {
+			t.Fatalf("read repo-owned skill file %q: %v", file.RelativePath, err)
+		}
+		if string(repoContents) != string(file.Contents) {
+			t.Fatalf("repo-owned skill file %q drifted from bundled asset", file.RelativePath)
+		}
+	}
+}
+
+func TestHomebrewFormulaMatchesInstallLayout(t *testing.T) {
+	layout, err := InstallLayout("/opt/homebrew/Cellar/rail/0.1.0")
+	if err != nil {
+		t.Fatalf("InstallLayout returned error: %v", err)
+	}
+
+	formulaPath := filepath.Join(repoRoot(t), "packaging", "homebrew", "rail.rb")
+	formula, err := os.ReadFile(formulaPath)
+	if err != nil {
+		t.Fatalf("read formula: %v", err)
+	}
+	formulaText := string(formula)
+
+	for _, want := range []string{
+		`pkgshare.install "assets/skill"`,
+		`cp_r (buildpath/"assets/skill/Rail").children, codex_skill_dir`,
+		`prefix/"share/codex/skills/rail"`,
+		`#{opt_pkgshare}/skill/Rail`,
+		`#{opt_prefix}/share/codex/skills/rail`,
+		filepath.ToSlash(filepath.Join("share", "codex", "skills", "rail")),
+	} {
+		if !strings.Contains(formulaText, want) {
+			t.Fatalf("expected formula to contain %q", want)
+		}
+	}
+
+	if got, want := layout.PackageSkillDir, filepath.Join(layout.PackageRoot, "skill", "Rail"); got != want {
+		t.Fatalf("packaged skill dir drifted from package root: got %q want %q", got, want)
+	}
+	if !strings.Contains(formulaText, filepath.ToSlash(strings.TrimPrefix(layout.CodexSkillDir, layout.Prefix+string(filepath.Separator)))) {
+		t.Fatalf("formula drifted from codex skill dir layout %q", layout.CodexSkillDir)
+	}
+}
+
+func TestInstallLayoutRejectsEmptyOrRelativePrefix(t *testing.T) {
+	for _, prefix := range []string{"", ".", "relative/path"} {
+		t.Run(fmt.Sprintf("prefix=%q", prefix), func(t *testing.T) {
+			if _, err := InstallLayout(prefix); err == nil {
+				t.Fatalf("expected InstallLayout to reject %q", prefix)
+			}
+		})
+	}
+}
+
+func TestMaterializeBundledSkillRejectsRelativeTargets(t *testing.T) {
+	err := MaterializeBundledSkill(Layout{
+		PackageSkillDir: filepath.Join("relative", "pkg"),
+		CodexSkillDir:   filepath.Join("relative", "codex"),
+	})
+	if err == nil {
+		t.Fatal("expected MaterializeBundledSkill to reject relative target dirs")
+	}
+	if !strings.Contains(err.Error(), "absolute") {
+		t.Fatalf("expected absolute path validation error, got %v", err)
+	}
+}
+
 func indexBundledSkillFiles(t *testing.T, files []SkillFile) map[string]string {
 	t.Helper()
 
@@ -113,4 +197,14 @@ func assertMaterializedFile(t *testing.T, root, relativePath, want string) {
 	if string(got) != want {
 		t.Fatalf("unexpected content for %q", relativePath)
 	}
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve caller location")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
 }

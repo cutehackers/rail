@@ -29,8 +29,16 @@ type SkillFile struct {
 	Contents     []byte
 }
 
-func InstallLayout(prefix string) Layout {
-	cleanPrefix := filepath.Clean(prefix)
+func InstallLayout(prefix string) (Layout, error) {
+	trimmedPrefix := strings.TrimSpace(prefix)
+	if trimmedPrefix == "" {
+		return Layout{}, fmt.Errorf("install prefix is required")
+	}
+
+	cleanPrefix := filepath.Clean(trimmedPrefix)
+	if !filepath.IsAbs(cleanPrefix) {
+		return Layout{}, fmt.Errorf("install prefix must be absolute: %q", prefix)
+	}
 
 	return Layout{
 		Prefix:          cleanPrefix,
@@ -38,7 +46,7 @@ func InstallLayout(prefix string) Layout {
 		PackageRoot:     filepath.Join(cleanPrefix, "share", "rail"),
 		PackageSkillDir: filepath.Join(cleanPrefix, "share", "rail", "skill", packagedSkillDirName),
 		CodexSkillDir:   filepath.Join(cleanPrefix, "share", "codex", "skills", codexSkillDirName),
-	}
+	}, nil
 }
 
 func BundledSkillFiles() ([]SkillFile, error) {
@@ -92,11 +100,15 @@ func materializeSkillDir(targetDir string, files []SkillFile) error {
 	if targetDir == "" {
 		return fmt.Errorf("target directory is required")
 	}
-	if err := os.RemoveAll(targetDir); err != nil {
+	cleanTargetDir := filepath.Clean(targetDir)
+	if !filepath.IsAbs(cleanTargetDir) {
+		return fmt.Errorf("target directory must be absolute: %q", targetDir)
+	}
+	if err := os.RemoveAll(cleanTargetDir); err != nil {
 		return err
 	}
 	for _, file := range files {
-		targetPath := filepath.Join(targetDir, filepath.FromSlash(file.RelativePath))
+		targetPath := filepath.Join(cleanTargetDir, filepath.FromSlash(file.RelativePath))
 		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 			return err
 		}

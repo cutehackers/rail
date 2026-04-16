@@ -12,16 +12,14 @@ SMOKE_TASK_ID="$(
 
 cd "$REPO_ROOT"
 
-dart pub get
-dart analyze
-dart test
+go test ./...
 
 mkdir -p build
-dart compile exe bin/rail.dart -o build/rail
+go build -o build/rail ./cmd/rail
 
 rm -rf ".harness/artifacts/${SMOKE_TASK_ID}"
-dart run bin/rail.dart run \
+./build/rail run \
   --request test/fixtures/valid_request.yaml \
   --project-root "$REPO_ROOT" \
   --task-id "$SMOKE_TASK_ID"
-dart run bin/rail.dart execute --artifact ".harness/artifacts/${SMOKE_TASK_ID}"
+./build/rail execute --artifact ".harness/artifacts/${SMOKE_TASK_ID}"

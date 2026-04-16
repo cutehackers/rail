@@ -17,13 +17,7 @@ Setup:
 brew install rail
 ```
 
-For local verification from this source checkout, you can also build from the bundled formula:
-
-```bash
-brew install --build-from-source ./packaging/homebrew/rail.rb
-```
-
-Packaged installs bundle the Rail Codex skill automatically. This source repository remains the development and release origin, not the required runtime root.
+Packaged installs bundle the Rail Codex skill automatically. The bundled Homebrew formula lives under `packaging/homebrew/rail.rb`. This source repository remains the development and release origin, not the required runtime root.
 
 ## What You Get From Rail
 

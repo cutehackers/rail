@@ -21,6 +21,13 @@ var allowedRiskTolerance = map[string]struct{}{
 	"high":   {},
 }
 
+var canonicalValidationProfiles = map[string]string{
+	"":         "standard",
+	"real":     "standard",
+	"standard": "standard",
+	"smoke":    "smoke",
+}
+
 func NormalizeDraft(draft Draft) (MaterializedRequest, error) {
 	requestVersion := normalizedRequestVersion(draft.RequestVersion)
 	if requestVersion != defaultRequestVersion {
@@ -58,6 +65,11 @@ func NormalizeDraft(draft Draft) (MaterializedRequest, error) {
 		return MaterializedRequest{}, fmt.Errorf("unsupported risk_tolerance: %s", riskTolerance)
 	}
 
+	validationProfile, ok := canonicalValidationProfiles[strings.ToLower(strings.TrimSpace(draft.ValidationProfile))]
+	if !ok {
+		return MaterializedRequest{}, fmt.Errorf("unsupported validation_profile: %s", strings.TrimSpace(draft.ValidationProfile))
+	}
+
 	return MaterializedRequest{
 		ProjectRoot: projectRoot,
 		Request: CanonicalRequest{
@@ -74,7 +86,7 @@ func NormalizeDraft(draft Draft) (MaterializedRequest, error) {
 			DefinitionOfDone:  normalizeStrings(draft.DefinitionOfDone),
 			Priority:          "medium",
 			RiskTolerance:     riskTolerance,
-			ValidationProfile: "standard",
+			ValidationProfile: validationProfile,
 		},
 	}, nil
 }

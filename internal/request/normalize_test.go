@@ -82,6 +82,38 @@ func TestComposeRequestFillsDefaultRiskToleranceByTaskType(t *testing.T) {
 	}
 }
 
+func TestComposeRequestNormalizesExplicitSmokeValidationProfile(t *testing.T) {
+	materialized, err := NormalizeDraft(Draft{
+		ProjectRoot:       "/tmp/target-app",
+		TaskType:          "bug_fix",
+		Goal:              "Verify smoke routing",
+		ValidationProfile: "smoke",
+	})
+	if err != nil {
+		t.Fatalf("NormalizeDraft returned error: %v", err)
+	}
+
+	if materialized.Request.ValidationProfile != "smoke" {
+		t.Fatalf("expected smoke validation_profile, got %q", materialized.Request.ValidationProfile)
+	}
+}
+
+func TestComposeRequestNormalizesRealValidationProfileAlias(t *testing.T) {
+	materialized, err := NormalizeDraft(Draft{
+		ProjectRoot:       "/tmp/target-app",
+		TaskType:          "bug_fix",
+		Goal:              "Verify real routing",
+		ValidationProfile: "real",
+	})
+	if err != nil {
+		t.Fatalf("NormalizeDraft returned error: %v", err)
+	}
+
+	if materialized.Request.ValidationProfile != "standard" {
+		t.Fatalf("expected real alias to normalize to standard, got %q", materialized.Request.ValidationProfile)
+	}
+}
+
 func TestComposeRequestRejectsMissingGoal(t *testing.T) {
 	_, err := NormalizeDraft(Draft{
 		ProjectRoot: "/tmp/target-app",
@@ -135,6 +167,21 @@ func TestComposeRequestRejectsInvalidRiskTolerance(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unsupported risk_tolerance") {
 		t.Fatalf("expected invalid risk_tolerance error, got %v", err)
+	}
+}
+
+func TestComposeRequestRejectsUnsupportedValidationProfile(t *testing.T) {
+	_, err := NormalizeDraft(Draft{
+		ProjectRoot:       "/tmp/target-app",
+		TaskType:          "bug_fix",
+		Goal:              "Fix the bug",
+		ValidationProfile: "fast",
+	})
+	if err == nil {
+		t.Fatal("expected invalid validation_profile to return an error")
+	}
+	if !strings.Contains(err.Error(), "unsupported validation_profile") {
+		t.Fatalf("expected invalid validation_profile error, got %v", err)
 	}
 }
 

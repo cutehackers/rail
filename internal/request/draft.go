@@ -16,14 +16,15 @@ type DraftContext struct {
 }
 
 type Draft struct {
-	RequestVersion   string       `json:"request_version" yaml:"request_version"`
-	ProjectRoot      string       `json:"project_root" yaml:"project_root"`
-	TaskType         string       `json:"task_type" yaml:"task_type"`
-	Goal             string       `json:"goal" yaml:"goal"`
-	Context          DraftContext `json:"context" yaml:"context"`
-	Constraints      []string     `json:"constraints" yaml:"constraints"`
-	DefinitionOfDone []string     `json:"definition_of_done" yaml:"definition_of_done"`
-	RiskTolerance    string       `json:"risk_tolerance" yaml:"risk_tolerance"`
+	RequestVersion    string       `json:"request_version" yaml:"request_version"`
+	ProjectRoot       string       `json:"project_root" yaml:"project_root"`
+	TaskType          string       `json:"task_type" yaml:"task_type"`
+	Goal              string       `json:"goal" yaml:"goal"`
+	Context           DraftContext `json:"context" yaml:"context"`
+	Constraints       []string     `json:"constraints" yaml:"constraints"`
+	DefinitionOfDone  []string     `json:"definition_of_done" yaml:"definition_of_done"`
+	RiskTolerance     string       `json:"risk_tolerance" yaml:"risk_tolerance"`
+	ValidationProfile string       `json:"validation_profile" yaml:"validation_profile"`
 }
 
 type RequestContext struct {

@@ -257,6 +257,53 @@ func TestBuildSmokeEvaluationResultRejectsFormatFailure(t *testing.T) {
 	}
 }
 
+func TestExecuteRunsRealActorPathThroughCodex(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") {
+		t.Fatalf("expected execution summary to contain passed status, got %q", summary)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if got, want := strings.TrimSpace(string(actorLog)), "planner\ncontext_builder\ngenerator\nevaluator"; got != want {
+		t.Fatalf("unexpected actor execution order: got %q want %q", got, want)
+	}
+
+	readySource, err := os.ReadFile(filepath.Join(projectRoot, "feature", "ready.go"))
+	if err != nil {
+		t.Fatalf("failed to read real-mode source file: %v", err)
+	}
+	if !strings.Contains(string(readySource), "Real-mode actor path verified.") {
+		t.Fatalf("expected generator actor to update ready.go, got:\n%s", string(readySource))
+	}
+
+	state, err := readState(filepath.Join(artifactPath, "state.json"))
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	if state.Status != "passed" {
+		t.Fatalf("unexpected terminal status: got %q want %q", state.Status, "passed")
+	}
+}
+
 func prepareSmokeProject(t *testing.T) (string, string) {
 	t.Helper()
 
@@ -293,6 +340,151 @@ func prepareSmokeProject(t *testing.T) (string, string) {
 	}
 
 	return projectRoot, requestPath
+}
+
+func prepareRealProject(t *testing.T) (string, string) {
+	t.Helper()
+
+	projectRoot := t.TempDir()
+	for _, relPath := range []string{
+		filepath.Join(".harness", "requests"),
+		filepath.Join(".harness", "artifacts"),
+		"feature",
+	} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "go.mod"), []byte("module realproject\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("failed to write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "feature", "ready.go"), []byte("package feature\n\nfunc Ready() bool { return true }\n"), 0o644); err != nil {
+		t.Fatalf("failed to write ready.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "feature", "ready_test.go"), []byte("package feature\n\nimport \"testing\"\n\nfunc TestReady(t *testing.T) {\n\tif !Ready() {\n\t\tt.Fatal(\"expected Ready to return true\")\n\t}\n}\n"), 0o644); err != nil {
+		t.Fatalf("failed to write ready_test.go: %v", err)
+	}
+
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "real-request.yaml")
+	requestBody := `task_type: safe_refactor
+goal: verify the real actor path against a tracked Go target
+context:
+  feature: feature
+  suspected_files:
+    - feature/ready.go
+  validation_roots:
+    - feature
+  validation_targets:
+    - feature/ready_test.go
+constraints:
+  - keep behavior unchanged
+definition_of_done:
+  - target file is updated through the real actor path
+  - tests remain green
+  - analyze remains green
+priority: medium
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write real request fixture: %v", err)
+	}
+
+	return projectRoot, requestPath
+}
+
+func installFakeCodexForRealMode(t *testing.T, projectRoot string) string {
+	t.Helper()
+
+	fakeBin := t.TempDir()
+	actorLogPath := filepath.Join(projectRoot, ".actor-log")
+	fakeCodex := filepath.Join(fakeBin, "codex")
+	script := `#!/usr/bin/env python3
+import json
+import os
+import re
+import sys
+
+project_root = None
+output_path = None
+prompt = sys.argv[-1] if len(sys.argv) > 1 else ""
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+        break
+
+match = re.search(r"Actor name: ([a-z_]+)", prompt)
+actor = match.group(1) if match else "unknown"
+root_match = re.search(r"Project root: (.+)", prompt)
+if root_match:
+    project_root = root_match.group(1).strip()
+
+if project_root:
+    with open(os.path.join(project_root, ".actor-log"), "a", encoding="utf-8") as handle:
+        handle.write(actor + "\n")
+
+response = {}
+if actor == "planner":
+    response = {
+        "summary": "Real actor path plan.",
+        "likely_files": ["feature/ready.go", "feature/ready_test.go"],
+        "assumptions": ["Go package layout stays local."],
+        "substeps": ["Inspect the target file.", "Update the target file narrowly.", "Run focused validation."],
+        "risks": ["Unnecessary edits could broaden the diff."],
+        "acceptance_criteria_refined": ["target file is updated through the real actor path", "tests remain green", "analyze remains green"]
+    }
+elif actor == "context_builder":
+    response = {
+        "relevant_files": [{"path": "feature/ready.go", "why": "Primary file under change."}, {"path": "feature/ready_test.go", "why": "Focused regression coverage."}],
+        "repo_patterns": ["Keep changes inside the feature package."],
+        "test_patterns": ["Use package-local Go tests."],
+        "forbidden_changes": ["No unrelated files."],
+        "implementation_hints": ["Add a narrow comment-only change."]
+    }
+elif actor == "generator":
+    ready_path = os.path.join(project_root, "feature", "ready.go")
+    with open(ready_path, "r", encoding="utf-8") as handle:
+        original = handle.read()
+    if "Real-mode actor path verified." not in original:
+        updated = original.replace("func Ready() bool { return true }", "// Real-mode actor path verified.\nfunc Ready() bool { return true }")
+        with open(ready_path, "w", encoding="utf-8") as handle:
+            handle.write(updated)
+    response = {
+        "changed_files": ["feature/ready.go"],
+        "patch_summary": ["Added a narrow comment proving the real actor path touched the target file."],
+        "tests_added_or_updated": [],
+        "known_limits": ["Test fixture uses a fake codex executable."]
+    }
+elif actor == "evaluator":
+    response = {
+        "decision": "pass",
+        "scores": {"requirements": 1.0, "architecture": 1.0, "regression_risk": 1.0},
+        "findings": ["Real actor path completed with passing validation evidence."],
+        "reason_codes": [],
+        "quality_confidence": "high"
+    }
+else:
+    response = {"summary": "unexpected actor"}
+
+os.makedirs(os.path.dirname(output_path), exist_ok=True)
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump(response, handle)
+`
+	if err := os.WriteFile(fakeCodex, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	originalPath := os.Getenv("PATH")
+	if err := os.Setenv("PATH", fakeBin+string(os.PathListSeparator)+originalPath); err != nil {
+		t.Fatalf("failed to set PATH: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Setenv("PATH", originalPath)
+	})
+	return actorLogPath
 }
 
 type stubCommandRunner struct {

@@ -105,8 +105,9 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		outputName := canonicalOutputForActor(actorName)
 		outputPath := filepath.Join(artifactDirectory, artifactFileName(outputName))
 		logPath := filepath.Join(runsDirectory, actorLogFileName(actorIndex, actorName, currentState.CompletedActors))
+		briefPath := filepath.Join(artifactDirectory, "actor_briefs", fmt.Sprintf("%02d_%s.md", actorIndex+1, actorName))
 
-		response, err := r.runActor(actorName, artifactDirectory, requestValue, executionPlan)
+		response, err := r.runActor(actorName, actorIndex, artifactDirectory, briefPath, logPath, requestValue, executionPlan)
 		if err != nil {
 			return "", err
 		}
@@ -114,8 +115,12 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 			return "", err
 		}
 		if response != nil {
+			response = normalizeActorResponse(outputName, response)
 			if err := writeYAML(outputPath, response); err != nil {
 				return "", err
+			}
+			if _, err := r.bootstrapper.validator.ValidateArtifactFile(outputPath, outputName); err != nil {
+				return "", fmt.Errorf("validate %s output: %w", actorName, err)
 			}
 		}
 
@@ -152,25 +157,47 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 
 func (r *Runner) runActor(
 	actorName string,
+	actorIndex int,
 	artifactDirectory string,
+	briefPath string,
+	logPath string,
 	requestValue request.CanonicalRequest,
 	executionPlan ExecutionPlan,
 ) (map[string]any, error) {
-	if requestValue.ValidationProfile != "smoke" {
-		return nil, fmt.Errorf("actor execution is only implemented for smoke validation profiles")
+	if requestValue.ValidationProfile == "smoke" {
+		switch actorName {
+		case "planner":
+			return buildSmokePlan(artifactDirectory, r.projectRoot, requestValue), nil
+		case "context_builder":
+			return buildSmokeContextPack(artifactDirectory)
+		case "generator":
+			return buildSmokeImplementationResult(artifactDirectory)
+		case "executor":
+			return r.buildExecutionReport(executionPlan)
+		case "evaluator":
+			return buildSmokeEvaluationResult(artifactDirectory)
+		default:
+			return nil, fmt.Errorf("actor execution is not implemented for %s", actorName)
+		}
 	}
 
 	switch actorName {
-	case "planner":
-		return buildSmokePlan(artifactDirectory, r.projectRoot, requestValue), nil
-	case "context_builder":
-		return buildSmokeContextPack(artifactDirectory)
-	case "generator":
-		return buildSmokeImplementationResult(artifactDirectory)
 	case "executor":
-		return r.buildSmokeExecutionReport(executionPlan)
-	case "evaluator":
-		return buildSmokeEvaluationResult(artifactDirectory)
+		return r.buildExecutionReport(executionPlan)
+	case "planner", "context_builder", "generator", "evaluator":
+		schemaPath, err := materializeActorOutputSchema(filepath.Join(artifactDirectory, "runs"), actorIndex, actorName, canonicalOutputForActor(actorName))
+		if err != nil {
+			return nil, err
+		}
+		prompt := strings.Join([]string{
+			"Read the Rail actor brief and produce only the structured actor output.",
+			"Actor name: " + actorName,
+			"Actor brief: " + briefPath,
+			"Artifact directory: " + artifactDirectory,
+			"Project root: " + r.projectRoot,
+			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the structured actor response.",
+		}, "\n")
+		return runStructuredCodexCommand(actorName, r.projectRoot, prompt, logPath, schemaPath, 10*time.Minute)
 	default:
 		return nil, fmt.Errorf("actor execution is not implemented for %s", actorName)
 	}
@@ -410,7 +437,7 @@ func buildSmokeImplementationResult(artifactDirectory string) (map[string]any, e
 	return result, nil
 }
 
-func (r *Runner) buildSmokeExecutionReport(executionPlan ExecutionPlan) (map[string]any, error) {
+func (r *Runner) buildExecutionReport(executionPlan ExecutionPlan) (map[string]any, error) {
 	logs := []string{}
 	failureDetails := []string{}
 	formatPass := executionPlan.FormatCommand == nil
@@ -560,4 +587,20 @@ func conditionalText(pass bool, yes, no string) string {
 		return yes
 	}
 	return no
+}
+
+func normalizeActorResponse(outputName string, response map[string]any) map[string]any {
+	if outputName != "evaluation_result" {
+		return response
+	}
+
+	decision, _ := response["decision"].(string)
+	nextAction, exists := response["next_action"]
+	if !exists {
+		return response
+	}
+	if decision != "revise" && nextAction == nil {
+		delete(response, "next_action")
+	}
+	return response
 }

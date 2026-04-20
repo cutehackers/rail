@@ -1,11 +1,9 @@
 package runtime
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -266,49 +264,7 @@ func runIntegratorActor(
 		"Project root: " + workingDirectory,
 		"Write no files yourself except the structured response via Codex output handling.",
 	}, "\n")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(
-		ctx,
-		"codex",
-		"exec",
-		"--full-auto",
-		"--ephemeral",
-		"--color",
-		"never",
-		"--skip-git-repo-check",
-		"-c",
-		`reasoning_effort="low"`,
-		"-c",
-		`sandbox_mode="danger-full-access"`,
-		"-c",
-		`approval_policy="never"`,
-		"--output-schema",
-		schemaPath,
-		"--output-last-message",
-		logPath,
-		prompt,
-	)
-	cmd.Dir = workingDirectory
-	output, err := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		return nil, fmt.Errorf("timed out while executing actor `integrator`")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("actor `integrator` failed: %s", strings.TrimSpace(string(output)))
-	}
-
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		return nil, fmt.Errorf("read integrator output: %w", err)
-	}
-	var response map[string]any
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("decode integrator structured response: %w", err)
-	}
-	return response, nil
+	return runStructuredCodexCommand("integrator", workingDirectory, prompt, logPath, schemaPath, 5*time.Minute)
 }
 
 func normalizeIntegrationResult(

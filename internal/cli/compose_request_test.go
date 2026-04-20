@@ -67,6 +67,39 @@ func TestRunComposeRequestMaterializesCanonicalRequestFromStdin(t *testing.T) {
 	assertCanonicalRequestFile(t, requestPath)
 }
 
+func TestRunComposeRequestPreservesSmokeValidationProfile(t *testing.T) {
+	projectRoot := t.TempDir()
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+
+	draft := `{
+	  "request_version": "1",
+	  "project_root": "` + projectRoot + `",
+	  "task_type": "test_repair",
+	  "goal": "Verify the smoke control-plane path",
+	  "validation_profile": "smoke",
+	  "definition_of_done": [
+	    "smoke request is materialized"
+	  ]
+	}`
+
+	var stdout bytes.Buffer
+	if err := RunComposeRequest([]string{"--stdin"}, strings.NewReader(draft), &stdout); err != nil {
+		t.Fatalf("RunComposeRequest returned error: %v", err)
+	}
+
+	if got := strings.TrimSpace(stdout.String()); got != requestPath {
+		t.Fatalf("expected request path %q, got %q", requestPath, got)
+	}
+
+	payload, err := os.ReadFile(requestPath)
+	if err != nil {
+		t.Fatalf("expected normalized request at %q: %v", requestPath, err)
+	}
+	if !strings.Contains(string(payload), "validation_profile: smoke") {
+		t.Fatalf("expected smoke validation_profile, got:\n%s", string(payload))
+	}
+}
+
 func assertCanonicalRequestFile(t *testing.T, requestPath string) {
 	t.Helper()
 

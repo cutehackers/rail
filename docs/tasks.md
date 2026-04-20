@@ -49,8 +49,8 @@ Current baseline:
 
 ## Later
 
-- [ ] Retire transitional documentation and tooling that still assumes a checkout-era runtime
-  The installed product model is now the user-facing contract, but some contributor and migration material may still reference the older path.
+- [x] Retire transitional documentation and tooling that still assumes a checkout-era runtime
+  Active operator and example documentation now follows the installed-product model: packaged `rail`, bundled skill, and project-local `.harness` state in the target repository.
 
-- [ ] Retire stale historical documentation that still references the old Dart runtime
-  The released product is now the installed Go toolchain. Any remaining Dart references should be limited to historical plans, archived evidence, or migration records rather than active operator guidance or runtime code.
+- [x] Retire stale historical documentation that still references the old Dart runtime
+  Remaining Dart references are now explicitly confined to archived evidence and historical planning records. Active product, release, and operator documentation now follows the Go product contract.

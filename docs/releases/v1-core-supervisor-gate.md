@@ -53,12 +53,13 @@ For the installed product, the canonical operator commands are:
 
 ```bash
 rail init
-rail compose-request --goal <goal> --task-type <type>
 rail validate-request --request <request-file>
 rail run --request <request-file> --project-root <target-repo>
 rail execute --artifact <artifact-dir>
 rail route-evaluation --artifact <artifact-or-evaluation-result>
 ```
+
+The normal end-user entrypoint is still the Rail skill, not manual CLI request authoring.
 
 Those commands operate on the target repository and its project-local `.harness/` workspace. They do not require the Rail source repository as the runtime root.
 
@@ -80,6 +81,11 @@ Repository verification remains explicit and automated through:
 - `./tool/v1_release_gate.sh`
 - `.github/workflows/v1-release-gate.yml`
 - `.github/workflows/go-release-gate.yml`
+
+Additional release-ready confirmation should include:
+
+- automated smoke verification for the fast control-plane path
+- manual `./tool/real_mode_check.sh` verification for the real actor path
 
 Those repository checks are release-engineering evidence for the product. They are not the end-user operating model.
 

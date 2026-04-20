@@ -43,12 +43,15 @@ Convert the user request into:
 - `constraints`
 - `definition_of_done`
 - `risk_tolerance`
+- `validation_profile` when the user explicitly asks for `smoke` mode
 
 Defaults:
 
 - `request_version=1`
 - `bug_fix`, `feature_addition`, `test_repair` -> `risk_tolerance=low`
 - `safe_refactor` -> `risk_tolerance=medium`
+- default execution mode is `real`, which normalizes to `validation_profile=standard`
+- use `validation_profile=smoke` only when the user explicitly asks for smoke mode, harness-only verification, or fast control-plane proof
 - `definition_of_done` should include:
   - observable requested behavior
   - related test expectation
@@ -81,13 +84,15 @@ Emit a draft like:
     "Related test expectation",
     "Analyze expectation"
   ],
-  "risk_tolerance": "low"
+  "risk_tolerance": "low",
+  "validation_profile": "standard"
 }
 ```
 
 `project_root` is required. Reject unknown draft fields instead of inventing them.
 
 Only emit fields you can support from the user request or a single safety clarification. Keep `context`, `constraints`, and `definition_of_done` concise and concrete.
+Omit `validation_profile` unless the user explicitly wants `smoke`; `rail` will default to `real`/`standard`.
 
 ## Commands
 
@@ -117,6 +122,7 @@ If the user did not give reliable file hints or extra context, omit them instead
 After bootstrapping, report:
 
 - inferred `task_type`
+- inferred execution mode (`real` or `smoke`)
 - created request file
 - target project root
 - defaults that were applied

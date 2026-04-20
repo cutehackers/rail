@@ -35,6 +35,12 @@ Recommended local gate:
 ./tool/v2_release_gate.sh
 ```
 
+Recommended manual real-mode confirmation:
+
+```bash
+./tool/real_mode_check.sh
+```
+
 The script should ensure:
 
 - Go test and build complete cleanly
@@ -47,6 +53,9 @@ The script should ensure:
 The current smoke target used by the release gate is:
 
 - `examples/smoke-target/`
+
+The real-mode check is intentionally separate from the smoke gate.
+It is meant to prove that Rail can still execute the real actor path with live `codex` actor invocation against a temporary target repository.
 
 After running the script, operators should also confirm:
 

@@ -52,5 +52,5 @@ Current baseline:
 - [ ] Retire transitional documentation and tooling that still assumes a checkout-era runtime
   The installed product model is now the user-facing contract, but some contributor and migration material may still reference the older path.
 
-- [ ] Continue reducing the transitional Dart compatibility surface in the source repository
-  The release target is the installed Go product; any remaining Dart-era code should be treated as migration debt, not the long-term delivery model.
+- [ ] Retire stale historical documentation that still references the old Dart runtime
+  The released product is now the installed Go toolchain. Any remaining Dart references should be limited to historical plans, archived evidence, or migration records rather than active operator guidance or runtime code.

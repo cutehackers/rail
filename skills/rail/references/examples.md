@@ -37,6 +37,11 @@ Materialize it:
 cat /absolute/path/to/request-draft.json | rail compose-request --stdin
 ```
 
+Execution mode:
+
+- omit `validation_profile` for the normal `real` path
+- use `validation_profile: smoke` only for harness-only verification
+
 ## Feature addition
 
 User request:
@@ -106,4 +111,39 @@ Materialize from a saved draft file:
 
 ```bash
 rail compose-request --input /absolute/path/to/request-draft.json
+```
+
+## Smoke mode
+
+User request:
+
+`이 저장소의 Rail harness 연결만 빠르게 검증해줘. smoke mode로 실행하고 앱 소스는 수정하지 마`
+
+Suggested draft:
+
+```json
+{
+  "request_version": "1",
+  "project_root": "/absolute/path/to/target-repo",
+  "task_type": "test_repair",
+  "goal": "Rail harness wiring only 빠르게 검증",
+  "context": {
+    "feature": "harness",
+    "suspected_files": [],
+    "related_files": [],
+    "validation_roots": [],
+    "validation_targets": []
+  },
+  "constraints": [
+    "앱 소스 수정 금지",
+    "harness wiring 확인에만 집중"
+  ],
+  "definition_of_done": [
+    "smoke actor flow가 끝까지 실행된다",
+    "앱 소스는 바뀌지 않는다",
+    "smoke validation evidence가 남는다"
+  ],
+  "risk_tolerance": "low",
+  "validation_profile": "smoke"
+}
 ```

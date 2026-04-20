@@ -1,53 +1,33 @@
 # rail
 
-`rail`은 Codex를 위한 설치형 control-plane입니다. 자연어로 작성한 엔지니어링 요청을, 별도의 대상 저장소에 대해 실행되는 bounded harness workflow로 바꾸는 역할을 합니다.
+`rail`은 Codex를 위한 skill-first harness control-plane입니다.
 
-Rail은 변경 대상 애플리케이션 자체가 아닙니다. Rail이 소유하는 것은 workflow, policy, artifact, reviewed learning state입니다.
+제품의 핵심 계약은 단순합니다.
 
-## 제품 모델
+- 사용자는 Rail skill에 자연어로 작업을 설명합니다
+- Rail skill이 복잡한 harness request 형식을 대신 작성합니다
+- Rail이 별도의 대상 저장소에 대해 bounded, reviewable workflow를 실행합니다
 
-Rail의 사용 모델은 단순합니다.
+즉 Rail의 핵심은 사용자가 `.harness/requests/request.yaml`을 손으로 쓰지 않게 만드는 것입니다. 자연어 요청을 안전하고 일관된 harness 형식으로 바꾸는 것이 Rail의 본질입니다.
 
-- `rail`을 일반 CLI처럼 한 번 설치합니다.
-- Codex에서는 번들된 Rail skill을 사용합니다.
-- 프로젝트별 상태는 대상 저장소의 `.harness/` 안에 둡니다.
-- 프로젝트가 로컬 override를 두지 않으면 설치된 제품의 embedded defaults를 사용합니다.
+## 사용자는 실제로 무엇을 하나
 
-이 소스 저장소는 Rail의 개발 및 릴리즈 원본입니다. 최종 사용자가 런타임 루트로 체크아웃해 둘 필요는 없습니다.
-
-## 설치
-
-설치:
+설치는 한 번만 합니다.
 
 ```bash
 brew install rail
 ```
 
-패키지 설치에는 다음이 포함됩니다.
-
-- `rail` CLI
-- 내장 Rail Codex skill
-- embedded harness 기본 자산
-
-즉, 최종 사용자는 별도로 Codex skill을 수동 설치할 필요가 없습니다.
-
-## 빠른 시작
-
-Rail을 적용할 대상 저장소에서 먼저 초기화합니다.
+대상 저장소에서는 한 번만 초기화합니다.
 
 ```bash
 cd /absolute/path/to/target-repo
 rail init
 ```
 
-`rail init`은 최소한의 project-local `.harness/` 워크스페이스를 생성합니다.
-
-- `.harness/project.yaml`
-- `.harness/requests/`
-- `.harness/artifacts/`
-- `.harness/learning/`
-
 그 다음의 일반적인 진입점은 Codex의 번들 Rail skill입니다.
+
+예시 프롬프트:
 
 ```text
 Use the Rail skill.
@@ -57,125 +37,76 @@ Constraint: Do not change the API contract.
 Definition of done: refresh completes reliably and related tests still pass.
 ```
 
-skill이 요청을 구조화하고, Rail이 이를 실제 request와 artifact 흐름으로 물질화합니다.
-
-## 기본 워크플로우
-
-일반적인 운영 순서는 다음과 같습니다.
-
-1. `rail init`으로 대상 저장소를 초기화합니다.
-2. Rail skill, `rail compose-request`, 또는 `rail init-request`로 요청 초안을 만듭니다.
-3. `rail validate-request`로 요청을 검증합니다.
-4. `rail run`으로 artifact를 bootstrap합니다.
-5. `rail execute`로 bounded actor workflow를 실행합니다.
-6. 필요하면 `rail route-evaluation`로 evaluator 결과를 다시 적용하거나 refresh합니다.
-7. `v2`에서는 integration handoff와 reviewed learning update를 이어서 수행합니다.
-
-직접 CLI만 사용할 때의 예시는 다음과 같습니다.
-
-```bash
-rail init --project-root /absolute/path/to/target-repo
-
-cat /absolute/path/to/request-draft.json | rail compose-request --stdin
-
-rail validate-request --request /absolute/path/to/target-repo/.harness/requests/request.yaml
-
-rail run \
-  --request /absolute/path/to/target-repo/.harness/requests/request.yaml \
-  --project-root /absolute/path/to/target-repo
-
-rail execute \
-  --artifact /absolute/path/to/target-repo/.harness/artifacts/request
+```text
+Use the Rail skill.
+Target repo: /absolute/path/to/target-repo
+Goal: Split the club details screen build logic into smaller sections.
+Constraint: Preserve behavior exactly.
+Definition of done: behavior is unchanged and focused validation still passes.
 ```
 
-## 현재 CLI 명령
+```text
+Use the Rail skill.
+Target repo: /absolute/path/to/target-repo
+Goal: Verify the Rail harness wiring only.
+Constraint: Smoke mode. Do not modify application source files.
+Definition of done: the harness flow completes and leaves smoke evidence.
+```
 
-현재 Rail은 다음 operator 명령을 제공합니다.
+Rail skill은 request 필드를 추론하고, 안전하지 않은 경우에만 최소한으로 질문하고, 사용자가 YAML을 직접 작성하지 않아도 request를 물질화해야 합니다.
 
-- `init`
-  - project-local `.harness` 워크스페이스 생성
-- `init-request`
-  - 현재 워크스페이스에 request template 생성
-- `compose-request`
-  - JSON request draft를 `.harness/requests/request.yaml`로 정규화
-- `validate-request`
-  - request schema 검증
-- `run`
-  - request용 artifact 디렉터리 bootstrap
-- `execute`
-  - artifact에 대해 bounded actor chain 실행
-- `route-evaluation`
-  - artifact의 evaluator 결과를 다시 적용하거나 persisted output을 refresh
-- `validate-artifact`
-  - artifact 파일을 schema 이름으로 검증
-- `integrate`
-  - passing run 이후 `v2` integration handoff 생성
-- `init-user-outcome-feedback`
-  - artifact로부터 user outcome feedback draft 생성
-- `init-learning-review`
-  - candidate로부터 learning review draft 생성
-- `init-hardening-review`
-  - candidate로부터 hardening review draft 생성
-- `apply-user-outcome-feedback`
-  - reviewed feedback 적용 후 derived state refresh
-- `apply-learning-review`
-  - reviewed learning decision 적용 후 derived state refresh
-- `apply-hardening-review`
-  - reviewed hardening decision 적용 후 derived state refresh
-- `verify-learning-state`
-  - derived learning state의 정합성 검증
+## 두 가지 실행 모드
 
-## V1 과 V2
+### Real mode
 
-Rail은 릴리즈 표면을 명확하게 분리합니다.
+`real` 모드는 기본 제품 경로입니다.
 
-### V1
+- 실제 제품 작업에 사용합니다
+- Rail이 실제 actor 경로를 실행합니다
+- generator가 대상 저장소 파일을 수정할 수 있습니다
+- executor가 execution plan의 focused validation 명령을 실제로 실행합니다
 
-`v1`은 bounded core supervisor gate입니다. 초점은 다음과 같습니다.
+내부 저장값은 `validation_profile: standard` 입니다.
 
-- request 정규화
-- artifact bootstrap
-- deterministic actor execution
-- evaluator 기반 bounded retry
-- 명시적인 terminal outcome
+### Smoke mode
 
-### V2
+`smoke` 모드는 빠른 control-plane 검증 경로입니다.
 
-`v2`는 `v1` 위에 다음을 추가합니다.
+- harness 연결 확인
+- release gate 증빙
+- 빠른 wiring 검증
 
-- integration handoff 생성
-- explicit user outcome feedback 파일
-- explicit learning review 파일
-- explicit hardening review 파일
-- derived learning-state 검증
+같은 용도에 적합합니다.
 
-중요한 점은 review 파일은 운영자가 작성하고, queue, evidence index, approved family memory는 Rail이 파생 상태로 재생성한다는 것입니다.
+- workflow가 더 결정적이고 가볍게 동작합니다
+- 일반적인 제품 변경 경로로 쓰면 안 됩니다
+- 보통 “앱 소스는 수정하지 마” 같은 명시적 제약과 함께 사용합니다
 
-## Project-Local `.harness`
+내부 저장값은 `validation_profile: smoke` 입니다.
 
-각 대상 저장소는 자신의 `.harness/`를 소유합니다. 이것은 글로벌 체크아웃이 아니라 project-local state입니다.
+기준은 단순합니다.
 
-여기에는 다음이 저장됩니다.
+- 대상 저장소를 실제로 바꾸고 검증해야 하면 `real`
+- harness 경로 자체를 빨리 증명하면 되면 `smoke`
+
+## Project-local `.harness`
+
+각 대상 저장소는 자기 자신의 `.harness/`를 가집니다.
+
+Rail은 다음 프로젝트별 상태를 여기에 둡니다.
 
 - project identity
 - requests
 - artifacts
-- reviewed feedback
-- reviewed learning decisions
-- approved family memory
+- reviewed learning state
 
-이 경로들은 프로젝트별 증거와 상태이므로 로컬에 남아야 합니다.
+이 상태는 항상 대상 저장소 로컬 상태입니다. Rail은 제품 사용을 위해 별도 공용 체크아웃을 요구하지 않습니다.
 
-## Embedded Defaults 와 Override
+## Advanced Overrides
 
-Rail은 다음과 같은 reusable control-plane 자산에 대해 embedded defaults를 제공합니다.
+대부분의 사용자는 번들 기본값과 Rail skill만 사용하면 됩니다.
 
-- supervisor policy
-- actor instructions
-- rules and rubrics
-- request / artifact templates
-
-고급 사용자는 대상 저장소에 전체 파일을 두어 일부 기본값을 override할 수 있습니다.
+고급 사용자는 일부 기본값을 프로젝트 로컬 파일로 override할 수 있습니다.
 
 - `.harness/supervisor/`
 - `.harness/actors/`
@@ -183,46 +114,48 @@ Rail은 다음과 같은 reusable control-plane 자산에 대해 embedded defaul
 - `.harness/rubrics/`
 - `.harness/templates/`
 
-override precedence는 다음과 같습니다.
+override 규칙은 단순합니다.
 
-1. 프로젝트 로컬 파일이 있으면 그것을 사용합니다.
-2. 없으면 설치된 제품의 embedded default를 사용합니다.
-3. override는 deep merge가 아니라 file-level override입니다.
-4. `.harness/artifacts/`, `.harness/learning/`, `.harness/requests/` 같은 stateful 경로는 항상 로컬 상태입니다.
+1. 프로젝트 로컬 파일이 있으면 그것을 사용합니다
+2. 없으면 embedded default를 사용합니다
+3. override는 deep merge가 아니라 file-level override입니다
+4. `.harness/artifacts/`, `.harness/requests/`, `.harness/learning/` 같은 상태 디렉터리는 항상 로컬 상태입니다
 
-이 방식은 provenance를 명확히 하고, 업그레이드 시 숨겨진 병합 동작을 피하기 위한 선택입니다.
+고급 사용자가 알아둘 점:
 
-## Bundled Rail Skill
+- request 파일의 모드 값은 `validation_profile: standard|smoke`
+- draft composition 단계에서는 `real`도 기본 `standard`의 alias로 허용됩니다
+- `smoke`는 기본값이 아니라 명시적 opt-in으로 취급해야 합니다
+- real actor 호출의 기본 모델은 `RAIL_ACTOR_MODEL=gpt-5.4-mini` 입니다
+- actor 모델을 바꾸려면 `RAIL_ACTOR_MODEL` 을 사용합니다
+- actor 추론 강도를 바꾸려면 `RAIL_ACTOR_REASONING_EFFORT` 를 사용합니다
 
-번들 Rail skill은 Codex에서 사용하는 일반적인 자연어 진입점입니다.
+## 이 소스 저장소의 역할
 
-skill의 역할은 다음과 같습니다.
-
-- 사용자 goal, constraint, definition of done을 해석
-- 구조화된 request draft 추론
-- 안전하지 않은 경우에만 최소한의 clarification 요청
-- `rail compose-request`에 넘길 정규화된 draft 준비
-
-일반 사용에서는 사용자가 하네스 YAML을 직접 작성할 필요가 없어야 합니다.
-
-## 소스 저장소의 역할
-
-이 저장소는 Rail 자체를 개발하고 릴리즈하는 사람들을 위한 저장소입니다.
+이 저장소는 Rail 기여자와 릴리즈 엔지니어를 위한 저장소입니다.
 
 여기에는 다음의 원본이 있습니다.
 
-- Go CLI 구현
-- `assets/defaults/` 아래의 embedded default harness 자산
-- `assets/skill/` 아래의 번들 Rail skill 소스
-- `skills/` 아래의 repo-owned skill 소스
-- 릴리즈 도구와 패키징 설정
-- architecture / release 문서
+- Go runtime / CLI
+- embedded default harness 자산
+- 번들 Rail skill 소스
+- 릴리즈 도구와 기여자 문서
 
-최종 사용자는 이 저장소를 체크아웃해 둘 필요가 없습니다. 설치된 `rail` 바이너리와, 대상 저장소의 project-local `.harness`만 있으면 됩니다.
+최종 사용자는 Rail 제품을 쓰기 위해 이 저장소를 체크아웃해 둘 필요가 없습니다.
+
+## 릴리즈 체크
+
+Rail 자체를 다루는 기여자 기준:
+
+- 자동 smoke gate: `./tool/v2_release_gate.sh`
+- 수동 real-mode gate: `./tool/real_mode_check.sh`
+
+smoke gate는 빠른 control-plane 경로를 증명합니다.
+real-mode gate는 실제 Codex actor 호출을 포함한 real actor 경로가 살아있는 대상 저장소에서 끝까지 실행되는지 증명합니다.
 
 ## 추가 문서
 
 - 구조 문서: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 한국어 구조 문서: [docs/ARCHITECTURE-kr.md](docs/ARCHITECTURE-kr.md)
-- 릴리즈 문서: [docs/releases/](docs/releases/)
-- 현재 작업 목록: [docs/tasks.md](docs/tasks.md)
+- v1 릴리즈 계약: [docs/releases/v1-core-supervisor-gate.md](docs/releases/v1-core-supervisor-gate.md)
+- v2 릴리즈 계약: [docs/releases/v2-integrator-and-learning-gate.md](docs/releases/v2-integrator-and-learning-gate.md)

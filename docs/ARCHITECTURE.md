@@ -84,6 +84,11 @@ The runtime flow stays explicit:
 
 This design deliberately favors reviewable transitions over hidden automation.
 
+Rail currently maintains two execution profiles:
+
+- `real` mode as the default actor path for actual target-repository work
+- `smoke` mode as the fast deterministic path for control-plane verification
+
 ## Supervisor, Actors, And Rubrics
 
 The control relationship is stable:
@@ -162,5 +167,3 @@ For contributors, this repository is organized around the product build and its 
 - `assets/skill/` contains the bundled Rail skill source
 - `packaging/` contains release packaging material such as the Homebrew formula
 - `docs/` contains architecture, release, and operator documentation
-
-Some transitional Dart-era files may still exist while the product finishes the migration, but they are not the user-facing runtime model.

@@ -143,6 +143,11 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 		"agent_changelog=false",
 		`branch="release/${version}"`,
 		`git checkout -b "$branch"`,
+		"restore_start_branch",
+		"GH_PROMPT_DISABLED",
+		"GIT_TERMINAL_PROMPT",
+		"BatchMode=yes",
+		"assert_main_synchronized",
 		"codex exec",
 		"--sandbox read-only",
 		`approval_policy="never"`,
@@ -155,6 +160,33 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("publish script missing %q", expected)
 		}
+	}
+}
+
+func TestPublishScriptRejectsUnsyncedMain(t *testing.T) {
+	repo := newPublishFixture(t)
+
+	if err := os.WriteFile(filepath.Join(repo, "unsynced.txt"), []byte("pending"), 0o644); err != nil {
+		t.Fatalf("write unsynced fixture file: %v", err)
+	}
+	gitRun(t, repo, "add", "unsynced.txt")
+	gitRun(t, repo, "commit", "-m", "test unsynced main")
+
+	fakeBin := filepath.Join(t.TempDir(), "fake-bin")
+	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
+		t.Fatalf("create fake bin: %v", err)
+	}
+	writeExecutable(t, filepath.Join(fakeBin, "gh"), "#!/usr/bin/env bash\nexit 0\n")
+
+	cmd := exec.Command("./tool/publish.sh", "v7.8.8", "--local-only")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected unsynced main to fail")
+	}
+	if !strings.Contains(string(output), "main must be synchronized with origin/main") {
+		t.Fatalf("unexpected output: %s", string(output))
 	}
 }
 
@@ -204,7 +236,12 @@ func TestPublishScriptUsesAgentChangelogWhenRequested(t *testing.T) {
 		t.Fatalf("publish with agent changelog failed: %v\n%s", err, string(output))
 	}
 
-	changelog := readFile(t, filepath.Join(repo, "CHANGELOG.md"))
+	currentBranch := strings.TrimSpace(gitOutput(t, repo, "branch", "--show-current"))
+	if currentBranch != "main" {
+		t.Fatalf("publish should return to main, got %q", currentBranch)
+	}
+
+	changelog := gitOutput(t, repo, "show", "release/v7.8.9:CHANGELOG.md")
 	for _, expected := range []string{
 		"## v7.8.9 - 2026-04-21",
 		"Summarized by fake changelog agent.",
@@ -217,8 +254,12 @@ func TestPublishScriptUsesAgentChangelogWhenRequested(t *testing.T) {
 	if strings.Contains(changelog, "Prepared v7.8.9 release.") {
 		t.Fatalf("agent changelog should replace the template changelog:\n%s", changelog)
 	}
+	mainChangelog := readFile(t, filepath.Join(repo, "CHANGELOG.md"))
+	if strings.Contains(mainChangelog, "## v7.8.9") {
+		t.Fatalf("main branch should not contain release changelog after publish returns:\n%s", mainChangelog)
+	}
 
-	formula := readFile(t, filepath.Join(repo, "packaging", "homebrew", "rail.rb"))
+	formula := gitOutput(t, repo, "show", "release/v7.8.9:packaging/homebrew/rail.rb")
 	for _, expected := range []string{`tag: "v7.8.9"`, `version "7.8.9"`} {
 		if !strings.Contains(formula, expected) {
 			t.Fatalf("formula missing %q:\n%s", expected, formula)
@@ -229,7 +270,7 @@ func TestPublishScriptUsesAgentChangelogWhenRequested(t *testing.T) {
 	if strings.TrimSpace(status) != "" {
 		t.Fatalf("expected clean fixture repo after publish, got:\n%s", status)
 	}
-	commit := gitOutput(t, repo, "log", "-1", "--pretty=%s")
+	commit := gitOutput(t, repo, "log", "-1", "--pretty=%s", "release/v7.8.9")
 	if strings.TrimSpace(commit) != "chore: prepare v7.8.9 release" {
 		t.Fatalf("unexpected commit subject: %q", strings.TrimSpace(commit))
 	}
@@ -410,6 +451,7 @@ func newPublishFixture(t *testing.T) string {
 	origin := filepath.Join(temp, "origin.git")
 	gitRun(t, temp, "init", "--bare", origin)
 	gitRun(t, repo, "remote", "add", "origin", origin)
+	gitRun(t, repo, "push", "-u", "origin", "main")
 
 	return repo
 }

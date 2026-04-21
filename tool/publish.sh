@@ -2,6 +2,11 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+export GH_PROMPT_DISABLED="${GH_PROMPT_DISABLED:-1}"
+export GIT_TERMINAL_PROMPT="${GIT_TERMINAL_PROMPT:-0}"
+export GIT_PAGER="${GIT_PAGER:-cat}"
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
+start_branch=""
 
 usage() {
   cat >&2 <<'EOF'
@@ -52,6 +57,41 @@ while (($#)); do
   esac
   shift
 done
+
+restore_start_branch() {
+  if [[ -z "$start_branch" ]]; then
+    return
+  fi
+
+  if [[ "$(git branch --show-current 2>/dev/null || true)" == "$start_branch" ]]; then
+    return
+  fi
+
+  if [[ -n "$(git status --porcelain 2>/dev/null || true)" ]]; then
+    echo "working tree changed; staying on $(git branch --show-current) for inspection" >&2
+    return
+  fi
+
+  git switch --quiet "$start_branch" >/dev/null 2>&1 || true
+}
+
+assert_main_synchronized() {
+  local upstream counts behind ahead
+  upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+  if [[ -z "$upstream" ]]; then
+    echo "main must track origin/main before publishing" >&2
+    exit 1
+  fi
+
+  git fetch --quiet origin main
+  counts=$(git rev-list --left-right --count "${upstream}...HEAD")
+  behind="${counts%%[[:space:]]*}"
+  ahead="${counts##*[[:space:]]}"
+  if [[ "$behind" != "0" || "$ahead" != "0" ]]; then
+    echo "main must be synchronized with origin/main before publishing; behind=$behind ahead=$ahead" >&2
+    exit 1
+  fi
+}
 
 validate_changelog_section() {
   local section="$1"
@@ -169,15 +209,19 @@ if [[ "$(git rev-parse --is-inside-work-tree)" != "true" ]]; then
   exit 1
 fi
 
-if [[ "$(git branch --show-current)" != "main" ]]; then
+start_branch=$(git branch --show-current)
+if [[ "$start_branch" != "main" ]]; then
   echo "publish must start from main" >&2
   exit 1
 fi
+trap restore_start_branch EXIT
 
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "working tree is dirty; commit or stash changes before publishing" >&2
   exit 1
 fi
+
+assert_main_synchronized
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "gh is required to open the release pull request" >&2

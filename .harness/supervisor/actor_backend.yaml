@@ -1,0 +1,27 @@
+version: 1
+execution_environment: local
+default_backend: codex_cli
+
+backends:
+  codex_cli:
+    command: codex
+    subcommand: exec
+    sandbox: workspace-write
+    approval_policy: never
+    session_mode: per_actor
+    ephemeral: true
+    capture_json_events: true
+    skip_git_repo_check: true
+
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - workspace-write
+  isolated_ci:
+    allowed_sandboxes:
+      - workspace-write
+      - danger-full-access
+  docker:
+    allowed_sandboxes:
+      - workspace-write
+      - danger-full-access

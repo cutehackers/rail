@@ -186,7 +186,7 @@ Return a typed map or struct rather than passing raw YAML maps through the runne
 
 - [ ] **Step 3: Pass actor profiles explicitly into structured actor execution**
 
-Refactor `internal/runtime/actor_runtime.go` so `runStructuredCodexCommand` accepts an explicit actor profile argument instead of reading `RAIL_ACTOR_MODEL` and `RAIL_ACTOR_REASONING_EFFORT`.
+Refactor `internal/runtime/actor_runtime.go` so `runCommand` accepts an explicit actor profile argument instead of reading `RAIL_ACTOR_MODEL` and `RAIL_ACTOR_REASONING_EFFORT`.
 
 Remove:
 - environment-variable default model selection

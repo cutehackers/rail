@@ -85,7 +85,7 @@ Repository verification remains explicit and automated through:
 Additional release-ready confirmation should include:
 
 - automated smoke verification for the fast control-plane path
-- manual `./tool/real_mode_check.sh` verification for the real actor path
+- runtime test coverage for profile-selected real actor command wiring
 
 Those repository checks are release-engineering evidence for the product. They are not the end-user operating model.
 

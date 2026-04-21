@@ -21,12 +21,24 @@ type ActorProfiles struct {
 }
 
 var supportedActorReasoningEfforts = map[string]struct{}{
-	"none":     {},
-	"minimal":  {},
-	"low":      {},
-	"medium":   {},
-	"high":     {},
-	"xhigh":    {},
+	"none":    {},
+	"minimal": {},
+	"low":     {},
+	"medium":  {},
+	"high":    {},
+	"xhigh":   {},
+}
+
+func normalizeActorProfile(actorName string, profile ActorProfile) (ActorProfile, error) {
+	profile.Model = strings.TrimSpace(profile.Model)
+	profile.Reasoning = strings.TrimSpace(profile.Reasoning)
+	if profile.Model == "" {
+		return ActorProfile{}, fmt.Errorf("actor profile %q must define model", actorName)
+	}
+	if _, ok := supportedActorReasoningEfforts[profile.Reasoning]; !ok {
+		return ActorProfile{}, fmt.Errorf("actor profile %q has unsupported reasoning %q", actorName, profile.Reasoning)
+	}
+	return profile, nil
 }
 
 func loadActorProfiles(projectRoot string, requiredActors []string) (ActorProfiles, error) {
@@ -62,16 +74,12 @@ func loadActorProfiles(projectRoot string, requiredActors []string) (ActorProfil
 			missingActors = append(missingActors, actorName)
 			continue
 		}
-		profile.Model = strings.TrimSpace(profile.Model)
-		profile.Reasoning = strings.TrimSpace(profile.Reasoning)
-		if profile.Model == "" {
-			return ActorProfiles{}, fmt.Errorf("actor profile %q must define model", actorName)
-		}
-		if _, ok := supportedActorReasoningEfforts[profile.Reasoning]; !ok {
-			return ActorProfiles{}, fmt.Errorf("actor profile %q has unsupported reasoning %q", actorName, profile.Reasoning)
+		normalizedProfile, err := normalizeActorProfile(actorName, profile)
+		if err != nil {
+			return ActorProfiles{}, err
 		}
 
-		profiles.Actors[actorName] = profile
+		profiles.Actors[actorName] = normalizedProfile
 	}
 	if len(missingActors) > 0 {
 		sort.Strings(missingActors)

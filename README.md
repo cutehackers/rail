@@ -145,10 +145,12 @@ End users do not need this repository checked out to use Rail as a product.
 For contributors working on Rail itself:
 
 - automated smoke gate: `./tool/v2_release_gate.sh`
-- manual real-mode gate: `./tool/real_mode_check.sh`
 
-The smoke gate proves the fast control-plane path.
-The real-mode gate proves that the real actor path can execute against a live target repo with actual Codex actor invocation.
+The smoke gate proves the fast control-plane path, including request
+materialization, execution, integration, artifact validation, and learning-state
+verification. Real actor command wiring is covered by runtime tests that assert
+profile-selected model and reasoning arguments without relying on live helper
+scripts.
 
 ## More Detail
 

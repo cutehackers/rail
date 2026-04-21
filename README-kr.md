@@ -150,10 +150,11 @@ override 규칙은 단순합니다.
 Rail 자체를 다루는 기여자 기준:
 
 - 자동 smoke gate: `./tool/v2_release_gate.sh`
-- 수동 real-mode gate: `./tool/real_mode_check.sh`
 
-smoke gate는 빠른 control-plane 경로를 증명합니다.
-real-mode gate는 실제 Codex actor 호출을 포함한 real actor 경로가 살아있는 대상 저장소에서 끝까지 실행되는지 증명합니다.
+smoke gate는 request 생성, 실행, 통합, artifact 검증, learning-state 검증을
+포함한 빠른 control-plane 경로를 증명합니다. Real actor command wiring은
+profile에서 선택된 model과 reasoning 인자를 검증하는 runtime test로
+확인하며, live helper script에 의존하지 않습니다.
 
 ## 추가 문서
 

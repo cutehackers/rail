@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-func runStructuredCodexCommand(
+// runCommand executes the current actor command backend using only the
+// repository-resolved actor profile passed by the caller. Environment overrides
+// are intentionally unsupported; profile selection belongs in actor_profiles.yaml.
+func runCommand(
 	actorName string,
 	profile ActorProfile,
 	workingDirectory string,
@@ -17,11 +20,9 @@ func runStructuredCodexCommand(
 	logPath string,
 	schemaPath string,
 ) (map[string]any, error) {
-	if strings.TrimSpace(profile.Model) == "" {
-		return nil, fmt.Errorf("missing actor profile model for structured actor %q", actorName)
-	}
-	if _, ok := supportedActorReasoningEfforts[strings.TrimSpace(profile.Reasoning)]; !ok {
-		return nil, fmt.Errorf("unsupported actor profile reasoning %q for structured actor %q", profile.Reasoning, actorName)
+	profile, err := normalizeActorProfile(actorName, profile)
+	if err != nil {
+		return nil, err
 	}
 
 	cmd := exec.Command(

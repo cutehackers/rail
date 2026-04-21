@@ -1,6 +1,9 @@
 package runtime
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -9,6 +12,85 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+func TestRunCommandUsesNormalizedActorProfileWithoutEnvFallbacks(t *testing.T) {
+	workingDirectory := t.TempDir()
+	fakeBin := t.TempDir()
+	invocationPath := filepath.Join(workingDirectory, "invocation.json")
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env python3
+import json
+import os
+import re
+import sys
+
+invocation_path = os.environ["RAIL_TEST_INVOCATION_PATH"]
+output_path = None
+model = ""
+reasoning = ""
+
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+    if value == "-m" and index + 1 < len(sys.argv):
+        model = sys.argv[index + 1]
+    if value == "-c" and index + 1 < len(sys.argv):
+        match = re.match(r'model_reasoning_effort="([^"]+)"', sys.argv[index + 1])
+        if match:
+            reasoning = match.group(1)
+
+with open(invocation_path, "w", encoding="utf-8") as handle:
+    json.dump({"model": model, "reasoning": reasoning}, handle)
+
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump({"summary": "ok"}, handle)
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_ACTOR_MODEL", "wrong-model")
+	t.Setenv("RAIL_ACTOR_REASONING_EFFORT", "low")
+	t.Setenv("RAIL_TEST_INVOCATION_PATH", invocationPath)
+
+	response, err := runCommand(
+		"planner",
+		ActorProfile{Model: " gpt-5.4-mini ", Reasoning: " high "},
+		workingDirectory,
+		"prompt",
+		logPath,
+		schemaPath,
+	)
+	if err != nil {
+		t.Fatalf("runCommand returned error: %v", err)
+	}
+	if got, want := response["summary"], "ok"; got != want {
+		t.Fatalf("unexpected structured response summary: got %#v want %#v", got, want)
+	}
+
+	data, err := os.ReadFile(invocationPath)
+	if err != nil {
+		t.Fatalf("failed to read invocation log: %v", err)
+	}
+
+	var invocation struct {
+		Model     string `json:"model"`
+		Reasoning string `json:"reasoning"`
+	}
+	if err := json.Unmarshal(data, &invocation); err != nil {
+		t.Fatalf("failed to decode invocation log: %v", err)
+	}
+	if invocation.Model != "gpt-5.4-mini" {
+		t.Fatalf("expected runCommand to use normalized profile model, got %q", invocation.Model)
+	}
+	if invocation.Reasoning != "high" {
+		t.Fatalf("expected runCommand to use normalized profile reasoning, got %q", invocation.Reasoning)
+	}
+}
 
 func TestActorOutputJSONSchemaPlanRequiresAssumptions(t *testing.T) {
 	schema, err := actorOutputJSONSchema("plan")

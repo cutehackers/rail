@@ -273,7 +273,7 @@ func runIntegratorActor(
 		"Project root: " + workingDirectory,
 		"Write no files yourself except the structured response via Codex output handling.",
 	}, "\n")
-	return runStructuredCodexCommand("integrator", profile, workingDirectory, prompt, logPath, schemaPath)
+	return runCommand("integrator", profile, workingDirectory, prompt, logPath, schemaPath)
 }
 
 func normalizeIntegrationResult(

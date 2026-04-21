@@ -72,8 +72,9 @@ if [[ "$(git rev-parse --is-inside-work-tree)" != "true" ]]; then
   exit 1
 fi
 
-if [[ "$(git branch --show-current)" != "main" ]]; then
-  echo "release must run from main" >&2
+current_branch=$(git branch --show-current)
+if [[ "$current_branch" != "main" && ( "$push_release" == "true" || "$preflight_only" == "false" ) ]]; then
+  echo "release publish must run from main" >&2
   exit 1
 fi
 

@@ -96,21 +96,21 @@ func TestReleaseWorkflowPublishesGoReleaserArtifactsAndAttestations(t *testing.T
 }
 
 func TestPrepareReleaseScriptRejectsExistingTags(t *testing.T) {
-	root := repoRoot(t)
+	repo := newPrepareReleaseFixture(t)
 	version := "v99.99.99"
 	createTag := exec.Command("git", "tag", version)
-	createTag.Dir = root
+	createTag.Dir = repo
 	if output, err := createTag.CombinedOutput(); err != nil {
 		t.Fatalf("create test tag: %v\n%s", err, string(output))
 	}
 	t.Cleanup(func() {
 		deleteTag := exec.Command("git", "tag", "-d", version)
-		deleteTag.Dir = root
+		deleteTag.Dir = repo
 		_ = deleteTag.Run()
 	})
 
 	cmd := exec.Command("bash", "-lc", `HOMEBREW_TAP_GITHUB_TOKEN=dummy ./tool/prepare_release.sh "$VERSION" --preflight-only`)
-	cmd.Dir = root
+	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "VERSION="+version)
 	output, err := cmd.CombinedOutput()
 	if err == nil {
@@ -122,9 +122,9 @@ func TestPrepareReleaseScriptRejectsExistingTags(t *testing.T) {
 }
 
 func TestPrepareReleaseScriptRequiresHomebrewTapToken(t *testing.T) {
-	root := repoRoot(t)
+	repo := newPrepareReleaseFixture(t)
 	cmd := exec.Command("bash", "-lc", `unset HOMEBREW_TAP_GITHUB_TOKEN; ./tool/prepare_release.sh v9.9.9 --preflight-only --allow-existing-tag`)
-	cmd.Dir = root
+	cmd.Dir = repo
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("expected missing Homebrew tap token to fail")
@@ -347,9 +347,9 @@ func TestPublishScriptRejectsInvalidVersion(t *testing.T) {
 }
 
 func TestPrepareReleaseScriptRequiresChangelogSection(t *testing.T) {
-	root := repoRoot(t)
+	repo := newPrepareReleaseFixture(t)
 	cmd := exec.Command("bash", "-lc", `HOMEBREW_TAP_GITHUB_TOKEN=dummy ./tool/prepare_release.sh v9.9.9 --preflight-only --allow-existing-tag`)
-	cmd.Dir = root
+	cmd.Dir = repo
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("expected missing changelog section to fail")
@@ -360,9 +360,9 @@ func TestPrepareReleaseScriptRequiresChangelogSection(t *testing.T) {
 }
 
 func TestPrepareReleaseScriptRejectsTrackedOrPendingDist(t *testing.T) {
-	root := repoRoot(t)
-	formulaTag := readFormulaTag(t)
-	distFile := filepath.Join(root, "dist", "prepare-release-test")
+	repo := newPrepareReleaseFixture(t)
+	formulaTag := readFormulaTagFromPath(t, filepath.Join(repo, "packaging", "homebrew", "rail.rb"))
+	distFile := filepath.Join(repo, "dist", "prepare-release-test")
 	if err := os.MkdirAll(filepath.Dir(distFile), 0o755); err != nil {
 		t.Fatalf("create dist dir: %v", err)
 	}
@@ -370,11 +370,11 @@ func TestPrepareReleaseScriptRejectsTrackedOrPendingDist(t *testing.T) {
 		t.Fatalf("write dist sentinel: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = os.RemoveAll(filepath.Join(root, "dist"))
+		_ = os.RemoveAll(filepath.Join(repo, "dist"))
 	})
 
 	cmd := exec.Command("bash", "-lc", `HOMEBREW_TAP_GITHUB_TOKEN=dummy ./tool/prepare_release.sh "$FORMULA_TAG" --preflight-only --allow-existing-tag`)
-	cmd.Dir = root
+	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "FORMULA_TAG="+formulaTag)
 	output, err := cmd.CombinedOutput()
 	if err == nil {
@@ -386,9 +386,9 @@ func TestPrepareReleaseScriptRejectsTrackedOrPendingDist(t *testing.T) {
 }
 
 func TestPrepareReleaseScriptRejectsDirtyWorkingTree(t *testing.T) {
-	root := repoRoot(t)
-	formulaTag := readFormulaTag(t)
-	dirtyFile := filepath.Join(root, ".prepare-release-dirty-test")
+	repo := newPrepareReleaseFixture(t)
+	formulaTag := readFormulaTagFromPath(t, filepath.Join(repo, "packaging", "homebrew", "rail.rb"))
+	dirtyFile := filepath.Join(repo, ".prepare-release-dirty-test")
 	if err := os.WriteFile(dirtyFile, []byte("dirty"), 0o644); err != nil {
 		t.Fatalf("write dirty sentinel: %v", err)
 	}
@@ -397,13 +397,47 @@ func TestPrepareReleaseScriptRejectsDirtyWorkingTree(t *testing.T) {
 	})
 
 	cmd := exec.Command("bash", "-lc", `HOMEBREW_TAP_GITHUB_TOKEN=dummy ./tool/prepare_release.sh "$FORMULA_TAG" --preflight-only --allow-existing-tag`)
-	cmd.Dir = root
+	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "FORMULA_TAG="+formulaTag)
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("expected dirty working tree to fail")
 	}
 	if !strings.Contains(string(output), "working tree is dirty") {
+		t.Fatalf("unexpected output: %s", string(output))
+	}
+}
+
+func TestPrepareReleasePreflightRunsOnPRBranches(t *testing.T) {
+	repo := newPrepareReleaseFixture(t)
+	formulaTag := readFormulaTagFromPath(t, filepath.Join(repo, "packaging", "homebrew", "rail.rb"))
+	gitRun(t, repo, "checkout", "-b", "release/test-preflight")
+
+	cmd := exec.Command("bash", "-lc", `HOMEBREW_TAP_GITHUB_TOKEN=dummy ./tool/prepare_release.sh "$FORMULA_TAG" --preflight-only --allow-existing-tag`)
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "FORMULA_TAG="+formulaTag)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expected preflight on PR branch to pass: %v\n%s", err, string(output))
+	}
+	if !strings.Contains(string(output), "release preflight passed") {
+		t.Fatalf("unexpected output: %s", string(output))
+	}
+}
+
+func TestPrepareReleasePushStillRequiresMain(t *testing.T) {
+	repo := newPrepareReleaseFixture(t)
+	formulaTag := readFormulaTagFromPath(t, filepath.Join(repo, "packaging", "homebrew", "rail.rb"))
+	gitRun(t, repo, "checkout", "-b", "release/test-push")
+
+	cmd := exec.Command("bash", "-lc", `HOMEBREW_TAP_GITHUB_TOKEN=dummy ./tool/prepare_release.sh "$FORMULA_TAG" --push --allow-existing-tag`)
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "FORMULA_TAG="+formulaTag)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected push release on PR branch to fail")
+	}
+	if !strings.Contains(string(output), "release publish must run from main") {
 		t.Fatalf("unexpected output: %s", string(output))
 	}
 }
@@ -513,6 +547,40 @@ func newPublishFixture(t *testing.T) string {
 	return repo
 }
 
+func newPrepareReleaseFixture(t *testing.T) string {
+	t.Helper()
+
+	temp := t.TempDir()
+	repo := filepath.Join(temp, "repo")
+	for _, dir := range []string{
+		filepath.Join(repo, "tool"),
+		filepath.Join(repo, "packaging", "homebrew"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("create fixture dir %s: %v", dir, err)
+		}
+	}
+
+	copyFixtureFile(t, filepath.Join(repoRoot(t), "tool", "prepare_release.sh"), filepath.Join(repo, "tool", "prepare_release.sh"), 0o755)
+	copyFixtureFile(t, filepath.Join(repoRoot(t), "tool", "verify_release_formula.sh"), filepath.Join(repo, "tool", "verify_release_formula.sh"), 0o755)
+	copyFixtureFile(t, filepath.Join(repoRoot(t), "CHANGELOG.md"), filepath.Join(repo, "CHANGELOG.md"), 0o644)
+	copyFixtureFile(t, filepath.Join(repoRoot(t), ".goreleaser.yaml"), filepath.Join(repo, ".goreleaser.yaml"), 0o644)
+	copyFixtureFile(t, filepath.Join(repoRoot(t), "packaging", "homebrew", "rail.rb"), filepath.Join(repo, "packaging", "homebrew", "rail.rb"), 0o644)
+
+	gitRun(t, repo, "init", "-b", "main")
+	gitRun(t, repo, "config", "user.email", "rail-release-test@example.invalid")
+	gitRun(t, repo, "config", "user.name", "Rail Release Test")
+	gitRun(t, repo, "add", ".")
+	gitRun(t, repo, "commit", "-m", "test fixture")
+
+	origin := filepath.Join(temp, "origin.git")
+	gitRun(t, temp, "init", "--bare", origin)
+	gitRun(t, repo, "remote", "add", "origin", origin)
+	gitRun(t, repo, "push", "-u", "origin", "main")
+
+	return repo
+}
+
 func copyFixtureFile(t *testing.T, src, dst string, mode os.FileMode) {
 	t.Helper()
 	data, err := os.ReadFile(src)
@@ -562,7 +630,16 @@ func readFile(t *testing.T, path string) string {
 
 func readFormulaTag(t *testing.T) string {
 	t.Helper()
-	formula := readRepoFile(t, "packaging", "homebrew", "rail.rb")
+	return readFormulaTagFromContent(t, readRepoFile(t, "packaging", "homebrew", "rail.rb"))
+}
+
+func readFormulaTagFromPath(t *testing.T, path string) string {
+	t.Helper()
+	return readFormulaTagFromContent(t, readFile(t, path))
+}
+
+func readFormulaTagFromContent(t *testing.T, formula string) string {
+	t.Helper()
 	for _, line := range strings.Split(formula, "\n") {
 		if strings.Contains(line, `tag: "v`) {
 			start := strings.Index(line, `tag: "`)

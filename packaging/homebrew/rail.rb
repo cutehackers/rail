@@ -1,8 +1,8 @@
 class Rail < Formula
   desc "Harness control-plane for Codex"
   homepage "https://github.com/cutehackers/rail"
-  url "https://github.com/cutehackers/rail.git", tag: "v0.2.6"
-  version "0.2.6"
+  url "https://github.com/cutehackers/rail.git", tag: "v0.2.7"
+  version "0.2.7"
   license "MIT"
 
   depends_on "go" => :build

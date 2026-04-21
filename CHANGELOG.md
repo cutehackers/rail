@@ -2,6 +2,20 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.2.7 - 2026-04-21
+
+### Added
+- Added a new `rail version` CLI command (implemented via `internal/cli/app.go` and `internal/cli/version.go`).
+- Added/expanded CLI coverage in `internal/cli/app_test.go` for command wiring and behavior.
+
+### Changed
+- Improved release workflow decision messaging as part of release process hardening (`.github/workflows/release.yml`).
+- Updated GoReleaser configuration to support the release flow changes in this release (`.goreleaser.yaml`).
+
+### Verification
+- `tool/prepare_release.sh v0.2.7`
+
+
 ## v0.2.6 - 2026-04-21
 ### Added
 - Added Codex actor backend policy support across supervisor and defaults (`.harness/supervisor/actor_backend.yaml`, `assets/defaults/supervisor/actor_backend.yaml`), plus runtime policy execution support via `internal/runtime/actor_backend.go`.

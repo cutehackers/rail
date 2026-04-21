@@ -2,6 +2,40 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.2.5 - 2026-04-21
+
+### Added
+- Added Codex actor backend policy as a first-class routing signal in runtime and supervisor defaults.
+  - New policy model in `internal/runtime/actor_backend.go`.
+  - New policy files in `.harness/supervisor/actor_backend.yaml` and `assets/defaults/supervisor/actor_backend.yaml`.
+- Added release automation support for agent and publish workflows.
+  - Added `tool/prepare_release.sh`.
+  - Added `tool/publish.sh`.
+  - Added `.github/workflows/release.yml`.
+- Added release design and architecture documentation for the Codex actor-backend boundary.
+  - `docs/ARCHITECTURE.md`
+  - `docs/ARCHITECTURE-kr.md`
+  - `docs/2026-04-21-codex-boundary-actor-backend.md`
+  - `docs/2026-04-21-codex-boundary-actor-backend-design.md`
+
+### Changed
+- Routed Codex actor command execution through backend policy (instead of the legacy path), including runtime integration updates in `internal/runtime/actor_runtime.go`, `internal/runtime/integration.go`, and `internal/runtime/runner.go`.
+- Aligned runtime and policy contract around full-access backend handling.
+- Updated operator-facing guidance to reflect the Rail/Codex runtime boundary.
+
+### Fixed
+- Removed legacy run command bridge.
+- Prevented insecure full-access backend configurations by rejecting full access where disallowed and rejecting self-authorized full access backends.
+- Fixed release publishing flow behavior:
+  - allow release preflight on non-main branches
+  - keep publish releases on synced main
+  - trace publish release steps
+  - fail publish before readonly PR creation
+
+### Verification
+- `tool/prepare_release.sh v0.2.5`
+
+
 ## v0.2.4 - 2026-04-21
 
 ### Fixed

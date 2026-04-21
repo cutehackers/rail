@@ -31,8 +31,10 @@ jobs:
       - name: Run Go tests
         run: go test ./...
 
-      - name: Verify release formula version
-        run: ./tool/verify_release_formula.sh
+      - name: Prepare release preflight
+        run: ./tool/prepare_release.sh "$GITHUB_REF_NAME" --preflight-only --allow-existing-tag
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

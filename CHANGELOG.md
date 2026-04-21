@@ -2,6 +2,40 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.2.4 - 2026-04-21
+
+### Fixed
+
+- Fixed Homebrew release archives so packaged builds include both `SKILL.md` and bundled Rail examples.
+- Fixed generated Homebrew formula installation so the Codex-facing skill copy is created from packaged `pkgshare` assets.
+- Added a release formula version check so tag-triggered releases fail when `packaging/homebrew/rail.rb` points at a different tag or version.
+
+### Verification
+
+- `go test ./...`
+- `go build -o build/rail ./cmd/rail`
+- `go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean --skip=publish`
+- `brew install rail`
+- `brew test rail`
+- `rail init --project-root /absolute/path/to/test-target`
+
+## v0.2.3 - 2026-04-21
+
+### Added
+
+- Added the initial GoReleaser-based GitHub Release workflow for tagged Rail releases.
+- Added publishing to the `cutehackers/homebrew-rail` tap with packaged CLI archives, checksums, and provenance attestation.
+- Rewrote Rail skill examples around `Use the Rail skill` prompts for `bug_fix`, `feature_addition`, `safe_refactor`, `test_repair`, and smoke-mode harness verification.
+
+### Changed
+
+- Updated active install guidance to use `brew install cutehackers/rail/rail`.
+- Updated `scripts/install_skill.sh` to point users to packaged installs instead of checkout-coupled skill installation.
+
+### Note
+
+- This release was superseded by `v0.2.4` because the generated Homebrew formula referenced a moved skill asset path.
+
 ## v0.2.2 - 2026-04-21
 
 ### Added

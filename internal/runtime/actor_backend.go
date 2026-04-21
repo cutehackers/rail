@@ -76,6 +76,12 @@ func loadActorBackendPolicy(projectRoot string) (ActorBackendPolicy, error) {
 		return ActorBackendPolicy{}, err
 	}
 
+	for environmentName, environment := range policy.Environments {
+		if err := validateActorBackendEnvironmentAllowedSandboxes(environmentName, environment); err != nil {
+			return ActorBackendPolicy{}, err
+		}
+	}
+
 	env, ok := policy.Environments[policy.ExecutionEnvironment]
 	if !ok {
 		return ActorBackendPolicy{}, fmt.Errorf("actor backend policy execution_environment %q is not defined", policy.ExecutionEnvironment)
@@ -125,14 +131,22 @@ func validateActorBackendConfig(config ActorBackendConfig) error {
 
 func validateActorBackendEnvironment(environmentName string, environment ActorBackendEnvironment, sandbox string) error {
 	for _, allowedSandbox := range environment.AllowedSandboxes {
-		if allowedSandbox == "danger-full-access" {
-			return fmt.Errorf("actor backend environment %q cannot include danger-full-access in allowed_sandboxes; full access requires trusted operator or CI policy outside target-local .harness policy", environmentName)
-		}
-	}
-	for _, allowedSandbox := range environment.AllowedSandboxes {
 		if allowedSandbox == sandbox {
 			return nil
 		}
 	}
 	return fmt.Errorf("actor backend sandbox %s is not allowed in execution_environment %q", sandbox, environmentName)
+}
+
+func validateActorBackendEnvironmentAllowedSandboxes(environmentName string, environment ActorBackendEnvironment) error {
+	for _, allowedSandbox := range environment.AllowedSandboxes {
+		switch allowedSandbox {
+		case "read-only", "workspace-write":
+		case "danger-full-access":
+			return fmt.Errorf("actor backend environment %q cannot include danger-full-access in allowed_sandboxes; full access requires trusted operator or CI policy outside target-local .harness policy", environmentName)
+		default:
+			return fmt.Errorf("actor backend environment %q has unsupported allowed_sandboxes entry %q; valid values are read-only or workspace-write", environmentName, allowedSandbox)
+		}
+	}
+	return nil
 }

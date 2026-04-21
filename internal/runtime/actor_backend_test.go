@@ -208,6 +208,76 @@ execution_environments:
 		}
 	})
 
+	t.Run("rejects danger-full-access in an unselected execution environment", func(t *testing.T) {
+		projectRoot := writeActorBackendFixture(t, `
+version: 1
+execution_environment: local
+default_backend: codex_cli
+
+backends:
+  codex_cli:
+    command: codex
+    subcommand: exec
+    sandbox: workspace-write
+    approval_policy: never
+    session_mode: per_actor
+    ephemeral: true
+    capture_json_events: true
+    skip_git_repo_check: true
+
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - workspace-write
+  isolated_ci:
+    allowed_sandboxes:
+      - danger-full-access
+`)
+
+		_, err := loadActorBackendPolicy(projectRoot)
+		if err == nil {
+			t.Fatalf("expected loadActorBackendPolicy to reject danger-full-access in an unselected environment")
+		}
+		if !strings.Contains(err.Error(), "cannot include danger-full-access in allowed_sandboxes") {
+			t.Fatalf("expected unselected environment validation error, got %v", err)
+		}
+	})
+
+	t.Run("rejects unknown allowed_sandboxes entries in any execution environment", func(t *testing.T) {
+		projectRoot := writeActorBackendFixture(t, `
+version: 1
+execution_environment: local
+default_backend: codex_cli
+
+backends:
+  codex_cli:
+    command: codex
+    subcommand: exec
+    sandbox: workspace-write
+    approval_policy: never
+    session_mode: per_actor
+    ephemeral: true
+    capture_json_events: true
+    skip_git_repo_check: true
+
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - workspace-write
+  isolated_ci:
+    allowed_sandboxes:
+      - no-access
+`)
+
+		_, err := loadActorBackendPolicy(projectRoot)
+		if err == nil {
+			t.Fatalf("expected loadActorBackendPolicy to reject unknown allowed_sandboxes entry")
+		}
+		if !strings.Contains(err.Error(), `has unsupported allowed_sandboxes entry "no-access"`) {
+			t.Fatalf("expected unknown allowed_sandboxes validation error, got %v", err)
+		}
+	})
+
 	t.Run("rejects unsupported version", func(t *testing.T) {
 		projectRoot := writeActorBackendFixture(t, `
 version: 2

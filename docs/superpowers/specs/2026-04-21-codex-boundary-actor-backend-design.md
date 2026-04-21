@@ -68,7 +68,7 @@ This spec does not cover:
 - Rail is a governance control plane, not a competing agent runtime.
 - Codex execution should be configured through explicit Rail policy, not hard-coded flags.
 - Local execution should default to the least privilege that still supports normal coding work.
-- Full-access execution should require an isolated environment or explicit opt-in.
+- Full-access execution is not currently authorized by target-local `.harness` policy; trusted environment support is a future concern.
 - Codex event evidence should be retained when available.
 - Rail artifacts remain the durable audit contract even when the underlying Codex backend evolves.
 - The evaluator remains the authoritative supervisor gate.
@@ -127,14 +127,6 @@ execution_environments:
   local:
     allowed_sandboxes:
       - workspace-write
-  isolated_ci:
-    allowed_sandboxes:
-      - workspace-write
-      - danger-full-access
-  docker:
-    allowed_sandboxes:
-      - workspace-write
-      - danger-full-access
 ```
 
 The exact filename can be finalized during implementation. Two viable locations are:
@@ -178,15 +170,15 @@ Default local policy:
 
 - sandbox: `workspace-write`
 - approval policy: `never`
-- full access: disallowed unless the execution environment permits it
+- full access: disallowed
 
-Allowed full-access cases:
+Current full-access policy:
 
-- isolated CI runner
-- Docker or equivalent external sandbox
-- explicit operator opt-in recorded in actor backend policy
+- `danger-full-access` is rejected outright by backend policy validation.
+- Target-local `.harness` policy cannot authorize full access, even if `allowed_sandboxes` includes it.
+- Isolated CI, Docker, and explicit operator opt-in require a future trusted policy source outside the target repository.
 
-If a project requests `danger-full-access` in a `local` environment without explicit allowance, Rail should fail before invoking Codex and explain the unsafe configuration.
+If a project requests `danger-full-access`, Rail should fail before invoking Codex and explain the unsupported unsafe configuration.
 
 ## Evidence Capture
 
@@ -251,7 +243,7 @@ Unit tests:
 - backend policy loads from embedded defaults
 - project-local backend policy overrides embedded defaults
 - `codex_cli` command construction matches configured sandbox, approval policy, model, reasoning, schema path, and output paths
-- unsafe `danger-full-access` local policy is rejected
+- unsafe `danger-full-access` policy is rejected, including when a target-local allow-list includes it
 - JSON event capture path is materialized when enabled
 
 Runtime smoke tests:

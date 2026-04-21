@@ -17,11 +17,3 @@ execution_environments:
   local:
     allowed_sandboxes:
       - workspace-write
-  isolated_ci:
-    allowed_sandboxes:
-      - workspace-write
-      - danger-full-access
-  docker:
-    allowed_sandboxes:
-      - workspace-write
-      - danger-full-access

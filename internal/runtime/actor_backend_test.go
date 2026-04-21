@@ -142,6 +142,39 @@ execution_environments:
 		}
 	})
 
+	t.Run("rejects local full access even when target policy allows it", func(t *testing.T) {
+		projectRoot := writeActorBackendFixture(t, `
+version: 1
+execution_environment: local
+default_backend: codex_cli
+
+backends:
+  codex_cli:
+    command: codex
+    subcommand: exec
+    sandbox: danger-full-access
+    approval_policy: never
+    session_mode: per_actor
+    ephemeral: true
+    capture_json_events: true
+    skip_git_repo_check: true
+
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - workspace-write
+      - danger-full-access
+`)
+
+		_, err := loadActorBackendPolicy(projectRoot)
+		if err == nil {
+			t.Fatalf("expected loadActorBackendPolicy to reject target-authorized full access")
+		}
+		if !strings.Contains(err.Error(), "sandbox danger-full-access is not allowed") {
+			t.Fatalf("expected full access validation error, got %v", err)
+		}
+	})
+
 	t.Run("rejects unsupported version", func(t *testing.T) {
 		projectRoot := writeActorBackendFixture(t, `
 version: 2

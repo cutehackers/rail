@@ -74,11 +74,11 @@ backends:
     skip_git_repo_check: true
 execution_environments:
   local:
-    allowed_sandboxes: [workspace-write]
+    allowed_sandboxes: [workspace-write, danger-full-access]
 `)
 	_, err := loadActorBackendPolicy(projectRoot)
 	if err == nil {
-		t.Fatalf("expected unsafe local full-access policy to fail")
+		t.Fatalf("expected target-authorized full-access policy to fail")
 	}
 	if !strings.Contains(err.Error(), "sandbox danger-full-access is not allowed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -114,14 +114,6 @@ execution_environments:
   local:
     allowed_sandboxes:
       - workspace-write
-  isolated_ci:
-    allowed_sandboxes:
-      - workspace-write
-      - danger-full-access
-  docker:
-    allowed_sandboxes:
-      - workspace-write
-      - danger-full-access
 ```
 
 - [ ] **Step 3: Implement typed backend policy loading**
@@ -161,7 +153,8 @@ Implement `loadActorBackendPolicy(projectRoot string) (ActorBackendPolicy, error
 - only `codex_cli` is supported for now
 - `command == codex`
 - `subcommand == exec`
-- `sandbox` is `read-only`, `workspace-write`, or `danger-full-access`
+- `sandbox` is `read-only` or `workspace-write`
+- `danger-full-access` is rejected outright until Rail has a trusted policy source outside target-local `.harness` policy
 - `approval_policy` is `untrusted`, `on-request`, or `never`
 - `session_mode == per_actor`
 - selected sandbox is listed in the selected environment's `allowed_sandboxes`
@@ -381,6 +374,7 @@ execution_environments:
   local:
     allowed_sandboxes:
       - workspace-write
+      - danger-full-access
 ```
 
 Assert `runner.Execute(artifactPath)` fails before invoking fake Codex, and the error mentions `sandbox danger-full-access is not allowed`.

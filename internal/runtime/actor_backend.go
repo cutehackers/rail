@@ -106,9 +106,11 @@ func validateActorBackendConfig(config ActorBackendConfig) error {
 		return fmt.Errorf("actor backend subcommand must be exec, got %q", config.Subcommand)
 	}
 	switch config.Sandbox {
-	case "read-only", "workspace-write", "danger-full-access":
+	case "danger-full-access":
+		return fmt.Errorf("actor backend sandbox danger-full-access is not allowed; full access requires trusted operator or CI policy outside target-local .harness policy")
+	case "read-only", "workspace-write":
 	default:
-		return fmt.Errorf("actor backend sandbox must be read-only, workspace-write, or danger-full-access, got %q", config.Sandbox)
+		return fmt.Errorf("actor backend sandbox must be read-only or workspace-write, got %q", config.Sandbox)
 	}
 	switch config.ApprovalPolicy {
 	case "untrusted", "on-request", "never":

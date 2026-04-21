@@ -33,6 +33,10 @@ artifact는 `https://github.com/cutehackers/rail`의 GitHub Releases에
 게시되고, GoReleaser가 태그된 CLI artifact, checksum, provenance, 그리고
 바이너리와 번들 Codex skill asset을 함께 설치하는 tap formula를 생성합니다.
 
+Rail은 actor backend policy를 통해 Codex 실행 방식을 설정합니다. 첫 번째
+backend는 Codex CLI이며, 로컬 기본 실행에는 `workspace-write` sandbox를
+사용합니다.
+
 ## 핵심 Runtime 구성 요소
 
 ### Rail CLI
@@ -47,9 +51,19 @@ CLI는 실행 엔진입니다. 다음 책임을 가집니다.
 - evaluation routing
 - terminal reporting
 
+또한 actor backend policy를 로드하여 Codex 실행을 결정적으로 선택하고
+형상화합니다.
+
 ### 번들 Rail Skill
 
 Rail skill은 자연어 진입점입니다. 사용자의 goal, constraint, definition of done을 해석한 뒤 구조화된 draft를 CLI에 전달합니다. 이 skill은 `rail`이 `PATH`에 있다고 가정하지만, 로컬 소스 checkout은 가정하지 않습니다.
+
+### Actor Backend Policy
+
+Actor backend policy는 Rail이 각 bounded actor에 대해 Codex를 어떻게
+호출할지 정의합니다. 체크인된 policy와 embedded default 모두 첫 backend로
+Codex CLI를 사용합니다. backend 실행 evidence는 artifact의 `runs/`
+디렉터리에 보관되어 전체 run state와 함께 검토 가능하게 유지됩니다.
 
 ### Embedded Defaults
 

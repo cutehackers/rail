@@ -10,6 +10,12 @@ The product contract is simple:
 
 The point of Rail is not to make users hand-author `.harness/requests/request.yaml`. The point is to let the Rail skill turn a messy engineering request into the correct harness shape safely and consistently.
 
+## Codex Runtime Boundary
+
+Rail is the governance control plane. Codex remains the agent runtime.
+
+Rail owns request normalization, bounded workflow state, artifact contracts, evaluation routing, validation evidence, and reviewed learning state. Codex owns repository inspection, file editing, tool execution, sandbox enforcement, rules, skills, hooks, and structured final actor output.
+
 ## What Users Actually Do
 
 Install Rail once:
@@ -104,6 +110,7 @@ Most users should stay on the bundled defaults and work through the Rail skill.
 Advanced users can override selected product defaults with project-local files:
 
 - `.harness/supervisor/`
+- `.harness/supervisor/actor_backend.yaml`
 - `.harness/actors/`
 - `.harness/rules/`
 - `.harness/rubrics/`

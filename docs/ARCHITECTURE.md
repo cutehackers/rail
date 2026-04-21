@@ -33,6 +33,10 @@ GitHub Releases from `https://github.com/cutehackers/rail`. GoReleaser builds
 the tagged CLI artifacts, attaches checksums and provenance, and publishes the
 tap formula that installs both the binary and bundled Codex skill assets.
 
+Rail configures Codex execution through actor backend policy. The first backend
+is the Codex CLI, and local default execution uses the `workspace-write`
+sandbox.
+
 ## Core Runtime Components
 
 ### Rail CLI
@@ -47,9 +51,20 @@ The CLI is the execution engine. It is responsible for:
 - evaluation routing
 - terminal reporting
 
+It also loads actor backend policy so the runtime can select and shape Codex
+execution deterministically.
+
 ### Bundled Rail Skill
 
 The Rail skill is the natural-language entrypoint. It interprets the user goal, constraints, and definition of done, then hands a request draft to the CLI. The skill assumes `rail` is installed on `PATH`; it does not assume a local source checkout.
+
+### Actor Backend Policy
+
+Actor backend policy controls how Rail invokes Codex for each bounded actor.
+The checked-in policy and the embedded default both use the Codex CLI as the
+first backend. Backend execution evidence is persisted under the artifact
+`runs/` directory so each actor invocation remains reviewable alongside the
+rest of the run state.
 
 ### Embedded Defaults
 

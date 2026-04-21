@@ -13,55 +13,153 @@ import (
 	"sync"
 )
 
+type ActorCommandSpec struct {
+	ActorName        string
+	Profile          ActorProfile
+	WorkingDirectory string
+	Prompt           string
+	LastMessagePath  string
+	SchemaPath       string
+	EventsPath       string
+}
+
+func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []string {
+	args := []string{
+		backend.Subcommand,
+		"-m",
+		spec.Profile.Model,
+		"--cd",
+		spec.WorkingDirectory,
+	}
+	if backend.Ephemeral {
+		args = append(args, "--ephemeral")
+	}
+	args = append(args,
+		"--color",
+		"never",
+		"-s",
+		backend.Sandbox,
+	)
+	if backend.SkipGitRepoCheck {
+		args = append(args, "--skip-git-repo-check")
+	}
+	args = append(args,
+		"-c",
+		fmt.Sprintf(`model_reasoning_effort="%s"`, spec.Profile.Reasoning),
+		"-c",
+		fmt.Sprintf(`approval_policy="%s"`, backend.ApprovalPolicy),
+		"--output-schema",
+		spec.SchemaPath,
+		"--output-last-message",
+		spec.LastMessagePath,
+	)
+	if backend.CaptureJSONEvents {
+		args = append(args, "--json")
+	}
+	args = append(args, spec.Prompt)
+	return args
+}
+
 // runCommand executes the current actor command backend using only the
 // repository-resolved actor profile passed by the caller. Environment overrides
 // are intentionally unsupported; profile selection belongs in actor_profiles.yaml.
-func runCommand(
-	actorName string,
-	profile ActorProfile,
-	workingDirectory string,
-	prompt string,
-	logPath string,
-	schemaPath string,
-) (map[string]any, error) {
-	profile, err := normalizeActorProfile(actorName, profile)
+func runCommand(first any, rest ...any) (map[string]any, error) {
+	backend, spec, err := actorCommandInvocation(first, rest...)
 	if err != nil {
 		return nil, err
+	}
+	return runActorCommand(backend, spec)
+}
+
+func actorCommandInvocation(first any, rest ...any) (ActorBackendConfig, ActorCommandSpec, error) {
+	if backend, ok := first.(ActorBackendConfig); ok {
+		if len(rest) != 1 {
+			return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand backend invocation requires one ActorCommandSpec, got %d arguments", len(rest))
+		}
+		spec, ok := rest[0].(ActorCommandSpec)
+		if !ok {
+			return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand backend invocation requires ActorCommandSpec, got %T", rest[0])
+		}
+		return backend, spec, nil
+	}
+
+	actorName, ok := first.(string)
+	if !ok {
+		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand requires ActorBackendConfig or actor name, got %T", first)
+	}
+	if len(rest) != 5 {
+		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires five arguments, got %d", len(rest))
+	}
+	profile, ok := rest[0].(ActorProfile)
+	if !ok {
+		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires ActorProfile, got %T", rest[0])
+	}
+	workingDirectory, ok := rest[1].(string)
+	if !ok {
+		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires working directory string, got %T", rest[1])
+	}
+	prompt, ok := rest[2].(string)
+	if !ok {
+		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires prompt string, got %T", rest[2])
+	}
+	logPath, ok := rest[3].(string)
+	if !ok {
+		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires log path string, got %T", rest[3])
+	}
+	schemaPath, ok := rest[4].(string)
+	if !ok {
+		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires schema path string, got %T", rest[4])
+	}
+
+	return ActorBackendConfig{
+			Command:           "codex",
+			Subcommand:        "exec",
+			Sandbox:           "danger-full-access",
+			ApprovalPolicy:    "never",
+			SessionMode:       "per_actor",
+			Ephemeral:         true,
+			CaptureJSONEvents: false,
+			SkipGitRepoCheck:  true,
+		}, ActorCommandSpec{
+			ActorName:        actorName,
+			Profile:          profile,
+			WorkingDirectory: workingDirectory,
+			Prompt:           prompt,
+			LastMessagePath:  logPath,
+			SchemaPath:       schemaPath,
+		}, nil
+}
+
+func runActorCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]any, error) {
+	profile, err := normalizeActorProfile(spec.ActorName, spec.Profile)
+	if err != nil {
+		return nil, err
+	}
+	spec.Profile = profile
+	if backend.CaptureJSONEvents && strings.TrimSpace(spec.EventsPath) == "" {
+		return nil, fmt.Errorf("capture JSON events requires events path")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cmd := exec.CommandContext(
-		ctx,
-		"codex",
-		"exec",
-		"-m",
-		profile.Model,
-		"--cd",
-		workingDirectory,
-		"--ephemeral",
-		"--color",
-		"never",
-		"-s",
-		"danger-full-access",
-		"--skip-git-repo-check",
-		"-c",
-		fmt.Sprintf(`model_reasoning_effort="%s"`, profile.Reasoning),
-		"-c",
-		`approval_policy="never"`,
-		"--output-schema",
-		schemaPath,
-		"--output-last-message",
-		logPath,
-		prompt,
-	)
-	cmd.Dir = workingDirectory
+	cmd := exec.CommandContext(ctx, backend.Command, buildCodexCLIArgs(backend, spec)...)
+	cmd.Dir = spec.WorkingDirectory
 
 	output := &synchronizedBuffer{}
-	watchdog := newActorWatchdog(actorName, defaultActorWatchdogConfig)
+	watchdog := newActorWatchdog(spec.ActorName, defaultActorWatchdogConfig)
 	progressWriter := watchdog.ProgressWriter()
-	cmd.Stdout = io.MultiWriter(output, progressWriter)
+	stdoutWriters := []io.Writer{output, progressWriter}
+	var eventsFile *os.File
+	if backend.CaptureJSONEvents {
+		eventsFile, err = os.Create(spec.EventsPath)
+		if err != nil {
+			return nil, fmt.Errorf("create JSON events log for %s: %w", spec.ActorName, err)
+		}
+		defer eventsFile.Close()
+		stdoutWriters = append(stdoutWriters, eventsFile)
+	}
+	cmd.Stdout = io.MultiWriter(stdoutWriters...)
 	cmd.Stderr = io.MultiWriter(output, progressWriter)
 
 	watchdog.Start(cancel)
@@ -71,16 +169,16 @@ func runCommand(
 		return nil, fmt.Errorf("actor `%s` failed: actor_watchdog_expired: no command progress observed for %s", expiration.ActorName, expiration.QuietWindow)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("actor `%s` failed: %s", actorName, strings.TrimSpace(output.String()))
+		return nil, fmt.Errorf("actor `%s` failed: %s", spec.ActorName, strings.TrimSpace(output.String()))
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(spec.LastMessagePath)
 	if err != nil {
-		return nil, fmt.Errorf("read %s output: %w", actorName, err)
+		return nil, fmt.Errorf("read %s output: %w", spec.ActorName, err)
 	}
 	var response map[string]any
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("decode %s actor response: %w", actorName, err)
+		return nil, fmt.Errorf("decode %s actor response: %w", spec.ActorName, err)
 	}
 	return response, nil
 }

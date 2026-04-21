@@ -40,14 +40,14 @@ time.sleep(0.5)
 	})
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	_, err := runCommand(
-		"planner",
-		ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
-		workingDirectory,
-		"prompt",
-		logPath,
-		schemaPath,
-	)
+	_, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
+		ActorName:        "planner",
+		Profile:          ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		WorkingDirectory: workingDirectory,
+		Prompt:           "prompt",
+		LastMessagePath:  logPath,
+		SchemaPath:       schemaPath,
+	})
 	if err == nil {
 		t.Fatalf("expected runCommand to fail when actor watchdog sees no progress")
 	}
@@ -95,14 +95,14 @@ printf '{"summary":"ok"}' >"$output_path"
 	})
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	response, err := runCommand(
-		"planner",
-		ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
-		workingDirectory,
-		"prompt",
-		logPath,
-		schemaPath,
-	)
+	response, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
+		ActorName:        "planner",
+		Profile:          ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		WorkingDirectory: workingDirectory,
+		Prompt:           "prompt",
+		LastMessagePath:  logPath,
+		SchemaPath:       schemaPath,
+	})
 	if err != nil {
 		t.Fatalf("runCommand returned error: %v", err)
 	}
@@ -155,14 +155,14 @@ with open(output_path, "w", encoding="utf-8") as handle:
 	t.Setenv("RAIL_ACTOR_REASONING_EFFORT", "low")
 	t.Setenv("RAIL_TEST_INVOCATION_PATH", invocationPath)
 
-	response, err := runCommand(
-		"planner",
-		ActorProfile{Model: " gpt-5.4-mini ", Reasoning: " high "},
-		workingDirectory,
-		"prompt",
-		logPath,
-		schemaPath,
-	)
+	response, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
+		ActorName:        "planner",
+		Profile:          ActorProfile{Model: " gpt-5.4-mini ", Reasoning: " high "},
+		WorkingDirectory: workingDirectory,
+		Prompt:           "prompt",
+		LastMessagePath:  logPath,
+		SchemaPath:       schemaPath,
+	})
 	if err != nil {
 		t.Fatalf("runCommand returned error: %v", err)
 	}
@@ -187,6 +187,164 @@ with open(output_path, "w", encoding="utf-8") as handle:
 	}
 	if invocation.Reasoning != "high" {
 		t.Fatalf("expected runCommand to use normalized profile reasoning, got %q", invocation.Reasoning)
+	}
+}
+
+func TestBuildCodexCLIArgsUsesBackendPolicy(t *testing.T) {
+	workingDirectory := t.TempDir()
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+
+	args := buildCodexCLIArgs(defaultTestActorBackend(), ActorCommandSpec{
+		ActorName:        "planner",
+		Profile:          ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		WorkingDirectory: workingDirectory,
+		Prompt:           "prompt",
+		LastMessagePath:  logPath,
+		SchemaPath:       schemaPath,
+	})
+
+	want := []string{
+		"exec",
+		"-m", "gpt-5.4-mini",
+		"--cd", workingDirectory,
+		"--ephemeral",
+		"--color", "never",
+		"-s", "workspace-write",
+		"--skip-git-repo-check",
+		"-c", `model_reasoning_effort="high"`,
+		"-c", `approval_policy="never"`,
+		"--output-schema", schemaPath,
+		"--output-last-message", logPath,
+		"prompt",
+	}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("unexpected codex args:\ngot  %#v\nwant %#v", args, want)
+	}
+}
+
+func TestRunCommandUsesBackendPolicyForCodexInvocation(t *testing.T) {
+	workingDirectory := t.TempDir()
+	fakeBin := t.TempDir()
+	invocationPath := filepath.Join(workingDirectory, "invocation.json")
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+	eventsPath := filepath.Join(workingDirectory, "events.jsonl")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env python3
+import json
+import os
+import sys
+
+invocation_path = os.environ["RAIL_TEST_INVOCATION_PATH"]
+output_path = None
+
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+
+with open(invocation_path, "w", encoding="utf-8") as handle:
+    json.dump(sys.argv[1:], handle)
+
+print('{"event":"started"}')
+
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump({"summary": "ok"}, handle)
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_TEST_INVOCATION_PATH", invocationPath)
+
+	backend := defaultTestActorBackend()
+	backend.CaptureJSONEvents = true
+	response, err := runCommand(backend, ActorCommandSpec{
+		ActorName:        "planner",
+		Profile:          ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		WorkingDirectory: workingDirectory,
+		Prompt:           "prompt",
+		LastMessagePath:  logPath,
+		SchemaPath:       schemaPath,
+		EventsPath:       eventsPath,
+	})
+	if err != nil {
+		t.Fatalf("runCommand returned error: %v", err)
+	}
+	if got, want := response["summary"], "ok"; got != want {
+		t.Fatalf("unexpected actor response summary: got %#v want %#v", got, want)
+	}
+
+	data, err := os.ReadFile(invocationPath)
+	if err != nil {
+		t.Fatalf("failed to read invocation log: %v", err)
+	}
+
+	var invocation []string
+	if err := json.Unmarshal(data, &invocation); err != nil {
+		t.Fatalf("failed to decode invocation log: %v", err)
+	}
+
+	want := []string{
+		"exec",
+		"-m", "gpt-5.4-mini",
+		"--cd", workingDirectory,
+		"--ephemeral",
+		"--color", "never",
+		"-s", "workspace-write",
+		"--skip-git-repo-check",
+		"-c", `model_reasoning_effort="high"`,
+		"-c", `approval_policy="never"`,
+		"--output-schema", schemaPath,
+		"--output-last-message", logPath,
+		"--json",
+		"prompt",
+	}
+	if !reflect.DeepEqual(invocation, want) {
+		t.Fatalf("unexpected codex invocation:\ngot  %#v\nwant %#v", invocation, want)
+	}
+
+	eventsData, err := os.ReadFile(eventsPath)
+	if err != nil {
+		t.Fatalf("failed to read events log: %v", err)
+	}
+	if got, want := strings.TrimSpace(string(eventsData)), `{"event":"started"}`; got != want {
+		t.Fatalf("unexpected events log: got %q want %q", got, want)
+	}
+}
+
+func TestRunCommandRequiresEventsPathWhenCapturingJSONEvents(t *testing.T) {
+	backend := defaultTestActorBackend()
+	backend.CaptureJSONEvents = true
+
+	_, err := runCommand(backend, ActorCommandSpec{
+		ActorName:        "planner",
+		Profile:          ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		WorkingDirectory: t.TempDir(),
+		Prompt:           "prompt",
+		LastMessagePath:  "response.json",
+		SchemaPath:       "schema.json",
+	})
+	if err == nil {
+		t.Fatalf("expected runCommand to fail when JSON event capture has no events path")
+	}
+	if !strings.Contains(err.Error(), "events path") {
+		t.Fatalf("expected events path error, got %v", err)
+	}
+}
+
+func defaultTestActorBackend() ActorBackendConfig {
+	return ActorBackendConfig{
+		Command:           "codex",
+		Subcommand:        "exec",
+		Sandbox:           "workspace-write",
+		ApprovalPolicy:    "never",
+		SessionMode:       "per_actor",
+		Ephemeral:         true,
+		CaptureJSONEvents: false,
+		SkipGitRepoCheck:  true,
 	}
 }
 

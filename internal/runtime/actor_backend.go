@@ -125,6 +125,11 @@ func validateActorBackendConfig(config ActorBackendConfig) error {
 
 func validateActorBackendEnvironment(environmentName string, environment ActorBackendEnvironment, sandbox string) error {
 	for _, allowedSandbox := range environment.AllowedSandboxes {
+		if allowedSandbox == "danger-full-access" {
+			return fmt.Errorf("actor backend environment %q cannot include danger-full-access in allowed_sandboxes; full access requires trusted operator or CI policy outside target-local .harness policy", environmentName)
+		}
+	}
+	for _, allowedSandbox := range environment.AllowedSandboxes {
 		if allowedSandbox == sandbox {
 			return nil
 		}

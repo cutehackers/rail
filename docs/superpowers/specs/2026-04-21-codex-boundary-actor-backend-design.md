@@ -270,7 +270,7 @@ Documentation checks:
 - Rail's docs clearly state that Codex is the agent runtime and Rail is the governance control plane.
 - Codex CLI flags are no longer hard-coded in actor runtime.
 - Local default actor execution uses `workspace-write`, not `danger-full-access`.
-- Full-access execution requires an allowed environment or explicit opt-in.
+- Full-access execution is currently rejected and awaits future trusted-environment support.
 - Actor final outputs remain schema-valid and unchanged.
 - Codex runtime evidence can be persisted under `runs/` without replacing Rail artifacts.
 - Existing smoke validation remains deterministic.

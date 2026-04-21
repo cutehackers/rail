@@ -2,6 +2,30 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.2.6 - 2026-04-21
+### Added
+- Added Codex actor backend policy support across supervisor and defaults (`.harness/supervisor/actor_backend.yaml`, `assets/defaults/supervisor/actor_backend.yaml`), plus runtime policy execution support via `internal/runtime/actor_backend.go`.
+- Added new release tooling and workflows for gate/publish automation (`tool/prepare_release.sh`, `tool/publish.sh`, `tool/release_gate.sh`, `internal` releasegate updates, and updated workflow files).
+- Added release prep/docs support for agent changelog handling and published release tracing.
+- Added new Codex actor backend design and architecture documentation (`docs/ARCHITECTURE.md`, `docs/ARCHITECTURE-kr.md`, and the 2026-04-21 codex-boundary design docs).
+- Added/expanded tests for actor backend, runtime, integration, runner, and release gate behavior.
+
+### Changed
+- Consolidated release gating from v1/v2 workflow split into a single `release-gate.yml` flow and removed the separate `v2-release-gate.yml`.
+- Changed release orchestration to drive releases from merged `release/v*` branches.
+- Changed Codex actor execution to be driven by backend policy instead of the legacy run command bridge.
+- Changed release and runtime behavior to better trace and control publish/release steps in `internal/runtime/actor_runtime.go`, `internal/runtime/integration.go`, and `internal/runtime/runner.go`.
+
+### Fixed
+- Fixed full-access handling by rejecting full-access behavior in all backend environments and aligning the full-access backend contract and actor-policy checks.
+- Fixed self-authorized full-access backend policy cases.
+- Fixed release preflight behavior on non-main branches.
+- Fixed publish flow to fail before attempting read-only PR creation and to keep publish releases on synced main branch conditions.
+
+### Verification
+- `tool/prepare_release.sh v0.2.6`
+
+
 ## v0.2.5 - 2026-04-21
 
 ### Added

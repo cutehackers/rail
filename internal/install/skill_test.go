@@ -188,7 +188,7 @@ func TestHomebrewFormulaMatchesInstallLayout(t *testing.T) {
 	for _, want := range []string{
 		`homepage "https://github.com/cutehackers/rail"`,
 		`pkgshare.install "assets/skill"`,
-		`cp_r (buildpath/"assets/skill/Rail").children, codex_skill_dir`,
+		`cp_r (pkgshare/"skill/Rail").children, codex_skill_dir`,
 		`prefix/"share/codex/skills/rail"`,
 		`#{opt_pkgshare}/skill/Rail`,
 		`#{opt_prefix}/share/codex/skills/rail`,
@@ -213,6 +213,27 @@ func TestHomebrewFormulaMatchesInstallLayout(t *testing.T) {
 	}
 	if !strings.Contains(formulaText, filepath.ToSlash(strings.TrimPrefix(layout.CodexSkillDir, layout.Prefix+string(filepath.Separator)))) {
 		t.Fatalf("formula drifted from codex skill dir layout %q", layout.CodexSkillDir)
+	}
+}
+
+func TestGoReleaserArchiveIncludesFullSkillTree(t *testing.T) {
+	configPath := filepath.Join(repoRoot(t), ".goreleaser.yaml")
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read goreleaser config: %v", err)
+	}
+	configText := string(config)
+
+	for _, want := range []string{
+		"assets/skill/Rail/SKILL.md",
+		"assets/skill/Rail/references/examples.md",
+	} {
+		if !strings.Contains(configText, want) {
+			t.Fatalf("expected GoReleaser archive config to include %q", want)
+		}
+	}
+	if strings.Contains(configText, "assets/skill/Rail/**/*") {
+		t.Fatalf("expected GoReleaser archive config to avoid incomplete skill glob")
 	}
 }
 

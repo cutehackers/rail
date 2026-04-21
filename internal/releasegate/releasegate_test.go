@@ -79,6 +79,8 @@ func TestV1ReleaseWorkflowProvisionsGoInsteadOfDart(t *testing.T) {
 func TestReleaseWorkflowPublishesGoReleaserArtifactsAndAttestations(t *testing.T) {
 	workflow := readRepoFile(t, ".github", "workflows", "release.yml")
 	for _, expected := range []string{
+		"Verify release formula version",
+		"./tool/verify_release_formula.sh",
 		"goreleaser/goreleaser-action",
 		"args: release --clean",
 		"id-token: write",
@@ -92,6 +94,19 @@ func TestReleaseWorkflowPublishesGoReleaserArtifactsAndAttestations(t *testing.T
 	}
 }
 
+func TestVerifyReleaseFormulaScriptRejectsMismatchedVersion(t *testing.T) {
+	root := repoRoot(t)
+	cmd := exec.Command("bash", "-lc", `GITHUB_REF_NAME=v9.9.9 ./tool/verify_release_formula.sh`)
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected mismatched formula version to fail")
+	}
+	if !strings.Contains(string(output), "formula release mismatch") {
+		t.Fatalf("unexpected output: %s", string(output))
+	}
+}
+
 func TestGoReleaserConfigPublishesRailHomebrewTap(t *testing.T) {
 	config := readRepoFile(t, ".goreleaser.yaml")
 	for _, expected := range []string{
@@ -101,7 +116,7 @@ func TestGoReleaserConfigPublishesRailHomebrewTap(t *testing.T) {
 		"owner: cutehackers",
 		"name: homebrew-rail",
 		"Formula/rail.rb",
-		"assets/skill/Rail",
+		"assets/skill/Rail/SKILL.md",
 	} {
 		if !strings.Contains(config, expected) {
 			t.Fatalf(".goreleaser.yaml missing %q", expected)

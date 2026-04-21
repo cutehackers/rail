@@ -1,8 +1,8 @@
 class Rail < Formula
   desc "Harness control-plane for Codex"
   homepage "https://github.com/cutehackers/rail"
-  url "https://github.com/cutehackers/rail.git", tag: "v0.2.2"
-  version "0.2.2"
+  url "https://github.com/cutehackers/rail.git", tag: "v0.2.4"
+  version "0.2.4"
   license "MIT"
 
   depends_on "go" => :build
@@ -14,7 +14,7 @@ class Rail < Formula
 
     codex_skill_dir = prefix/"share/codex/skills/rail"
     codex_skill_dir.mkpath
-    cp_r (buildpath/"assets/skill/Rail").children, codex_skill_dir
+    cp_r (pkgshare/"skill/Rail").children, codex_skill_dir
   end
 
   def caveats

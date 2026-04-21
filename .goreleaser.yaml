@@ -33,7 +33,8 @@ archives:
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     files:
       - README.md
-      - assets/skill/Rail/**/*
+      - assets/skill/Rail/SKILL.md
+      - assets/skill/Rail/references/examples.md
 
 checksum:
   name_template: checksums.txt
@@ -69,7 +70,7 @@ brews:
 
       codex_skill_dir = prefix/"share/codex/skills/rail"
       codex_skill_dir.mkpath
-      cp_r (buildpath/"assets/skill/Rail").children, codex_skill_dir
+      cp_r (pkgshare/"skill/Rail").children, codex_skill_dir
     test: |
       system "#{bin}/rail", "init", "--project-root", testpath/"target"
       assert_path_exists testpath/"target/.harness/project.yaml"

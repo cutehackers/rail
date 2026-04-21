@@ -8,6 +8,12 @@ export GIT_PAGER="${GIT_PAGER:-cat}"
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 start_branch=""
 
+log_step() {
+  local step="$1"
+  local message="$2"
+  printf 'publish: step %s - %s\n' "$step" "$message" >&2
+}
+
 usage() {
   cat >&2 <<'EOF'
 Usage: tool/publish.sh vX.Y.Z [--local-only] [--agent-changelog]
@@ -35,6 +41,7 @@ if [[ -z "$version" ]]; then
 fi
 shift
 
+# 01. Validate input and execution mode.
 local_only=false
 agent_changelog=false
 while (($#)); do
@@ -201,9 +208,12 @@ if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "invalid release version: expected vX.Y.Z, got '$version'" >&2
   exit 1
 fi
+log_step "01" "validate inputs"
 
 cd "$REPO_ROOT"
 
+# 02. Validate repository state before creating release edits.
+log_step "02" "check repository state"
 if [[ "$(git rev-parse --is-inside-work-tree)" != "true" ]]; then
   echo "not inside a git work tree" >&2
   exit 1
@@ -228,6 +238,8 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 1
 fi
 
+# 03. Ensure this version and release branch do not already exist.
+log_step "03" "check release uniqueness"
 if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
   echo "release tag already exists locally: $version" >&2
   exit 1
@@ -238,6 +250,7 @@ if git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null 2>&1;
   exit 1
 fi
 
+# 04. Create an isolated release branch from main.
 branch="release/${version}"
 if git rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
   echo "release branch already exists locally: $branch" >&2
@@ -254,8 +267,11 @@ if grep -Eq "^## ${version}([[:space:]-]|$)" CHANGELOG.md; then
   exit 1
 fi
 
+log_step "04" "create release branch"
 git checkout -b "$branch"
 
+# 05. Generate and insert the release changelog section.
+log_step "05" "generate changelog"
 if $agent_changelog; then
   changelog_section=$(agent_changelog_section)
 else
@@ -268,17 +284,24 @@ export CHANGELOG_SECTION="$changelog_section"
 perl -0pe 'BEGIN { $section = $ENV{CHANGELOG_SECTION} . "\n\n" } if (!s/(\n## v[0-9]+\.[0-9]+\.[0-9]+[^\n]*\n)/\n$section$1/s) { $_ .= "\n$section" }' CHANGELOG.md > "$tmp_changelog"
 mv "$tmp_changelog" CHANGELOG.md
 
+# 06. Update the source Homebrew formula to the release tag.
+log_step "06" "update homebrew formula"
 export RELEASE_VERSION="$version"
 export RELEASE_NUMBER="${version#v}"
 perl -0pi -e 's/tag: "v[0-9]+\.[0-9]+\.[0-9]+"/tag: "$ENV{RELEASE_VERSION}"/; s/version "[0-9]+\.[0-9]+\.[0-9]+"/version "$ENV{RELEASE_NUMBER}"/' packaging/homebrew/rail.rb
 
+# 07. Verify generated edits before committing.
+log_step "07" "verify release edits"
 GITHUB_REF_NAME="$version" ./tool/verify_release_formula.sh
 git diff --check
 
+# 08. Commit the release preparation changes.
+log_step "08" "commit release prep"
 git add CHANGELOG.md packaging/homebrew/rail.rb
 git commit -m "chore: prepare ${version} release"
 
 if $local_only; then
+  log_step "09" "skip publish pull request (local only)"
   cat <<EOF
 release preparation commit created on $branch
 
@@ -292,6 +315,8 @@ EOF
   exit 0
 fi
 
+# 09. Push the branch and open the release PR.
+log_step "09" "publish pull request"
 git push -u origin "$branch"
 
 pr_body=$(mktemp)

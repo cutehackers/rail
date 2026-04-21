@@ -1,0 +1,76 @@
+version: 2
+
+project_name: rail
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: rail
+    main: ./cmd/rail
+    binary: rail
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: rail-archives
+    ids:
+      - rail
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - assets/skill/Rail/**/*
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+
+# Publishes Formula/rail.rb into cutehackers/homebrew-rail.
+brews:
+  - name: rail
+    ids:
+      - rail-archives
+    homepage: https://github.com/cutehackers/rail
+    description: Harness control-plane for Codex
+    license: MIT
+    directory: Formula
+    repository:
+      owner: cutehackers
+      name: homebrew-rail
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: rail-release-bot
+      email: actions@github.com
+    install: |
+      bin.install "rail"
+
+      pkgshare.install "assets/skill"
+
+      codex_skill_dir = prefix/"share/codex/skills/rail"
+      codex_skill_dir.mkpath
+      cp_r (buildpath/"assets/skill/Rail").children, codex_skill_dir
+    test: |
+      system "#{bin}/rail", "init", "--project-root", testpath/"target"
+      assert_path_exists testpath/"target/.harness/project.yaml"
+      assert_path_exists prefix/"share/codex/skills/rail/SKILL.md"

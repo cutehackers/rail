@@ -16,6 +16,7 @@ Current baseline:
 - `v2` runtime surface is implemented locally
 - `v2` now has CI coverage and a canonical operating model
 - the installed-product direction is now fixed: packaged `rail`, bundled skill, project-local `.harness`
+- the primary distribution path is the `cutehackers/rail` Homebrew tap backed by GitHub Releases
 - remaining follow-up is release-surface polish, packaging consistency, and migration cleanup
 
 ## Must
@@ -54,3 +55,6 @@ Current baseline:
 
 - [x] Retire stale historical documentation that still references the old Dart runtime
   Remaining Dart references are now explicitly confined to archived evidence and historical planning records. Active product, release, and operator documentation now follows the Go product contract.
+
+- [x] Align the release surface with the Homebrew tap strategy
+  Release packaging now centers on GitHub Releases, GoReleaser artifacts, provenance attestation, and the `cutehackers/rail` Homebrew tap as the initial install channel.

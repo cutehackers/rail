@@ -15,7 +15,7 @@ The governing model is:
 Rail is intended to be installed and used like any other developer tool:
 
 ```bash
-brew install rail
+brew install cutehackers/rail/rail
 cd /absolute/path/to/target-repo
 rail init
 ```
@@ -27,6 +27,11 @@ The installed product includes:
 - embedded defaults for supervisor policy, actors, rules, rubrics, and templates
 
 The source repository is the development and contribution origin for those assets. It is not the required runtime root for end users.
+
+Rail is distributed first through the `cutehackers/rail` Homebrew tap backed by
+GitHub Releases from `https://github.com/cutehackers/rail`. GoReleaser builds
+the tagged CLI artifacts, attaches checksums and provenance, and publishes the
+tap formula that installs both the binary and bundled Codex skill assets.
 
 ## Core Runtime Components
 

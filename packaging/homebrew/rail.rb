@@ -1,10 +1,8 @@
 class Rail < Formula
   desc "Harness control-plane for Codex"
-  # Release template: replace metadata with a published release before shipping.
-  homepage "https://example.com/rail"
-  url "https://example.com/rail/archive/refs/tags/v0.0.0.tar.gz"
-  version "0.0.0"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  homepage "https://github.com/cutehackers/rail"
+  url "https://github.com/cutehackers/rail.git", tag: "v0.2.2"
+  version "0.2.2"
   license "MIT"
 
   depends_on "go" => :build

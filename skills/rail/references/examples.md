@@ -1,149 +1,124 @@
 # Rail Examples
 
-## Bug fix
+These examples show the current user-facing contract: ask Codex to use the Rail
+skill, give the target repository path, and describe the work in natural
+language. The skill infers the request shape and materializes it with
+`rail compose-request --stdin`; users should not hand-write harness YAML.
 
-User request:
+Use `/absolute/path/to/target-repo` as a placeholder for the target application
+repository. The target repository is not the Rail source checkout.
 
-`프로필 화면에서 pull-to-refresh 후 가끔 로딩 인디케이터가 사라지지 않는 문제를 고쳐줘`
+## Bug Fix Rubric
 
-Suggested draft:
+Prompt:
 
-```json
-{
-  "request_version": "1",
-  "project_root": "/absolute/path/to/target-repo",
-  "task_type": "bug_fix",
-  "goal": "프로필 화면에서 pull-to-refresh 후 가끔 로딩 인디케이터가 사라지지 않는 문제 수정",
-  "context": {
-    "feature": "profile",
-    "suspected_files": [
-      "internal/profile/service.go"
-    ],
-    "related_files": [],
-    "validation_roots": [],
-    "validation_targets": []
-  },
-  "definition_of_done": [
-    "refresh 완료 후 loading state가 정상 해제된다",
-    "관련 테스트 또는 영향 범위 검토가 가능하다",
-    "analyze 기준을 충족한다"
-  ]
-}
+```text
+Use the Rail skill.
+Target repo: /absolute/path/to/target-repo
+Goal: Fix the intermittent profile refresh issue where the loading indicator sometimes remains visible after pull-to-refresh completes.
+Context: The issue appears on the profile screen after a successful refresh.
+Constraint: Do not change the public API contract.
+Definition of done: The loading indicator clears after refresh, related regression coverage or equivalent focused validation is added, and analyze/build still passes.
 ```
 
-Materialize it:
+Inferred task_type: `bug_fix`
 
-```bash
-cat /absolute/path/to/request-draft.json | rail compose-request --stdin
+Expected skill behavior:
+
+- infer a low-risk bug-fix request
+- keep `validation_profile` omitted so Rail uses the real `standard` path
+- materialize the normalized request with `rail compose-request --stdin`
+- report the created `.harness/requests/request.yaml` path
+
+## Feature Addition Rubric
+
+Prompt:
+
+```text
+Use the Rail skill.
+Target repo: /absolute/path/to/target-repo
+Goal: Add a five-minute in-memory cache for profile lookup results.
+Context: The cache belongs to the profile feature and should reuse existing service patterns.
+Constraint: Do not introduce a new external dependency.
+Constraint: Preserve the existing domain interface unless the request becomes unsafe without a small interface change.
+Definition of done: Repeated profile lookups reuse fresh cached data, stale entries are refreshed after five minutes, focused tests cover the new behavior, and analyze/build still passes.
 ```
 
-Execution mode:
+Inferred task_type: `feature_addition`
 
-- omit `validation_profile` for the normal `real` path
-- use `validation_profile: smoke` only for harness-only verification
+Expected skill behavior:
 
-## Feature addition
+- infer a low-risk feature request
+- keep constraints concrete instead of inventing extra policy
+- leave file hints empty unless the user supplied reliable paths
+- materialize the normalized request with `rail compose-request --stdin`
 
-User request:
+## Safe Refactor Rubric
 
-`사용자 프로필 조회 결과를 5분간 메모리 캐시해줘`
+Prompt:
 
-Suggested draft:
-
-```json
-{
-  "request_version": "1",
-  "project_root": "/absolute/path/to/target-repo",
-  "task_type": "feature_addition",
-  "goal": "사용자 프로필 조회 결과를 5분간 메모리 캐시한다",
-  "context": {
-    "feature": "profile",
-    "suspected_files": [],
-    "related_files": [],
-    "validation_roots": [],
-    "validation_targets": []
-  },
-  "constraints": [
-    "domain interface 변경 금지",
-    "새 패키지 추가 금지"
-  ],
-  "definition_of_done": [
-    "프로필 조회 결과가 5분 동안 재사용된다",
-    "관련 테스트 또는 영향 범위 검토가 가능하다",
-    "analyze 기준을 충족한다"
-  ]
-}
+```text
+Use the Rail skill.
+Target repo: /absolute/path/to/target-repo
+Goal: Split the club details screen build logic into smaller section-level units.
+Context: This is a behavior-preserving cleanup of an existing screen.
+Constraint: Preserve user-visible behavior exactly.
+Constraint: Do not change state management patterns.
+Definition of done: The screen behaves the same, the build logic is easier to scan by section, related tests or golden checks still pass, and analyze/build still passes.
 ```
 
-## Safe refactor
+Inferred task_type: `safe_refactor`
 
-User request:
+Expected skill behavior:
 
-`club details 페이지의 build 로직을 섹션 단위로 분리해줘. 동작은 바뀌면 안 돼`
+- infer a medium-risk safe-refactor request
+- keep the definition of done centered on unchanged behavior
+- avoid expanding the task into unrelated redesign
+- materialize the normalized request with `rail compose-request --stdin`
 
-Suggested draft:
+## Test Repair Rubric
 
-```json
-{
-  "request_version": "1",
-  "project_root": "/absolute/path/to/target-repo",
-  "task_type": "safe_refactor",
-  "goal": "club details 화면의 build 로직을 섹션 단위로 분리",
-  "context": {
-    "feature": "club_details",
-    "suspected_files": [],
-    "related_files": [],
-    "validation_roots": [],
-    "validation_targets": []
-  },
-  "constraints": [
-    "동작 변경 금지"
-  ],
-  "definition_of_done": [
-    "동작이 바뀌지 않는다",
-    "관련 테스트 또는 영향 범위 검토가 가능하다",
-    "analyze 기준을 충족한다"
-  ]
-}
+Prompt:
+
+```text
+Use the Rail skill.
+Target repo: /absolute/path/to/target-repo
+Goal: Repair the flaky profile repository test that intermittently fails when cached data expires.
+Context: The failure is in the profile test suite and should not require product behavior changes unless the test exposes a real bug.
+Constraint: Keep production changes out of scope unless they are necessary to make the test truthful.
+Definition of done: The flaky test is deterministic, the assertion remains specific to the profile cache behavior, no unrelated tests are rewritten, and the focused test target passes.
 ```
 
-Materialize from a saved draft file:
+Inferred task_type: `test_repair`
 
-```bash
-rail compose-request --input /absolute/path/to/request-draft.json
+Expected skill behavior:
+
+- infer a low-risk test-repair request
+- keep the change targeted to the reported test or coverage gap
+- preserve product behavior unless the user explicitly accepts a bug fix
+- materialize the normalized request with `rail compose-request --stdin`
+
+## Smoke Mode
+
+Smoke mode is an execution profile, not a separate task family. Use it only when
+the user asks to verify Rail wiring or the control-plane path itself.
+
+Prompt:
+
+```text
+Use the Rail skill.
+Target repo: /absolute/path/to/target-repo
+Goal: Verify the Rail harness wiring only.
+Constraint: Smoke mode.
+Constraint: Do not modify application source files.
+Definition of done: The smoke actor flow completes, application source files are unchanged, and smoke evidence is left in the artifact directory.
 ```
 
-## Smoke mode
+Inferred task_type: `test_repair`
+Inferred execution mode: `smoke`
 
-User request:
+Expected skill behavior:
 
-`이 저장소의 Rail harness 연결만 빠르게 검증해줘. smoke mode로 실행하고 앱 소스는 수정하지 마`
-
-Suggested draft:
-
-```json
-{
-  "request_version": "1",
-  "project_root": "/absolute/path/to/target-repo",
-  "task_type": "test_repair",
-  "goal": "Rail harness wiring only 빠르게 검증",
-  "context": {
-    "feature": "harness",
-    "suspected_files": [],
-    "related_files": [],
-    "validation_roots": [],
-    "validation_targets": []
-  },
-  "constraints": [
-    "앱 소스 수정 금지",
-    "harness wiring 확인에만 집중"
-  ],
-  "definition_of_done": [
-    "smoke actor flow가 끝까지 실행된다",
-    "앱 소스는 바뀌지 않는다",
-    "smoke validation evidence가 남는다"
-  ],
-  "risk_tolerance": "low",
-  "validation_profile": "smoke"
-}
-```
+- set `validation_profile` to `smoke`
+- keep the request scoped to harness verification
+- materialize the normalized request with `rail compose-request --stdin`

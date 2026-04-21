@@ -95,6 +95,26 @@ func TestBundledSkillMatchesCurrentCLIWorkflow(t *testing.T) {
 	if !strings.Contains(examples, "rail compose-request --stdin") {
 		t.Fatalf("expected bundled examples to use the installed rail command, got %q", examples)
 	}
+	for _, want := range []string{
+		"Use the Rail skill.",
+		"Inferred task_type: `bug_fix`",
+		"Inferred task_type: `feature_addition`",
+		"Inferred task_type: `safe_refactor`",
+		"Inferred task_type: `test_repair`",
+	} {
+		if !strings.Contains(examples, want) {
+			t.Fatalf("expected bundled examples to include %q, got %q", want, examples)
+		}
+	}
+	for _, rejected := range []string{
+		"Suggested draft:",
+		`"request_version"`,
+		"review_only",
+	} {
+		if strings.Contains(examples, rejected) {
+			t.Fatalf("expected bundled examples to avoid %q, got %q", rejected, examples)
+		}
+	}
 	if strings.Contains(examples, "/Users/") || strings.Contains(examples, "~/.codex") {
 		t.Fatalf("expected bundled examples to avoid checkout-specific paths, got %q", examples)
 	}
@@ -166,6 +186,7 @@ func TestHomebrewFormulaMatchesInstallLayout(t *testing.T) {
 	formulaText := string(formula)
 
 	for _, want := range []string{
+		`homepage "https://github.com/cutehackers/rail"`,
 		`pkgshare.install "assets/skill"`,
 		`cp_r (buildpath/"assets/skill/Rail").children, codex_skill_dir`,
 		`prefix/"share/codex/skills/rail"`,
@@ -177,12 +198,52 @@ func TestHomebrewFormulaMatchesInstallLayout(t *testing.T) {
 			t.Fatalf("expected formula to contain %q", want)
 		}
 	}
+	for _, rejected := range []string{
+		"https://example.com",
+		`version "0.0.0"`,
+		"0000000000000000000000000000000000000000000000000000000000000000",
+	} {
+		if strings.Contains(formulaText, rejected) {
+			t.Fatalf("expected formula to avoid release placeholder %q", rejected)
+		}
+	}
 
 	if got, want := layout.PackageSkillDir, filepath.Join(layout.PackageRoot, "skill", "Rail"); got != want {
 		t.Fatalf("packaged skill dir drifted from package root: got %q want %q", got, want)
 	}
 	if !strings.Contains(formulaText, filepath.ToSlash(strings.TrimPrefix(layout.CodexSkillDir, layout.Prefix+string(filepath.Separator)))) {
 		t.Fatalf("formula drifted from codex skill dir layout %q", layout.CodexSkillDir)
+	}
+}
+
+func TestDeprecatedInstallSkillScriptPointsToPackagedInstall(t *testing.T) {
+	scriptPath := filepath.Join(repoRoot(t), "scripts", "install_skill.sh")
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read install_skill.sh: %v", err)
+	}
+	scriptText := string(script)
+
+	for _, want := range []string{
+		"brew install cutehackers/rail/rail",
+		"GitHub Releases",
+		"packaged releases bundle the Codex skill",
+		"brew install --build-from-source ./packaging/homebrew/rail.rb",
+		"go test ./internal/install -v",
+	} {
+		if !strings.Contains(scriptText, want) {
+			t.Fatalf("expected install_skill.sh to mention %q", want)
+		}
+	}
+	for _, rejected := range []string{
+		"ln -s",
+		"symlink",
+		"/Users/",
+		"~/.codex",
+	} {
+		if strings.Contains(scriptText, rejected) {
+			t.Fatalf("expected install_skill.sh to avoid %q", rejected)
+		}
 	}
 }
 

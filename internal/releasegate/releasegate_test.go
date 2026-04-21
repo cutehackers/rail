@@ -76,6 +76,42 @@ func TestV1ReleaseWorkflowProvisionsGoInsteadOfDart(t *testing.T) {
 	}
 }
 
+func TestReleaseWorkflowPublishesGoReleaserArtifactsAndAttestations(t *testing.T) {
+	workflow := readRepoFile(t, ".github", "workflows", "release.yml")
+	for _, expected := range []string{
+		"goreleaser/goreleaser-action",
+		"args: release --clean",
+		"id-token: write",
+		"attestations: write",
+		"actions/attest@v4",
+		"dist/checksums.txt",
+	} {
+		if !strings.Contains(workflow, expected) {
+			t.Fatalf("release workflow missing %q", expected)
+		}
+	}
+}
+
+func TestGoReleaserConfigPublishesRailHomebrewTap(t *testing.T) {
+	config := readRepoFile(t, ".goreleaser.yaml")
+	for _, expected := range []string{
+		"project_name: rail",
+		"main: ./cmd/rail",
+		"homepage: https://github.com/cutehackers/rail",
+		"owner: cutehackers",
+		"name: homebrew-rail",
+		"Formula/rail.rb",
+		"assets/skill/Rail",
+	} {
+		if !strings.Contains(config, expected) {
+			t.Fatalf(".goreleaser.yaml missing %q", expected)
+		}
+	}
+	if strings.Contains(config, "example.com") {
+		t.Fatalf(".goreleaser.yaml still contains placeholder URL")
+	}
+}
+
 func TestV2ReleaseGateRunsFullGoFirstChecks(t *testing.T) {
 	script := readRepoFile(t, "tool", "v2_release_gate.sh")
 	legacyRuntime := "bin/rail." + "d" + "art"

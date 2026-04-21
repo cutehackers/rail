@@ -15,7 +15,7 @@ The point of Rail is not to make users hand-author `.harness/requests/request.ya
 Install Rail once:
 
 ```bash
-brew install rail
+brew install cutehackers/rail/rail
 ```
 
 Initialize the target repository once:
@@ -141,11 +141,30 @@ It owns:
 
 End users do not need this repository checked out to use Rail as a product.
 
+## Distribution
+
+The primary release channel is the `cutehackers/rail` Homebrew tap:
+
+```bash
+brew install cutehackers/rail/rail
+```
+
+Tagged releases publish GitHub Release artifacts from
+`https://github.com/cutehackers/rail`, then update the Homebrew tap formula.
+The release pipeline is GoReleaser-based and keeps the `rail` binary, bundled
+Rail Codex skill, checksums, and provenance attestation in the same release
+unit.
+
+`homebrew/core` is a later distribution target, not the initial channel. The
+tap remains the authoritative install path while Rail is still establishing its
+public release cadence and package-manager notability.
+
 ## Release Checks
 
 For contributors working on Rail itself:
 
 - automated smoke gate: `./tool/v2_release_gate.sh`
+- release workflow: `.github/workflows/release.yml`
 
 The smoke gate proves the fast control-plane path, including request
 materialization, execution, integration, artifact validation, and learning-state

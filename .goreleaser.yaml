@@ -16,6 +16,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
+      - -X rail/internal/cli.appVersion={{.Version}}
     goos:
       - darwin
       - linux

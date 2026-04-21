@@ -13,6 +13,7 @@ func TestAppRegistersCoreCommands(t *testing.T) {
 	app := NewApp()
 	got := app.CommandNames()
 	want := []string{
+		"version",
 		"init-request",
 		"compose-request",
 		"validate-request",
@@ -38,6 +39,31 @@ func TestAppRegistersCoreCommands(t *testing.T) {
 func TestAppRunRejectsUnknownCommand(t *testing.T) {
 	if got := NewApp().Run([]string{"unknown-command"}); got == 0 {
 		t.Fatalf("expected non-zero exit code for unknown command, got %d", got)
+	}
+}
+
+func TestAppRunVersion(t *testing.T) {
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{"version"}); got != 0 {
+		t.Fatalf("expected zero exit code for version, got %d", got)
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	if got := stdout.String(); got == "" {
+		t.Fatalf("expected version output")
 	}
 }
 

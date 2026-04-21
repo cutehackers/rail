@@ -5,7 +5,7 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 usage() {
   cat >&2 <<'EOF'
-Usage: tool/publish.sh vX.Y.Z [--local-only]
+Usage: tool/publish.sh vX.Y.Z [--local-only] [--agent-changelog]
 
 Prepares a release pull request by:
   - creating release/vX.Y.Z from main
@@ -18,7 +18,8 @@ After the PR merges, publish the release with:
   HOMEBREW_TAP_GITHUB_TOKEN=... tool/prepare_release.sh vX.Y.Z --push
 
 Options:
-  --local-only  Create the local branch and commit, but do not push or open a PR.
+  --local-only       Create the local branch and commit, but do not push or open a PR.
+  --agent-changelog  Ask Codex to summarize release changes for CHANGELOG.md.
 EOF
 }
 
@@ -30,10 +31,14 @@ fi
 shift
 
 local_only=false
+agent_changelog=false
 while (($#)); do
   case "$1" in
     --local-only)
       local_only=true
+      ;;
+    --agent-changelog)
+      agent_changelog=true
       ;;
     -h|--help)
       usage
@@ -47,6 +52,110 @@ while (($#)); do
   esac
   shift
 done
+
+validate_changelog_section() {
+  local section="$1"
+  local first_line="${section%%$'\n'*}"
+
+  if [[ ! "$first_line" =~ ^##[[:space:]]${version}[[:space:]]-[[:space:]][0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "generated changelog must start with '## ${version} - YYYY-MM-DD'" >&2
+    exit 1
+  fi
+
+  if [[ "$section" != *"### Verification"* || "$section" != *"tool/prepare_release.sh ${version}"* ]]; then
+    echo "generated changelog must include verification for tool/prepare_release.sh ${version}" >&2
+    exit 1
+  fi
+
+  if [[ "$section" == *'```'* ]]; then
+    echo "generated changelog must be plain markdown, not a fenced block" >&2
+    exit 1
+  fi
+
+  if grep -Eq '(^|[[:space:]])(~|/Users/|/home/)' <<<"$section"; then
+    echo "generated changelog must not include home-directory paths" >&2
+    exit 1
+  fi
+}
+
+template_changelog_section() {
+  local release_date
+  release_date=$(date +%F)
+  cat <<EOF
+## ${version} - ${release_date}
+
+### Changed
+
+- Prepared ${version} release.
+
+### Verification
+
+- \`tool/prepare_release.sh ${version}\`
+EOF
+}
+
+agent_changelog_section() {
+  if ! command -v codex >/dev/null 2>&1; then
+    echo "codex is required when --agent-changelog is used" >&2
+    exit 1
+  fi
+
+  local previous_tag range commit_log file_stat prompt_file output_file section
+  git fetch --tags --quiet origin >/dev/null 2>&1 || true
+  previous_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n1 || true)
+  if [[ -n "$previous_tag" ]]; then
+    range="${previous_tag}..HEAD"
+    file_stat=$(git diff --stat "$range" || true)
+  else
+    range="HEAD"
+    file_stat=$(git log --first-parent --stat --oneline --max-count=50 HEAD || true)
+  fi
+
+  commit_log=$(git log --first-parent --pretty=format:'%h %s' "$range")
+  prompt_file=$(mktemp)
+  output_file=$(mktemp)
+
+  cat > "$prompt_file" <<EOF
+Write the CHANGELOG.md section for Rail release ${version}.
+
+Output only the markdown section. Do not wrap it in a code fence.
+The first line must be exactly:
+## ${version} - $(date +%F)
+
+Rules:
+- Summarize only the concrete changes visible in the commit log and file stat below.
+- Group entries under concise headings such as Added, Changed, Fixed, or Verification.
+- Include a Verification section with exactly this command as a bullet:
+  \`tool/prepare_release.sh ${version}\`
+- Do not include home-directory paths such as /Users/<name>/... or ~/...
+- Do not mention review_only.
+
+Previous release tag: ${previous_tag:-none}
+
+Commit log:
+${commit_log:-No commit log available.}
+
+File stat:
+${file_stat:-No file stat available.}
+EOF
+
+  if ! codex exec \
+    -C "$REPO_ROOT" \
+    --sandbox read-only \
+    --ephemeral \
+    -c 'approval_policy="never"' \
+    --color never \
+    -o "$output_file" \
+    - < "$prompt_file" >/dev/null; then
+    echo "codex failed to generate changelog section" >&2
+    exit 1
+  fi
+
+  section=$(cat "$output_file")
+  rm -f "$prompt_file" "$output_file"
+  validate_changelog_section "$section"
+  printf '%s\n' "$section"
+}
 
 if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "invalid release version: expected vX.Y.Z, got '$version'" >&2
@@ -103,20 +212,12 @@ fi
 
 git checkout -b "$branch"
 
-release_date=$(date +%F)
-changelog_section=$(cat <<EOF
-## ${version} - ${release_date}
-
-### Changed
-
-- Prepared ${version} release.
-
-### Verification
-
-- \`tool/prepare_release.sh ${version}\`
-
-EOF
-)
+if $agent_changelog; then
+  changelog_section=$(agent_changelog_section)
+else
+  changelog_section=$(template_changelog_section)
+fi
+validate_changelog_section "$changelog_section"
 
 tmp_changelog=$(mktemp)
 export CHANGELOG_SECTION="$changelog_section"

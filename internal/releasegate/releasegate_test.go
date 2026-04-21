@@ -139,8 +139,14 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 	for _, expected := range []string{
 		"CHANGELOG.md",
 		"packaging/homebrew/rail.rb",
+		"--agent-changelog",
+		"agent_changelog=false",
 		`branch="release/${version}"`,
 		`git checkout -b "$branch"`,
+		"codex exec",
+		"--sandbox read-only",
+		`approval_policy="never"`,
+		"validate_changelog_section",
 		`git commit -m "chore: prepare ${version} release"`,
 		`./tool/verify_release_formula.sh`,
 		"gh pr create",
@@ -149,6 +155,83 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("publish script missing %q", expected)
 		}
+	}
+}
+
+func TestPublishScriptUsesAgentChangelogWhenRequested(t *testing.T) {
+	repo := newPublishFixture(t)
+
+	fakeBin := filepath.Join(t.TempDir(), "fake-bin")
+	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
+		t.Fatalf("create fake bin: %v", err)
+	}
+	writeExecutable(t, filepath.Join(fakeBin, "gh"), "#!/usr/bin/env bash\nexit 0\n")
+	writeExecutable(t, filepath.Join(fakeBin, "codex"), strings.Join([]string{
+		"#!/usr/bin/env bash",
+		"set -euo pipefail",
+		`out=""`,
+		"while (($#)); do",
+		`  if [[ "$1" == "-o" || "$1" == "--output-last-message" ]]; then`,
+		`    out="$2"`,
+		"    shift 2",
+		"    continue",
+		"  fi",
+		"  shift",
+		"done",
+		`if [[ -z "$out" ]]; then`,
+		`  echo "missing output file" >&2`,
+		"  exit 1",
+		"fi",
+		`cat > "$out" <<'EOF'`,
+		"## v7.8.9 - 2026-04-21",
+		"",
+		"### Changed",
+		"",
+		"- Summarized by fake changelog agent.",
+		"",
+		"### Verification",
+		"",
+		"- `tool/prepare_release.sh v7.8.9`",
+		"EOF",
+		"",
+	}, "\n"))
+
+	cmd := exec.Command("./tool/publish.sh", "v7.8.9", "--agent-changelog", "--local-only")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("publish with agent changelog failed: %v\n%s", err, string(output))
+	}
+
+	changelog := readFile(t, filepath.Join(repo, "CHANGELOG.md"))
+	for _, expected := range []string{
+		"## v7.8.9 - 2026-04-21",
+		"Summarized by fake changelog agent.",
+		"`tool/prepare_release.sh v7.8.9`",
+	} {
+		if !strings.Contains(changelog, expected) {
+			t.Fatalf("CHANGELOG.md missing %q:\n%s", expected, changelog)
+		}
+	}
+	if strings.Contains(changelog, "Prepared v7.8.9 release.") {
+		t.Fatalf("agent changelog should replace the template changelog:\n%s", changelog)
+	}
+
+	formula := readFile(t, filepath.Join(repo, "packaging", "homebrew", "rail.rb"))
+	for _, expected := range []string{`tag: "v7.8.9"`, `version "7.8.9"`} {
+		if !strings.Contains(formula, expected) {
+			t.Fatalf("formula missing %q:\n%s", expected, formula)
+		}
+	}
+
+	status := gitOutput(t, repo, "status", "--short")
+	if strings.TrimSpace(status) != "" {
+		t.Fatalf("expected clean fixture repo after publish, got:\n%s", status)
+	}
+	commit := gitOutput(t, repo, "log", "-1", "--pretty=%s")
+	if strings.TrimSpace(commit) != "chore: prepare v7.8.9 release" {
+		t.Fatalf("unexpected commit subject: %q", strings.TrimSpace(commit))
 	}
 }
 
@@ -297,6 +380,85 @@ func repoRoot(t *testing.T) string {
 		t.Fatalf("failed to resolve repo root: %v", err)
 	}
 	return root
+}
+
+func newPublishFixture(t *testing.T) string {
+	t.Helper()
+
+	temp := t.TempDir()
+	repo := filepath.Join(temp, "repo")
+	for _, dir := range []string{
+		filepath.Join(repo, "tool"),
+		filepath.Join(repo, "packaging", "homebrew"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("create fixture dir %s: %v", dir, err)
+		}
+	}
+
+	copyFixtureFile(t, filepath.Join(repoRoot(t), "tool", "publish.sh"), filepath.Join(repo, "tool", "publish.sh"), 0o755)
+	copyFixtureFile(t, filepath.Join(repoRoot(t), "tool", "verify_release_formula.sh"), filepath.Join(repo, "tool", "verify_release_formula.sh"), 0o755)
+	copyFixtureFile(t, filepath.Join(repoRoot(t), "CHANGELOG.md"), filepath.Join(repo, "CHANGELOG.md"), 0o644)
+	copyFixtureFile(t, filepath.Join(repoRoot(t), "packaging", "homebrew", "rail.rb"), filepath.Join(repo, "packaging", "homebrew", "rail.rb"), 0o644)
+
+	gitRun(t, repo, "init", "-b", "main")
+	gitRun(t, repo, "config", "user.email", "rail-release-test@example.invalid")
+	gitRun(t, repo, "config", "user.name", "Rail Release Test")
+	gitRun(t, repo, "add", ".")
+	gitRun(t, repo, "commit", "-m", "test fixture")
+
+	origin := filepath.Join(temp, "origin.git")
+	gitRun(t, temp, "init", "--bare", origin)
+	gitRun(t, repo, "remote", "add", "origin", origin)
+
+	return repo
+}
+
+func copyFixtureFile(t *testing.T, src, dst string, mode os.FileMode) {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read fixture source %s: %v", src, err)
+	}
+	if err := os.WriteFile(dst, data, mode); err != nil {
+		t.Fatalf("write fixture file %s: %v", dst, err)
+	}
+}
+
+func writeExecutable(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("write executable %s: %v", path, err)
+	}
+}
+
+func gitRun(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(output))
+	}
+}
+
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(output))
+	}
+	return string(output)
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
 }
 
 func readFormulaTag(t *testing.T) string {

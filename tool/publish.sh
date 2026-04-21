@@ -100,6 +100,27 @@ assert_main_synchronized() {
   fi
 }
 
+assert_pr_create_permission() {
+  if $local_only; then
+    return
+  fi
+
+  local permission
+  permission=$(gh repo view --json viewerPermission --jq .viewerPermission 2>/dev/null || true)
+  case "$permission" in
+    WRITE|MAINTAIN|ADMIN)
+      ;;
+    "")
+      echo "gh cannot determine pull request permission for this repository" >&2
+      exit 1
+      ;;
+    *)
+      echo "gh cannot create pull requests for this repository; viewerPermission=$permission" >&2
+      exit 1
+      ;;
+  esac
+}
+
 validate_changelog_section() {
   local section="$1"
   local first_line="${section%%$'\n'*}"
@@ -237,6 +258,7 @@ if ! command -v gh >/dev/null 2>&1; then
   echo "gh is required to open the release pull request" >&2
   exit 1
 fi
+assert_pr_create_permission
 
 # 03. Ensure this version and release branch do not already exist.
 log_step "03" "check release uniqueness"

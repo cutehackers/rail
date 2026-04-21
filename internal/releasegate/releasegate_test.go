@@ -167,6 +167,8 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 		"GIT_TERMINAL_PROMPT",
 		"BatchMode=yes",
 		"assert_main_synchronized",
+		"assert_pr_create_permission",
+		"viewerPermission",
 		"codex exec",
 		"--sandbox read-only",
 		`approval_policy="never"`,
@@ -179,6 +181,42 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("publish script missing %q", expected)
 		}
+	}
+}
+
+func TestPublishScriptRejectsReadOnlyPRPermission(t *testing.T) {
+	repo := newPublishFixture(t)
+
+	fakeBin := filepath.Join(t.TempDir(), "fake-bin")
+	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
+		t.Fatalf("create fake bin: %v", err)
+	}
+	writeExecutable(t, filepath.Join(fakeBin, "gh"), strings.Join([]string{
+		"#!/usr/bin/env bash",
+		"set -euo pipefail",
+		`if [[ "$1" == "repo" && "$2" == "view" ]]; then`,
+		"  echo READ",
+		"  exit 0",
+		"fi",
+		"exit 1",
+		"",
+	}, "\n"))
+
+	cmd := exec.Command("./tool/publish.sh", "v7.8.7")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected read-only PR permission to fail")
+	}
+	if !strings.Contains(string(output), "gh cannot create pull requests for this repository") {
+		t.Fatalf("unexpected output: %s", string(output))
+	}
+	if branch := strings.TrimSpace(gitOutput(t, repo, "branch", "--show-current")); branch != "main" {
+		t.Fatalf("publish should fail before creating release branch, got branch %q", branch)
+	}
+	if branches := gitOutput(t, repo, "branch", "--list", "release/*"); strings.TrimSpace(branches) != "" {
+		t.Fatalf("publish should not create release branches without PR permission:\n%s", branches)
 	}
 }
 

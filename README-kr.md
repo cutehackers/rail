@@ -130,7 +130,8 @@ override 규칙은 단순합니다.
 - `critic` 는 선택적 보조 단계가 아니라 필수 graph 단계입니다
 - actor의 모델과 추론 강도는 체크인된 `.harness/supervisor/actor_profiles.yaml` 에서만 옵니다
 - 환경 변수는 더 이상 기본 actor 품질 계약이 아닙니다
-- structured actor는 actor-level timeout을 사용하지 않습니다
+- actor command run은 actor-level timeout을 사용하지 않습니다
+- `ActorWatchdog`은 command progress를 감시하고, actor가 관찰 가능한 진행을 멈추면 `actor_watchdog_expired`를 보고합니다
 
 ## 이 소스 저장소의 역할
 

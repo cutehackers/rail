@@ -184,7 +184,7 @@ Also keep the scope of this smoke/release evidence review narrow:
 
 - it proves the reviewed artifact set matches the current smoke gate outcome
 - it does not by itself prove repository-wide invariants such as “critic is
-  mandatory in all task families” or “structured actors never use actor-level
+  mandatory in all task families” or “actor command runs never use actor-level
   timeout”
 - those broader guarantees come from the repository-wide verification and test
   coverage run for the release candidate, not from this single smoke artifact

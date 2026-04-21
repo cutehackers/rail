@@ -1144,7 +1144,7 @@ func (r *Router) writeEnrichedExecutionReport(artifactDirectory string, workflow
 
 func recoveredExecutionReportBase(state State) map[string]any {
 	return map[string]any{
-		"format": "fail",
+		"format":  "fail",
 		"analyze": "fail",
 		"tests": map[string]any{
 			"total":  0,
@@ -1178,7 +1178,7 @@ func buildActorProfilesUsedReport(workflow Workflow, state State) ([]map[string]
 }
 
 func validateActorProfilesSnapshot(workflow Workflow, snapshot []ActorProfileUsed) error {
-	requiredActors := structuredActorsForWorkflow(workflow)
+	requiredActors := profiledActorsForWorkflow(workflow)
 	if len(snapshot) == 0 {
 		return fmt.Errorf("state is missing persisted actorProfilesUsed snapshot")
 	}
@@ -1318,11 +1318,11 @@ func buildCriticReporting(
 	}
 
 	return map[string]any{
-			"total_findings":   totalFindings,
-			"resolved_count":   resolvedCount,
-			"confirmed_count":  confirmedCount,
-			"unmet_count":      unmetCount,
-			"findings":         appliedFindings,
+			"total_findings":  totalFindings,
+			"resolved_count":  resolvedCount,
+			"confirmed_count": confirmedCount,
+			"unmet_count":     unmetCount,
+			"findings":        appliedFindings,
 		}, map[string]any{
 			"summary":                summary,
 			"confirmed_count":        confirmedCount,

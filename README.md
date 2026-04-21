@@ -5,7 +5,7 @@
 The product contract is simple:
 
 - the user describes the task in natural language through the Rail skill
-- the Rail skill writes the structured harness request for them
+- the Rail skill writes the harness request for them
 - Rail runs a bounded, reviewable workflow against a separate target repository
 
 The point of Rail is not to make users hand-author `.harness/requests/request.yaml`. The point is to let the Rail skill turn a messy engineering request into the correct harness shape safely and consistently.
@@ -125,7 +125,8 @@ Advanced users should also know:
 - `critic` is a mandatory graph stage, not an optional advisory pass
 - actor model and reasoning come from checked-in `.harness/supervisor/actor_profiles.yaml`
 - environment variables are not the default actor-quality contract
-- structured actors do not use actor-level timeouts
+- actor command runs do not use actor-level timeouts
+- `ActorWatchdog` monitors command progress and reports `actor_watchdog_expired` when an actor stops producing observable progress
 
 ## Source Repository Role
 

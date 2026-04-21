@@ -1,12 +1,16 @@
 package runtime
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // runCommand executes the current actor command backend using only the
@@ -25,7 +29,11 @@ func runCommand(
 		return nil, err
 	}
 
-	cmd := exec.Command(
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := exec.CommandContext(
+		ctx,
 		"codex",
 		"exec",
 		"-m",
@@ -49,9 +57,21 @@ func runCommand(
 		prompt,
 	)
 	cmd.Dir = workingDirectory
-	output, err := cmd.CombinedOutput()
+
+	output := &synchronizedBuffer{}
+	watchdog := newActorWatchdog(actorName, defaultActorWatchdogConfig)
+	progressWriter := watchdog.ProgressWriter()
+	cmd.Stdout = io.MultiWriter(output, progressWriter)
+	cmd.Stderr = io.MultiWriter(output, progressWriter)
+
+	watchdog.Start(cancel)
+	err = cmd.Run()
+	watchdog.Stop()
+	if expiration, expired := watchdog.Expiration(); expired {
+		return nil, fmt.Errorf("actor `%s` failed: actor_watchdog_expired: no command progress observed for %s", expiration.ActorName, expiration.QuietWindow)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("actor `%s` failed: %s", actorName, strings.TrimSpace(string(output)))
+		return nil, fmt.Errorf("actor `%s` failed: %s", actorName, strings.TrimSpace(output.String()))
 	}
 
 	data, err := os.ReadFile(logPath)
@@ -60,9 +80,26 @@ func runCommand(
 	}
 	var response map[string]any
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("decode %s structured response: %w", actorName, err)
+		return nil, fmt.Errorf("decode %s actor response: %w", actorName, err)
 	}
 	return response, nil
+}
+
+type synchronizedBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *synchronizedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(p)
+}
+
+func (b *synchronizedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
 }
 
 func materializeActorOutputSchema(runsDirectory string, actorIndex int, actorName string, outputName string) (string, error) {

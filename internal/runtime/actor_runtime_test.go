@@ -6,12 +6,110 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
+	"time"
 
 	"rail/internal/assets"
 
 	"gopkg.in/yaml.v3"
 )
+
+func TestRunCommandStopsWhenActorWatchdogSeesNoProgress(t *testing.T) {
+	workingDirectory := t.TempDir()
+	fakeBin := t.TempDir()
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env python3
+import time
+
+time.sleep(0.5)
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	defaultActorWatchdogConfig = ActorWatchdogConfig{
+		QuietWindow: 25 * time.Millisecond,
+		CheckEvery:  5 * time.Millisecond,
+	}
+	t.Cleanup(func() {
+		defaultActorWatchdogConfig = productionActorWatchdogConfig()
+	})
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	_, err := runCommand(
+		"planner",
+		ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		workingDirectory,
+		"prompt",
+		logPath,
+		schemaPath,
+	)
+	if err == nil {
+		t.Fatalf("expected runCommand to fail when actor watchdog sees no progress")
+	}
+	if !strings.Contains(err.Error(), "actor_watchdog_expired") {
+		t.Fatalf("expected actor_watchdog_expired error, got %v", err)
+	}
+}
+
+func TestRunCommandKeepsRunningWhenActorWatchdogSeesProgress(t *testing.T) {
+	workingDirectory := t.TempDir()
+	fakeBin := t.TempDir()
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env bash
+set -euo pipefail
+
+output_path=""
+while (($# > 0)); do
+  if [[ "$1" == "--output-last-message" ]]; then
+    shift
+    output_path="$1"
+  fi
+  shift || true
+done
+
+for index in 1 2 3 4 5 6; do
+  printf 'progress %s\n' "$index"
+  sleep 0.2
+done
+
+printf '{"summary":"ok"}' >"$output_path"
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	defaultActorWatchdogConfig = ActorWatchdogConfig{
+		QuietWindow: time.Second,
+		CheckEvery:  25 * time.Millisecond,
+	}
+	t.Cleanup(func() {
+		defaultActorWatchdogConfig = productionActorWatchdogConfig()
+	})
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	response, err := runCommand(
+		"planner",
+		ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		workingDirectory,
+		"prompt",
+		logPath,
+		schemaPath,
+	)
+	if err != nil {
+		t.Fatalf("runCommand returned error: %v", err)
+	}
+	if got, want := response["summary"], "ok"; got != want {
+		t.Fatalf("unexpected actor response summary: got %#v want %#v", got, want)
+	}
+}
 
 func TestRunCommandUsesNormalizedActorProfileWithoutEnvFallbacks(t *testing.T) {
 	workingDirectory := t.TempDir()
@@ -69,7 +167,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 		t.Fatalf("runCommand returned error: %v", err)
 	}
 	if got, want := response["summary"], "ok"; got != want {
-		t.Fatalf("unexpected structured response summary: got %#v want %#v", got, want)
+		t.Fatalf("unexpected actor response summary: got %#v want %#v", got, want)
 	}
 
 	data, err := os.ReadFile(invocationPath)

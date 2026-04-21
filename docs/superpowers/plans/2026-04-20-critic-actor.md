@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a mandatory `critic` actor to every task-family graph, move actor model and reasoning selection into checked-in harness policy, remove environment-variable defaults and actor-level timeouts from structured actor execution, and prove critic impact in runtime reports.
+**Goal:** Add a mandatory `critic` actor to every task-family graph, move actor model and reasoning selection into checked-in harness policy, remove environment-variable defaults and actor-level timeouts from actor command execution, and prove critic impact in runtime reports.
 
 **Architecture:** Extend the canonical graph to `planner -> context_builder -> critic -> generator -> executor -> evaluator`, treat `critic_report` as a required generator input, and load actor execution policy from repository-owned `actor_profiles.yaml` files under both project-local and embedded default supervisor assets. Keep `evaluator` as the only authoritative routing gate, and extend execution reporting so operators can see which actor profiles ran and how critic findings influenced terminal outcomes.
 
@@ -179,19 +179,19 @@ Expected: FAIL because runtime still depends on env defaults and the old executi
 Create `internal/runtime/actor_profiles.go` with a typed loader that:
 - reads `.harness/supervisor/actor_profiles.yaml` through existing asset resolution
 - validates `version`
-- requires entries for every structured actor in the workflow
+- requires entries for every profiled actor in the workflow
 - validates reasoning against the supported Codex values
 
 Return a typed map or struct rather than passing raw YAML maps through the runner.
 
-- [ ] **Step 3: Pass actor profiles explicitly into structured actor execution**
+- [ ] **Step 3: Pass actor profiles explicitly into actor command execution**
 
 Refactor `internal/runtime/actor_runtime.go` so `runCommand` accepts an explicit actor profile argument instead of reading `RAIL_ACTOR_MODEL` and `RAIL_ACTOR_REASONING_EFFORT`.
 
 Remove:
 - environment-variable default model selection
 - environment-variable default reasoning selection
-- actor-level timeout normalization and timeout enforcement for structured actors
+- actor-level timeout normalization and timeout enforcement for actor command runs
 
 Keep the command line deterministic by always emitting the profile-selected `-m <model>` and `-c model_reasoning_effort="<reasoning>"`.
 
@@ -199,8 +199,8 @@ Keep the command line deterministic by always emitting the profile-selected `-m 
 
 Update `internal/runtime/runner.go` so the runner:
 - loads actor profiles once per execute run
-- resolves the current actor profile before each structured actor call
-- stops passing a timeout into structured actor execution
+- resolves the current actor profile before each actor command call
+- stops passing a timeout into actor command execution
 
 Do not fall back to environment variables if the profile file is missing or invalid. Fail fast with a clear error.
 
@@ -228,7 +228,7 @@ git commit -m "feat: drive actor execution from checked-in profiles"
 Update `internal/runtime/runner_test.go` so:
 - smoke-path expectations include a valid `critic_report.yaml`
 - real actor execution order becomes `planner`, `context_builder`, `critic`, `generator`, `evaluator`
-- fake codex returns a structured `critic_report` when actor name is `critic`
+- fake codex returns a schema-valid `critic_report` when actor name is `critic`
 
 Run: `go test ./internal/runtime -run 'TestExecuteRunsRealActorPathThroughCodex|TestExecutePreservesSupervisorTraceability' -count=1`
 Expected: FAIL because the current loop skips `critic`.
@@ -243,7 +243,7 @@ Update `internal/runtime/runner.go` to return a valid smoke `critic_report` duri
 - [ ] **Step 3: Insert critic into the real execution switch**
 
 Update the real-mode actor switch in `internal/runtime/runner.go` so:
-- `critic` is treated as a structured actor like `planner`, `context_builder`, `generator`, and `evaluator`
+- `critic` is treated as a profiled actor like `planner`, `context_builder`, `generator`, and `evaluator`
 - its output is written to `critic_report.yaml`
 - the execute loop naturally traverses `critic` before `generator`
 
@@ -335,7 +335,7 @@ Update `README.md` and `README-kr.md` so they explicitly state:
 - all task families now traverse `critic`
 - actor model and reasoning come from checked-in `actor_profiles.yaml`
 - environment variables are not the default actor-quality contract
-- structured actors no longer use actor-level timeouts
+- actor command runs no longer use actor-level timeouts
 
 Update `docs/releases/v2-release-evidence-runbook.md` so release evidence review mentions:
 - `actor_profiles_used`

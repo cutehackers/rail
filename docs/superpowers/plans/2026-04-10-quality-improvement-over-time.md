@@ -82,10 +82,10 @@ Create `.harness/templates/quality_learning_candidate.schema.yaml` with required
 - `task_family`
 - `task_family_source`
 - quality outcome summary
-- structured `user_outcome_signal`
-- structured `effective_context_signal`
-- structured `effective_validation_signal`
-- structured `evaluator_support_signal`
+- schema-valid `user_outcome_signal`
+- schema-valid `effective_context_signal`
+- schema-valid `effective_validation_signal`
+- schema-valid `evaluator_support_signal`
 - candidate claim
 - supporting evidence refs
 - guardrail cost
@@ -261,7 +261,7 @@ Update runtime candidate assembly so the quality summary:
 - falls back to evaluator confidence only when direct user outcome is provisional or unavailable
 - keeps that distinction explicit in the candidate payload
 
-Also make runtime populate the structured signal sections explicitly:
+Also make runtime populate the signal sections explicitly:
 - `effective_context_signal` must say which context additions helped, failed, or were neutral
 - `effective_validation_signal` must say which validation evidence materially supported, failed to support, or contradicted the result
 - `evaluator_support_signal` must always capture `quality_confidence`, final `reason_codes`, validation sufficiency, and terminal outcome class

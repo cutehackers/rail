@@ -4,7 +4,7 @@
 
 **Goal:** Make the rail supervisor choose explicit next actions after evaluation so orchestration quality improves through clear, bounded iteration loops.
 
-**Architecture:** Extend evaluator output from coarse `pass/revise/reject` into structured supervisor actions and reason codes, then teach the runtime state machine to route to the right next stage with per-action budgets. Keep the design minimal by reusing the existing linear actor chain and only adding supervisor-level decision vocabulary instead of new actors.
+**Architecture:** Extend evaluator output from coarse `pass/revise/reject` into schema-valid supervisor actions and reason codes, then teach the runtime state machine to route to the right next stage with per-action budgets. Keep the design minimal by reusing the existing linear actor chain and only adding supervisor-level decision vocabulary instead of new actors.
 
 **Tech Stack:** Dart CLI runtime, YAML schemas, harness supervisor configs
 
@@ -17,7 +17,7 @@
 - Modify: `/absolute/path/to/rail/.harness/actors/evaluator.md`
 - Modify: `/absolute/path/to/rail/.harness/supervisor/context_contract.yaml`
 
-- [ ] Add structured single-value `next_action` for supervisor routing.
+- [ ] Add schema-valid single-value `next_action` for supervisor routing.
 - [ ] Add `reason_codes` so evaluator rationale is machine-readable.
 - [ ] Update evaluator instructions to emit bounded orchestration actions instead of vague free text.
 

@@ -94,7 +94,7 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 	}
 	var actorProfiles ActorProfiles
 	if len(currentState.ActorProfilesUsed) == 0 {
-		actorProfiles, err = loadActorProfiles(workingDirectory, structuredActorsForWorkflow(workflow))
+		actorProfiles, err = loadActorProfiles(workingDirectory, profiledActorsForWorkflow(workflow))
 		if err != nil {
 			return "", fmt.Errorf("load actor profiles: %w", err)
 		}
@@ -225,12 +225,12 @@ func (r *Runner) runActor(
 			return nil, err
 		}
 		prompt := strings.Join([]string{
-			"Read the Rail actor brief and produce only the structured actor output.",
+			"Read the Rail actor brief and produce only the schema-valid actor output.",
 			"Actor name: " + actorName,
 			"Actor brief: " + briefPath,
 			"Artifact directory: " + artifactDirectory,
 			"Project root: " + workingDirectory,
-			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the structured actor response.",
+			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the schema-valid actor response.",
 		}, "\n")
 		return runCommand(actorName, profile, workingDirectory, prompt, logPath, schemaPath)
 	default:
@@ -308,15 +308,15 @@ func actorProfilesFromSnapshot(snapshot []ActorProfileUsed) ActorProfiles {
 	}
 }
 
-func structuredActorsForWorkflow(workflow Workflow) []string {
-	structuredActors := make([]string, 0, len(workflow.Actors))
+func profiledActorsForWorkflow(workflow Workflow) []string {
+	profiledActors := make([]string, 0, len(workflow.Actors))
 	for _, actorName := range workflow.Actors {
 		if actorName == "executor" {
 			continue
 		}
-		structuredActors = append(structuredActors, actorName)
+		profiledActors = append(profiledActors, actorName)
 	}
-	return structuredActors
+	return profiledActors
 }
 
 func defaultTaskID(requestPath string) string {

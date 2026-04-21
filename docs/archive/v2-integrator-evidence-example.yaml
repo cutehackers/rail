@@ -16,7 +16,7 @@ validation:
     status: pass
     command: "dart run bin/rail.dart validate-artifact --file <artifact>/integration_result.yaml --schema integration_result"
     evidence: "integration_result.yaml validates against integration_result.schema.yaml"
-    details: "required fields and structured evidence blocks are present"
+    details: "required fields and schema-valid evidence blocks are present"
 risks:
   - description: "No functional regressions found for non-targeted task families"
     severity: low

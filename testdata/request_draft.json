@@ -2,7 +2,7 @@
   "request_version": "1",
   "project_root": "/tmp/rail-compose-request-smoke-target",
   "task_type": "bug_fix",
-  "goal": "Normalize a structured request draft into a request file",
+  "goal": "Normalize a request draft into a request file",
   "context": {
     "feature": "harness_request",
     "validation_targets": [

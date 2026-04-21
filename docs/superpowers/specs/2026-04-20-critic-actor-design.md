@@ -4,13 +4,13 @@
 
 **Goal**
 
-Strengthen the `rail` harness as a true multi-actor control plane by adding a mandatory `critic` actor to every task family, moving actor execution policy into checked-in harness configuration, and removing environment-variable defaults and actor-level timeouts from structured actor execution.
+Strengthen the `rail` harness as a true multi-actor control plane by adding a mandatory `critic` actor to every task family, moving actor execution policy into checked-in harness configuration, and removing environment-variable defaults and actor-level timeouts from actor command execution.
 
 ## Problem Statement
 
 The current harness graph is multi-stage, but its quality behavior is still too uniform:
 
-- all structured Codex actors are executed through the same runtime defaults
+- all Codex-backed actors are executed through the same runtime defaults
 - actor model and reasoning defaults can be influenced by environment variables
 - the runtime assumes an actor timeout even when the harness goal is quality-first iteration
 - there is no explicit pre-generation critic role that turns likely failure patterns into generator guardrails
@@ -33,7 +33,7 @@ This spec covers:
 - defining the `critic_report` contract and the generator dependency on it
 - adding repository-owned actor execution profiles
 - removing environment-variable defaults for actor model and reasoning selection
-- removing actor-level timeout configuration from structured actor execution
+- removing actor-level timeout configuration from actor command execution
 - extending trace and execution reporting so the critic's contribution is visible
 
 This spec does not cover:
@@ -50,7 +50,7 @@ This spec does not cover:
 - the critic improves generator inputs but does not route supervisor decisions
 - actor execution policy must be repository-owned and reviewable
 - the harness should not rely on operator environment defaults for core actor quality settings
-- actor-level timeout should not cap quality-seeking structured actor work
+- actor-level timeout should not cap quality-seeking actor work
 - reporting must prove that the critic changed the graph meaningfully
 
 ## Core Architecture
@@ -71,11 +71,11 @@ The context builder continues to ground the run in repository-specific context, 
 
 The critic is a non-coding pre-generation quality actor.
 
-Its job is to inspect the current plan and repository context and emit a structured critique that makes likely failure modes explicit before code generation begins. It does not patch files, run supervisor routing, or decide pass versus revise. It exists only to raise the quality floor for the generator.
+Its job is to inspect the current plan and repository context and emit a schema-valid critique that makes likely failure modes explicit before code generation begins. It does not patch files, run supervisor routing, or decide pass versus revise. It exists only to raise the quality floor for the generator.
 
 ### Generator
 
-The generator remains the only structured coding actor in the core graph, but it now consumes the critic output as a required input rather than relying only on plan and context.
+The generator remains the only coding actor in the core graph, but it now consumes the critic output as a required input rather than relying only on plan and context.
 
 ### Executor
 
@@ -186,11 +186,11 @@ Design rules:
 
 ## Runtime Changes
 
-### Structured Actor Execution
+### Actor Command Execution
 
 `internal/runtime/actor_runtime.go` should stop deriving default actor model and reasoning from environment variables.
 
-Instead, structured actor execution should accept an explicit actor profile loaded from repository policy.
+Instead, actor command execution should accept an explicit actor profile loaded from repository policy.
 
 ### Runner
 
@@ -198,8 +198,8 @@ Instead, structured actor execution should accept an explicit actor profile load
 
 - load actor profiles from the checked-in supervisor policy
 - resolve the current actor's model and reasoning from that policy
-- pass the resolved actor profile into structured actor execution
-- stop applying actor-level timeouts to structured Codex actors
+- pass the resolved actor profile into actor command execution
+- stop applying actor-level timeouts to Codex-backed actors
 
 ### Bootstrap
 
@@ -251,7 +251,7 @@ The design is complete only when all of the following are verified:
 4. `./build/rail route-evaluation --artifact <fixture-copy>` produces reports that include the critic-aware fields.
 5. `./build/rail execute --artifact <smoke-artifact>` shows that every task family graph traverses the critic stage.
 6. Generated reports prove that actor model and reasoning were taken from checked-in actor profiles rather than environment defaults.
-7. Structured actor execution runs without actor-level timeout configuration.
+7. Actor command execution runs without actor-level timeout configuration.
 
 ## Success Criteria
 
@@ -261,7 +261,7 @@ This design is successful when:
 - the generator cannot run without a valid `critic_report`
 - actor model and reasoning are repository-owned and reviewable
 - environment variables are no longer the default source of actor quality policy
-- structured actors are no longer run with actor-level timeout configuration
+- actor command runs no longer use actor-level timeout configuration
 - reports make the critic's traversal and effect visible to operators
 
 ## Risks

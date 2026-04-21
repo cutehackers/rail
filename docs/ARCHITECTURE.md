@@ -44,7 +44,7 @@ The CLI is the execution engine. It is responsible for:
 
 ### Bundled Rail Skill
 
-The Rail skill is the natural-language entrypoint. It interprets the user goal, constraints, and definition of done, then hands a structured draft to the CLI. The skill assumes `rail` is installed on `PATH`; it does not assume a local source checkout.
+The Rail skill is the natural-language entrypoint. It interprets the user goal, constraints, and definition of done, then hands a request draft to the CLI. The skill assumes `rail` is installed on `PATH`; it does not assume a local source checkout.
 
 ### Embedded Defaults
 
@@ -75,10 +75,10 @@ Those paths remain local because they hold project identity, run history, eviden
 The runtime flow stays explicit:
 
 1. The user invokes the bundled Rail skill or the CLI directly.
-2. Rail converts the request into a structured task.
+2. Rail converts the request into a harness task.
 3. Rail materializes or updates artifact state in the target repository.
 4. The supervisor dispatches bounded actors in sequence.
-5. Each actor writes structured output back into the artifact set.
+5. Each actor writes schema-valid output back into the artifact set.
 6. The evaluator decides whether the run passes, retries within budget, or stops.
 7. Optional `v2` integration and learning flows extend the result after a passing core run.
 
@@ -89,6 +89,11 @@ Rail currently maintains two execution profiles:
 - `real` mode as the default actor path for actual target-repository work
 - `smoke` mode as the fast deterministic path for control-plane verification
 
+Actor command runs do not use actor-level wall-clock cutoffs. The runtime uses
+`ActorWatchdog` as a progress guard: if an actor process stops producing
+observable command output for the quiet window, Rail cancels that actor process
+and reports `actor_watchdog_expired`.
+
 ## Supervisor, Actors, And Rubrics
 
 The control relationship is stable:
@@ -97,7 +102,7 @@ The control relationship is stable:
 - actors own bounded execution
 - rubrics and rules define how results are judged
 
-Actors do not own the whole workflow. They perform a narrow step and return structured output. The supervisor reads that output, applies policy, and decides what happens next.
+Actors do not own the whole workflow. They perform a narrow step and return schema-valid output. The supervisor reads that output, applies policy, and decides what happens next.
 
 That separation keeps the system maintainable:
 

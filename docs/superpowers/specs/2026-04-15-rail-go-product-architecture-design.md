@@ -136,7 +136,7 @@ The skill has primary authority over natural-language interpretation.
 
 The CLI has final authority over request validity and official harness materialization.
 
-The preferred interface is a structured draft payload, not a long chain of fragile flags. Conceptually:
+The preferred interface is a request-draft payload, not a long chain of fragile flags. Conceptually:
 
 ```bash
 rail compose-request --stdin
@@ -394,7 +394,7 @@ Implement:
 Update the bundled Rail skill so it:
 
 - targets the installed `rail` binary
-- uses structured request composition
+- uses request-draft composition
 - no longer refers to the current checkout as runtime root
 
 ### Phase 5: Replace Checkout-Based Install Docs and Scripts

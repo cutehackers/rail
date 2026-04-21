@@ -33,7 +33,7 @@
 - `internal/cli/route_evaluation.go`
   - `route-evaluation` command.
 - `internal/request/draft.go`
-  - Structured request-draft contract consumed by the CLI.
+  - Request-draft contract consumed by the CLI.
 - `internal/request/normalize.go`
   - Default filling and request normalization.
 - `internal/contracts/validator.go`
@@ -92,7 +92,7 @@
 - `docs/ARCHITECTURE.md`
   - Update runtime description from Dart checkout model to Go installed-product model.
 - `skills/Rail/SKILL.md`
-  - Rewrite for installed binary, project discovery, and structured draft submission.
+  - Rewrite for installed binary, project discovery, and request-draft submission.
 - `scripts/install_skill.sh`
   - Retire or replace with packaging-only guidance; no checkout-based symlink installs.
 - `bin/rail.dart`
@@ -355,7 +355,7 @@ git add assets/scaffold internal/project internal/cli/init_project.go internal/c
 git commit -m "feat: add project discovery and rail init scaffold"
 ```
 
-### Task 4: Implement Structured Request Draft Input for `compose-request`
+### Task 4: Implement Request Draft Input for `compose-request`
 
 **Files:**
 - Create: `/absolute/path/to/rail/internal/request/draft.go`
@@ -387,7 +387,7 @@ go test ./internal/request -v
 Expected:
 - FAIL because the request-draft contract does not exist yet
 
-- [ ] **Step 3: Implement structured draft handling**
+- [ ] **Step 3: Implement request-draft handling**
 
 Define a draft contract such as:
 
@@ -416,7 +416,7 @@ rail compose-request --input /absolute/path/to/draft.json
 Update `skills/Rail/SKILL.md` so it:
 
 - keeps natural-language interpretation as the primary UX
-- emits structured request drafts
+- emits request drafts
 - calls the installed `rail` binary instead of assuming a local checkout runtime root
 
 - [ ] **Step 5: Re-run request tests and a CLI smoke**
@@ -436,7 +436,7 @@ Expected:
 
 ```bash
 git add internal/request internal/cli/compose_request.go internal/cli/app.go skills/Rail/SKILL.md skills/Rail/references/examples.md
-git commit -m "feat: add structured request draft support for rail skill"
+git commit -m "feat: add request draft support for rail skill"
 ```
 
 ### Task 5: Port Request Validation, Artifact Bootstrap, and Route Evaluation to Go

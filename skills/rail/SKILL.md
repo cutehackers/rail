@@ -18,7 +18,7 @@ You then:
 
 1. infer the harness request fields
 2. ask at most one concise clarification only if a missing field makes the request unsafe
-3. emit a structured request draft
+3. emit a request draft
 4. materialize the normalized request with `rail compose-request`
 5. report the created request file and applied defaults
 6. hand off validation and bootstrap as later workflow steps
@@ -57,7 +57,7 @@ Defaults:
   - related test expectation
   - analyze expectation
 
-## Structured Draft Contract
+## Draft Contract
 
 Emit a draft like:
 

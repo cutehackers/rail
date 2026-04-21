@@ -266,12 +266,12 @@ func runIntegratorActor(
 	schemaPath string,
 ) (map[string]any, error) {
 	prompt := strings.Join([]string{
-		"Read the Rail integrator brief and produce only the structured post-pass handoff output.",
+		"Read the Rail integrator brief and produce only the schema-valid post-pass handoff output.",
 		"Actor name: integrator",
 		"Actor brief: " + briefPath,
 		"Artifact directory: " + artifactDirectory,
 		"Project root: " + workingDirectory,
-		"Write no files yourself except the structured response via Codex output handling.",
+		"Write no files yourself except the schema-valid response via Codex output handling.",
 	}, "\n")
 	return runCommand("integrator", profile, workingDirectory, prompt, logPath, schemaPath)
 }

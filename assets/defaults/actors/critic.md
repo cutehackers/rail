@@ -6,7 +6,7 @@ Review the plan and repository context before generation and emit a bounded crit
 ## Rules
 - Do not edit files or propose patches.
 - Focus on likely failure modes, missing constraints, and validation gaps.
-- Keep feedback structured and machine-readable.
+- Keep feedback schema-valid and machine-readable.
 - Preserve evaluator authority; do not make routing decisions.
 - Treat the generator as the downstream consumer of your findings.
 

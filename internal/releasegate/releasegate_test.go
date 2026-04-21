@@ -61,18 +61,20 @@ func TestV1ReleaseGateScriptIsGoFirst(t *testing.T) {
 	}
 }
 
-func TestV1ReleaseWorkflowProvisionsGoInsteadOfDart(t *testing.T) {
-	workflow := readRepoFile(t, ".github", "workflows", "v1-release-gate.yml")
+func TestReleaseGateWorkflowProvisionsGoInsteadOfDart(t *testing.T) {
+	workflow := readRepoFile(t, ".github", "workflows", "release-gate.yml")
 	for _, expected := range []string{
+		"matrix:",
+		"run: ./tool/release_gate.sh",
 		"actions/setup-go@v5",
 		"go-version-file: go.mod",
 	} {
 		if !strings.Contains(workflow, expected) {
-			t.Fatalf("workflow missing %q", expected)
+			t.Fatalf("release-gate workflow missing %q", expected)
 		}
 	}
 	if strings.Contains(workflow, "d"+"art-lang/setup-"+("d"+"art")+"@v1") {
-		t.Fatalf("workflow still provisions Dart")
+		t.Fatalf("release-gate workflow still provisions Dart")
 	}
 }
 
@@ -80,7 +82,9 @@ func TestReleaseWorkflowPublishesGoReleaserArtifactsAndAttestations(t *testing.T
 	workflow := readRepoFile(t, ".github", "workflows", "release.yml")
 	for _, expected := range []string{
 		"Prepare release preflight",
-		`./tool/prepare_release.sh "$GITHUB_REF_NAME" --preflight-only --allow-existing-tag`,
+		"Resolve release version",
+		`./tool/prepare_release.sh "${{ steps.release_version.outputs.version }}" --preflight-only --allow-existing-tag`,
+		`./tool/prepare_release.sh "${{ steps.release_version.outputs.version }}" --push --allow-existing-tag`,
 		"HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}",
 		"goreleaser/goreleaser-action",
 		"args: release --clean",

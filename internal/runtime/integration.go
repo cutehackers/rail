@@ -273,7 +273,14 @@ func runIntegratorActor(
 		"Project root: " + workingDirectory,
 		"Write no files yourself except the schema-valid response via Codex output handling.",
 	}, "\n")
-	return runCommand("integrator", profile, workingDirectory, prompt, logPath, schemaPath)
+	return runCommand(defaultCodexCLIBackend(), ActorCommandSpec{
+		ActorName:        "integrator",
+		Profile:          profile,
+		WorkingDirectory: workingDirectory,
+		Prompt:           prompt,
+		LastMessagePath:  logPath,
+		SchemaPath:       schemaPath,
+	})
 }
 
 func normalizeIntegrationResult(

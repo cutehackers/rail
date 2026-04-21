@@ -223,6 +223,22 @@ func TestBuildCodexCLIArgsUsesBackendPolicy(t *testing.T) {
 	}
 }
 
+func TestRunCommandRequiresBackendSpecSignature(t *testing.T) {
+	runCommandType := reflect.TypeOf(runCommand)
+	if runCommandType.IsVariadic() {
+		t.Fatalf("runCommand must not accept legacy variadic arguments")
+	}
+	if got, want := runCommandType.NumIn(), 2; got != want {
+		t.Fatalf("runCommand input count: got %d want %d", got, want)
+	}
+	if runCommandType.In(0) != reflect.TypeOf(ActorBackendConfig{}) {
+		t.Fatalf("runCommand first input: got %v want ActorBackendConfig", runCommandType.In(0))
+	}
+	if runCommandType.In(1) != reflect.TypeOf(ActorCommandSpec{}) {
+		t.Fatalf("runCommand second input: got %v want ActorCommandSpec", runCommandType.In(1))
+	}
+}
+
 func TestRunCommandUsesBackendPolicyForCodexInvocation(t *testing.T) {
 	workingDirectory := t.TempDir()
 	fakeBin := t.TempDir()

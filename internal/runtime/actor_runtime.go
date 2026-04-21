@@ -60,77 +60,23 @@ func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []stri
 	return args
 }
 
+func defaultCodexCLIBackend() ActorBackendConfig {
+	return ActorBackendConfig{
+		Command:           "codex",
+		Subcommand:        "exec",
+		Sandbox:           "workspace-write",
+		ApprovalPolicy:    "never",
+		SessionMode:       "per_actor",
+		Ephemeral:         true,
+		CaptureJSONEvents: false,
+		SkipGitRepoCheck:  true,
+	}
+}
+
 // runCommand executes the current actor command backend using only the
 // repository-resolved actor profile passed by the caller. Environment overrides
 // are intentionally unsupported; profile selection belongs in actor_profiles.yaml.
-func runCommand(first any, rest ...any) (map[string]any, error) {
-	backend, spec, err := actorCommandInvocation(first, rest...)
-	if err != nil {
-		return nil, err
-	}
-	return runActorCommand(backend, spec)
-}
-
-func actorCommandInvocation(first any, rest ...any) (ActorBackendConfig, ActorCommandSpec, error) {
-	if backend, ok := first.(ActorBackendConfig); ok {
-		if len(rest) != 1 {
-			return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand backend invocation requires one ActorCommandSpec, got %d arguments", len(rest))
-		}
-		spec, ok := rest[0].(ActorCommandSpec)
-		if !ok {
-			return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand backend invocation requires ActorCommandSpec, got %T", rest[0])
-		}
-		return backend, spec, nil
-	}
-
-	actorName, ok := first.(string)
-	if !ok {
-		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand requires ActorBackendConfig or actor name, got %T", first)
-	}
-	if len(rest) != 5 {
-		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires five arguments, got %d", len(rest))
-	}
-	profile, ok := rest[0].(ActorProfile)
-	if !ok {
-		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires ActorProfile, got %T", rest[0])
-	}
-	workingDirectory, ok := rest[1].(string)
-	if !ok {
-		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires working directory string, got %T", rest[1])
-	}
-	prompt, ok := rest[2].(string)
-	if !ok {
-		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires prompt string, got %T", rest[2])
-	}
-	logPath, ok := rest[3].(string)
-	if !ok {
-		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires log path string, got %T", rest[3])
-	}
-	schemaPath, ok := rest[4].(string)
-	if !ok {
-		return ActorBackendConfig{}, ActorCommandSpec{}, fmt.Errorf("runCommand legacy invocation requires schema path string, got %T", rest[4])
-	}
-
-	return ActorBackendConfig{
-			Command:           "codex",
-			Subcommand:        "exec",
-			Sandbox:           "danger-full-access",
-			ApprovalPolicy:    "never",
-			SessionMode:       "per_actor",
-			Ephemeral:         true,
-			CaptureJSONEvents: false,
-			SkipGitRepoCheck:  true,
-		}, ActorCommandSpec{
-			ActorName:        actorName,
-			Profile:          profile,
-			WorkingDirectory: workingDirectory,
-			Prompt:           prompt,
-			LastMessagePath:  logPath,
-			SchemaPath:       schemaPath,
-		}, nil
-}
-
-func runActorCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]any, error) {
+func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]any, error) {
 	profile, err := normalizeActorProfile(spec.ActorName, spec.Profile)
 	if err != nil {
 		return nil, err

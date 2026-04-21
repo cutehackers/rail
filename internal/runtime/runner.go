@@ -232,7 +232,14 @@ func (r *Runner) runActor(
 			"Project root: " + workingDirectory,
 			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the schema-valid actor response.",
 		}, "\n")
-		return runCommand(actorName, profile, workingDirectory, prompt, logPath, schemaPath)
+		return runCommand(defaultCodexCLIBackend(), ActorCommandSpec{
+			ActorName:        actorName,
+			Profile:          profile,
+			WorkingDirectory: workingDirectory,
+			Prompt:           prompt,
+			LastMessagePath:  logPath,
+			SchemaPath:       schemaPath,
+		})
 	default:
 		return nil, fmt.Errorf("actor execution is not implemented for %s", actorName)
 	}

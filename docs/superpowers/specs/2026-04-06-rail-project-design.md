@@ -10,7 +10,7 @@ Create `/absolute/path/to/rail` as the standalone control-plane repository for h
 - Application repositories are treated as external target repos.
 - The runtime stores requests and artifacts inside `rail`.
 - The runtime operates against application repositories through `--project-root`.
-- The user-facing skill is versioned in this repository instead of being hardcoded in `~/.codex/skills/rail`.
+- The user-facing skill is versioned in this repository instead of being hardcoded in `/absolute/path/to/codex/skills/rail`.
 
 ## Main decisions
 
@@ -49,4 +49,3 @@ Use the implementation in `981park-flutter-app` as the baseline, then generalize
 - repo-local `skills/rail/SKILL.md` exists
 - README documents `--project-root`
 - 981park-specific hardcoded paths are removed from the new repo
-

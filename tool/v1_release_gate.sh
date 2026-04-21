@@ -10,6 +10,7 @@ SMOKE_TASK_ID="$(
     "${RAIL_RELEASE_SMOKE_TASK_ID:-v1-release-smoke-ci}"
 )"
 TARGET_ROOT="$REPO_ROOT/examples/smoke-target"
+ARTIFACT_PATH="$TARGET_ROOT/.harness/artifacts/${SMOKE_TASK_ID}"
 
 cd "$REPO_ROOT"
 
@@ -18,9 +19,9 @@ go test ./...
 mkdir -p build
 go build -o build/rail ./cmd/rail
 
-rm -rf ".harness/artifacts/${SMOKE_TASK_ID}"
+rm -rf "$ARTIFACT_PATH"
 ./build/rail run \
   --request "$TARGET_ROOT/.harness/requests/valid_request.yaml" \
   --project-root "$TARGET_ROOT" \
   --task-id "$SMOKE_TASK_ID"
-./build/rail execute --artifact "$TARGET_ROOT/.harness/artifacts/${SMOKE_TASK_ID}"
+./build/rail execute --artifact "$ARTIFACT_PATH"

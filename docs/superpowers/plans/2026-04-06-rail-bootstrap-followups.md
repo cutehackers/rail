@@ -15,7 +15,7 @@
 - smoke validation now uses a deterministic fast-path for planner/context_builder/generator/executor/evaluator, removing nested actor latency from harness smoke runs
 - standard validation can now take request-level `validation_roots` and `validation_targets` so executor planning can stay narrower than workspace-wide fallback
 - supervisor orchestration is moving from evaluator-only generator retry toward explicit action-driven loops with bounded budgets
-- global `~/.codex/skills/rail/SKILL.md` now points at the repo-owned skill via symlink
+- global `/absolute/path/to/codex/skills/rail/SKILL.md` now points at the repo-owned skill via symlink
 
 ## Next work
 

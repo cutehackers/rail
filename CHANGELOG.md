@@ -2,6 +2,31 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.2.6 - 2026-04-21
+
+### Added
+- Added Codex actor backend policy as a first-class policy/config surface via `internal/runtime/actor_backend.go`, `.harness/supervisor/actor_backend.yaml`, and `assets/defaults/supervisor/actor_backend.yaml`.
+- Added runtime wiring to drive Codex actor command behavior from backend policy in the actor execution path (`internal/runtime/actor_runtime.go`, `internal/runtime/integration.go`, `internal/runtime/runner.go`).
+- Added release tooling for publish/release prep with `tool/prepare_release.sh` and `tool/publish.sh`, plus workflow updates in `.github/workflows/release.yml`.
+- Added implementation and policy docs for the new Codex boundary and actor backend design in `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE-kr.md`, and new dated Codex boundary docs.
+- Added test coverage for new release-gate and actor-backend runtime paths (`internal/releasegate/releasegate_test.go`, `internal/runtime/actor_backend_test.go`, `internal/runtime/actor_runtime_test.go`, `internal/runtime/runner_test.go`).
+
+### Changed
+- Changed release flow to be driven from merged `release/v*` branches.
+- Changed release preflight and execution routing to support non-main branches while preserving main-branch safety constraints.
+- Changed actor execution plumbing by removing the legacy run command bridge and routing actor commands through backend policy.
+- Updated docs and runtime boundaries to clarify the Rail Codex runtime/actor contract.
+
+### Fixed
+- Fixed full-access policy handling by rejecting full access in all backend environments, aligning the full-access backend contract, and preventing self-authorized full-access backend behavior.
+- Fixed actor backend enforcement to reject full-access actor backend policy.
+- Fixed publish flow to fail before readonly pull request creation.
+- Fixed publish behavior to keep release publishing tied to a synced main branch state.
+
+### Verification
+- `tool/prepare_release.sh v0.2.6`
+
+
 ## v0.2.5 - 2026-04-21
 
 ### Added

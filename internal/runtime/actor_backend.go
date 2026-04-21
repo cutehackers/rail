@@ -49,6 +49,9 @@ func loadActorBackendPolicy(projectRoot string) (ActorBackendPolicy, error) {
 	if strings.TrimSpace(policy.ExecutionEnvironment) == "" {
 		return ActorBackendPolicy{}, fmt.Errorf("actor backend policy must define execution_environment")
 	}
+	if policy.ExecutionEnvironment != "local" {
+		return ActorBackendPolicy{}, fmt.Errorf("actor backend policy execution_environment %q is not supported; only local is supported until execution environment selection is trusted", policy.ExecutionEnvironment)
+	}
 	if strings.TrimSpace(policy.DefaultBackendName) == "" {
 		return ActorBackendPolicy{}, fmt.Errorf("actor backend policy must define default_backend")
 	}

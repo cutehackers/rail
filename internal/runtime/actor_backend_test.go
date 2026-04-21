@@ -37,6 +37,49 @@ func TestLoadActorBackendPolicy(t *testing.T) {
 	t.Run("project-local policy overrides embedded defaults", func(t *testing.T) {
 		projectRoot := writeActorBackendFixture(t, `
 version: 1
+execution_environment: local
+default_backend: codex_cli
+
+backends:
+  codex_cli:
+    command: codex
+    subcommand: exec
+    sandbox: read-only
+    approval_policy: on-request
+    session_mode: per_actor
+    ephemeral: false
+    capture_json_events: false
+    skip_git_repo_check: false
+
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - read-only
+`)
+
+		policy, err := loadActorBackendPolicy(projectRoot)
+		if err != nil {
+			t.Fatalf("loadActorBackendPolicy returned error: %v", err)
+		}
+
+		backend, err := policy.DefaultBackend()
+		if err != nil {
+			t.Fatalf("DefaultBackend returned error: %v", err)
+		}
+		if backend.Sandbox != "read-only" {
+			t.Fatalf("unexpected sandbox: got %q want %q", backend.Sandbox, "read-only")
+		}
+		if backend.ApprovalPolicy != "on-request" {
+			t.Fatalf("unexpected approval policy: got %q want %q", backend.ApprovalPolicy, "on-request")
+		}
+		if backend.CaptureJSONEvents {
+			t.Fatalf("expected capture_json_events to be false")
+		}
+	})
+
+	t.Run("rejects non-local execution environment even when policy allows full access", func(t *testing.T) {
+		projectRoot := writeActorBackendFixture(t, `
+version: 1
 execution_environment: isolated_ci
 default_backend: codex_cli
 
@@ -58,23 +101,12 @@ execution_environments:
       - danger-full-access
 `)
 
-		policy, err := loadActorBackendPolicy(projectRoot)
-		if err != nil {
-			t.Fatalf("loadActorBackendPolicy returned error: %v", err)
+		_, err := loadActorBackendPolicy(projectRoot)
+		if err == nil {
+			t.Fatalf("expected loadActorBackendPolicy to reject non-local execution environment")
 		}
-
-		backend, err := policy.DefaultBackend()
-		if err != nil {
-			t.Fatalf("DefaultBackend returned error: %v", err)
-		}
-		if backend.Sandbox != "danger-full-access" {
-			t.Fatalf("unexpected sandbox: got %q want %q", backend.Sandbox, "danger-full-access")
-		}
-		if backend.ApprovalPolicy != "on-request" {
-			t.Fatalf("unexpected approval policy: got %q want %q", backend.ApprovalPolicy, "on-request")
-		}
-		if backend.CaptureJSONEvents {
-			t.Fatalf("expected capture_json_events to be false")
+		if !strings.Contains(err.Error(), `execution_environment "isolated_ci" is not supported`) {
+			t.Fatalf("expected non-local execution environment validation error, got %v", err)
 		}
 	})
 

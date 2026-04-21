@@ -92,6 +92,14 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve workflow project root: %w", err)
 	}
+	backendPolicy, err := loadActorBackendPolicy(workingDirectory)
+	if err != nil {
+		return "", fmt.Errorf("load actor backend policy: %w", err)
+	}
+	backend, err := backendPolicy.DefaultBackend()
+	if err != nil {
+		return "", err
+	}
 	var actorProfiles ActorProfiles
 	if len(currentState.ActorProfilesUsed) == 0 {
 		actorProfiles, err = loadActorProfiles(workingDirectory, profiledActorsForWorkflow(workflow))
@@ -132,9 +140,10 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		outputName := canonicalOutputForActor(actorName)
 		outputPath := filepath.Join(artifactDirectory, artifactFileName(outputName))
 		logPath := filepath.Join(runsDirectory, actorLogFileName(actorIndex, actorName, currentState.CompletedActors))
+		eventsPath := filepath.Join(runsDirectory, actorEventFileName(actorIndex, actorName, currentState.CompletedActors))
 		briefPath := filepath.Join(artifactDirectory, "actor_briefs", fmt.Sprintf("%02d_%s.md", actorIndex+1, actorName))
 
-		response, err := r.runActor(actorName, actorIndex, artifactDirectory, briefPath, logPath, requestValue, executionPlan, actorProfiles, workingDirectory)
+		response, err := r.runActor(actorName, actorIndex, artifactDirectory, briefPath, logPath, eventsPath, requestValue, executionPlan, actorProfiles, backend, workingDirectory)
 		if err != nil {
 			return "", err
 		}
@@ -188,9 +197,11 @@ func (r *Runner) runActor(
 	artifactDirectory string,
 	briefPath string,
 	logPath string,
+	eventsPath string,
 	requestValue request.CanonicalRequest,
 	executionPlan ExecutionPlan,
 	actorProfiles ActorProfiles,
+	backend ActorBackendConfig,
 	workingDirectory string,
 ) (map[string]any, error) {
 	if requestValue.ValidationProfile == "smoke" {
@@ -232,13 +243,14 @@ func (r *Runner) runActor(
 			"Project root: " + workingDirectory,
 			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the schema-valid actor response.",
 		}, "\n")
-		return runCommand(defaultCodexCLIBackend(), ActorCommandSpec{
+		return runCommand(backend, ActorCommandSpec{
 			ActorName:        actorName,
 			Profile:          profile,
 			WorkingDirectory: workingDirectory,
 			Prompt:           prompt,
 			LastMessagePath:  logPath,
 			SchemaPath:       schemaPath,
+			EventsPath:       eventsPath,
 		})
 	default:
 		return nil, fmt.Errorf("actor execution is not implemented for %s", actorName)
@@ -410,6 +422,14 @@ func actorLogFileName(actorIndex int, actorName string, completedActors []string
 		return fmt.Sprintf("%02d_%s-last-message.txt", actorIndex+1, actorName)
 	}
 	return fmt.Sprintf("%02d_%s-visit-%02d-last-message.txt", actorIndex+1, actorName, visit)
+}
+
+func actorEventFileName(actorIndex int, actorName string, completedActors []string) string {
+	visit := countActor(completedActors, actorName) + 1
+	if visit == 1 {
+		return fmt.Sprintf("%02d_%s-events.jsonl", actorIndex+1, actorName)
+	}
+	return fmt.Sprintf("%02d_%s-visit-%02d-events.jsonl", actorIndex+1, actorName, visit)
 }
 
 func (r *Runner) needsPersistedOutputRefresh(artifactDirectory string, state State) bool {

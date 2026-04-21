@@ -60,19 +60,6 @@ func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []stri
 	return args
 }
 
-func defaultCodexCLIBackend() ActorBackendConfig {
-	return ActorBackendConfig{
-		Command:           "codex",
-		Subcommand:        "exec",
-		Sandbox:           "workspace-write",
-		ApprovalPolicy:    "never",
-		SessionMode:       "per_actor",
-		Ephemeral:         true,
-		CaptureJSONEvents: false,
-		SkipGitRepoCheck:  true,
-	}
-}
-
 // runCommand executes the current actor command backend using only the
 // repository-resolved actor profile passed by the caller. Environment overrides
 // are intentionally unsupported; profile selection belongs in actor_profiles.yaml.

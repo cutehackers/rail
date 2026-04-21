@@ -402,11 +402,11 @@ actors:
 		t.Fatalf("failed to read fake codex actor log: %v", err)
 	}
 	if got, want := strings.TrimSpace(string(actorLog)), strings.Join([]string{
-		"planner|gpt-5.4-planner|high",
-		"context_builder|gpt-5.4-mini-context|medium",
-		"critic|gpt-5.4-critic|xhigh",
-		"generator|gpt-5.4-generator|low",
-		"evaluator|gpt-5.4-evaluator|none",
+		"planner|gpt-5.4-planner|high|workspace-write|json=true",
+		"context_builder|gpt-5.4-mini-context|medium|workspace-write|json=true",
+		"critic|gpt-5.4-critic|xhigh|workspace-write|json=true",
+		"generator|gpt-5.4-generator|low|workspace-write|json=true",
+		"evaluator|gpt-5.4-evaluator|none|workspace-write|json=true",
 	}, "\n"); got != want {
 		t.Fatalf("unexpected actor execution order: got %q want %q", got, want)
 	}
@@ -442,6 +442,57 @@ actors:
 		if !strings.Contains(string(criticReport), fragment) {
 			t.Fatalf("expected real-mode critic_report.yaml to contain %q, got:\n%s", fragment, string(criticReport))
 		}
+	}
+}
+
+func TestExecuteRejectsUnsafeBackendPolicyBeforeCodex(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+	unsafePolicy := `version: 1
+execution_environment: local
+default_backend: codex_cli
+
+backends:
+  codex_cli:
+    command: codex
+    subcommand: exec
+    sandbox: danger-full-access
+    approval_policy: never
+    session_mode: per_actor
+    ephemeral: true
+    capture_json_events: true
+    skip_git_repo_check: true
+
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - workspace-write
+`
+	if err := os.WriteFile(filepath.Join(projectRoot, ".harness", "supervisor", "actor_backend.yaml"), []byte(unsafePolicy), 0o644); err != nil {
+		t.Fatalf("failed to write unsafe actor backend policy: %v", err)
+	}
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-unsafe-backend")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	_, err = runner.Execute(artifactPath)
+	if err == nil {
+		t.Fatalf("expected Execute to reject unsafe actor backend policy")
+	}
+	if !strings.Contains(err.Error(), "sandbox danger-full-access is not allowed") {
+		t.Fatalf("expected unsafe sandbox error, got %v", err)
+	}
+	if actorLog, readErr := os.ReadFile(actorLogPath); readErr == nil && strings.TrimSpace(string(actorLog)) != "" {
+		t.Fatalf("expected unsafe backend policy to fail before invoking fake codex, got actor log:\n%s", string(actorLog))
+	} else if readErr != nil && !os.IsNotExist(readErr) {
+		t.Fatalf("failed to inspect fake codex actor log: %v", readErr)
 	}
 }
 
@@ -512,11 +563,11 @@ actors:
 		t.Fatalf("failed to read fake codex actor log: %v", err)
 	}
 	if got, want := strings.TrimSpace(string(actorLog)), strings.Join([]string{
-		"planner|gpt-5.4-target-planner|high",
-		"context_builder|gpt-5.4-target-context|medium",
-		"critic|gpt-5.4-target-critic|xhigh",
-		"generator|gpt-5.4-target-generator|low",
-		"evaluator|gpt-5.4-target-evaluator|none",
+		"planner|gpt-5.4-target-planner|high|workspace-write|json=true",
+		"context_builder|gpt-5.4-target-context|medium|workspace-write|json=true",
+		"critic|gpt-5.4-target-critic|xhigh|workspace-write|json=true",
+		"generator|gpt-5.4-target-generator|low|workspace-write|json=true",
+		"evaluator|gpt-5.4-target-evaluator|none|workspace-write|json=true",
 	}, "\n"); got != want {
 		t.Fatalf("unexpected actor execution order: got %q want %q", got, want)
 	}
@@ -930,9 +981,13 @@ if root_match:
 
 model = ""
 reasoning = ""
+sandbox = ""
+has_json = "--json" in sys.argv
 for index, value in enumerate(sys.argv):
     if value == "-m" and index + 1 < len(sys.argv):
         model = sys.argv[index + 1]
+    if value == "-s" and index + 1 < len(sys.argv):
+        sandbox = sys.argv[index + 1]
     if value == "-c" and index + 1 < len(sys.argv):
         config_value = sys.argv[index + 1]
         config_match = re.match(r'model_reasoning_effort="([^"]+)"', config_value)
@@ -941,7 +996,7 @@ for index, value in enumerate(sys.argv):
 
 if project_root:
     with open(os.path.join(project_root, ".actor-log"), "a", encoding="utf-8") as handle:
-        handle.write(actor + "|" + model + "|" + reasoning + "\n")
+        handle.write(actor + "|" + model + "|" + reasoning + "|" + sandbox + "|json=" + str(has_json).lower() + "\n")
 
 response = {}
 if actor == "planner":

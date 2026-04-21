@@ -57,6 +57,14 @@ func (r *Runner) Integrate(artifactPath string, projectRootOverride string) (str
 	if err != nil {
 		return "", fmt.Errorf("resolve integration project root: %w", err)
 	}
+	backendPolicy, err := loadActorBackendPolicy(workingDirectory)
+	if err != nil {
+		return "", fmt.Errorf("load actor backend policy: %w", err)
+	}
+	backend, err := backendPolicy.DefaultBackend()
+	if err != nil {
+		return "", err
+	}
 	actorProfiles, err := loadActorProfiles(workingDirectory, []string{"integrator"})
 	if err != nil {
 		return "", fmt.Errorf("load actor profiles: %w", err)
@@ -128,11 +136,12 @@ func (r *Runner) Integrate(artifactPath string, projectRootOverride string) (str
 	}
 
 	logPath := filepath.Join(runsDirectory, fmt.Sprintf("%02d_integrator-last-message.txt", actorIndex+1))
+	eventsPath := filepath.Join(runsDirectory, actorEventFileName(actorIndex, "integrator", nil))
 	schemaPath, err := materializeOutputSchema(runsDirectory, actorIndex)
 	if err != nil {
 		return "", err
 	}
-	responseObject, err := runIntegratorActor(workingDirectory, integratorProfile, briefPath, artifactDirectory, outputPath, logPath, schemaPath)
+	responseObject, err := runIntegratorActor(backend, workingDirectory, integratorProfile, briefPath, artifactDirectory, outputPath, logPath, eventsPath, schemaPath)
 	if err != nil {
 		return "", err
 	}
@@ -257,12 +266,14 @@ func materializeOutputSchema(runsDirectory string, actorIndex int) (string, erro
 }
 
 func runIntegratorActor(
+	backend ActorBackendConfig,
 	workingDirectory string,
 	profile ActorProfile,
 	briefPath string,
 	artifactDirectory string,
 	outputPath string,
 	logPath string,
+	eventsPath string,
 	schemaPath string,
 ) (map[string]any, error) {
 	prompt := strings.Join([]string{
@@ -273,13 +284,14 @@ func runIntegratorActor(
 		"Project root: " + workingDirectory,
 		"Write no files yourself except the schema-valid response via Codex output handling.",
 	}, "\n")
-	return runCommand(defaultCodexCLIBackend(), ActorCommandSpec{
+	return runCommand(backend, ActorCommandSpec{
 		ActorName:        "integrator",
 		Profile:          profile,
 		WorkingDirectory: workingDirectory,
 		Prompt:           prompt,
 		LastMessagePath:  logPath,
 		SchemaPath:       schemaPath,
+		EventsPath:       eventsPath,
 	})
 }
 

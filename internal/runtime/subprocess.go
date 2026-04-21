@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -25,7 +26,11 @@ func (subprocessRunner) RunShell(command, workingDirectory string, timeout time.
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "zsh", "-lc", command)
+	shell := "/bin/sh"
+	if _, err := os.Stat(shell); err != nil {
+		shell = "sh"
+	}
+	cmd := exec.CommandContext(ctx, shell, "-lc", command)
 	cmd.Dir = workingDirectory
 
 	var stdout bytes.Buffer

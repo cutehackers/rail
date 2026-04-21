@@ -40,6 +40,9 @@ The gate is expected to prove:
 - `integration_result.yaml` is schema-valid
 - learning-state snapshots remain coherent
 
+The `integrate` step in this smoke gate uses a deterministic local Codex shim
+so GitHub Actions does not need live agent credentials or interactive tooling.
+
 ## Review Procedure
 
 After the script exits successfully, review:

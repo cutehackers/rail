@@ -83,11 +83,12 @@ func TestV2ReleaseGateRunsFullGoFirstChecks(t *testing.T) {
 	for _, expected := range []string{
 		"go test ./...",
 		"go build -o build/rail ./cmd/rail",
+		"mktemp -d",
+		"PATH=\"$FAKE_BIN:$PATH\" ./build/rail integrate",
 		"./build/rail run",
 		"./build/rail execute",
-		"./build/rail integrate",
 		"./build/rail validate-artifact",
-		"./build/rail verify-learning-state",
+		"\"$REPO_ROOT/build/rail\" verify-learning-state",
 	} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("v2 release gate missing %q", expected)

@@ -279,11 +279,19 @@ with open(output_path, "w", encoding="utf-8") as handle:
 }
 
 func TestAppRunVerifiesLearningStateWithoutMutatingSnapshots(t *testing.T) {
-	repoRoot := repoRootFromCLIPackage(t)
+	projectRoot := t.TempDir()
+	if err := RunInit([]string{"--project-root", projectRoot}); err != nil {
+		t.Fatalf("RunInit returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	writeEmptyLearningSnapshotsForCLI(t, projectRoot)
+
 	learningFiles := []string{
-		filepath.Join(repoRoot, ".harness", "learning", "review_queue.yaml"),
-		filepath.Join(repoRoot, ".harness", "learning", "hardening_queue.yaml"),
-		filepath.Join(repoRoot, ".harness", "learning", "family_evidence_index.yaml"),
+		filepath.Join(projectRoot, ".harness", "learning", "review_queue.yaml"),
+		filepath.Join(projectRoot, ".harness", "learning", "hardening_queue.yaml"),
+		filepath.Join(projectRoot, ".harness", "learning", "family_evidence_index.yaml"),
 	}
 	before := make(map[string][]byte, len(learningFiles))
 	for _, file := range learningFiles {
@@ -298,7 +306,7 @@ func TestAppRunVerifiesLearningStateWithoutMutatingSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get working directory: %v", err)
 	}
-	if err := os.Chdir(repoRoot); err != nil {
+	if err := os.Chdir(projectRoot); err != nil {
 		t.Fatalf("failed to change working directory: %v", err)
 	}
 	t.Cleanup(func() {
@@ -849,7 +857,7 @@ func prepareSmokeProjectForCLI(t *testing.T) (string, string) {
 		t.Fatalf("failed to write smoke_test.go: %v", err)
 	}
 
-	requestBody, err := os.ReadFile(filepath.Join(repoRootFromCLIPackage(t), ".harness", "requests", "rail-bootstrap-smoke.yaml"))
+	requestBody, err := os.ReadFile(filepath.Join(repoRootFromCLIPackage(t), "examples", "smoke-target", ".harness", "requests", "valid_request.yaml"))
 	if err != nil {
 		t.Fatalf("failed to read smoke request fixture: %v", err)
 	}
@@ -859,6 +867,33 @@ func prepareSmokeProjectForCLI(t *testing.T) (string, string) {
 	}
 
 	return projectRoot, requestPath
+}
+
+func writeEmptyLearningSnapshotsForCLI(t *testing.T, projectRoot string) {
+	t.Helper()
+	snapshots := map[string]string{
+		filepath.Join(".harness", "learning", "review_queue.yaml"): `pending_candidate_groups: []
+queue_generated_at: derived:empty
+queue_sequence: 0
+`,
+		filepath.Join(".harness", "learning", "hardening_queue.yaml"): `pending_hardening_entries: []
+queue_generated_at: derived:empty
+queue_sequence: 0
+`,
+		filepath.Join(".harness", "learning", "family_evidence_index.yaml"): `latest_approved_memory_refs_by_family: {}
+latest_confirmed_success_refs_by_family: {}
+latest_failure_refs_by_family: {}
+latest_review_decision_refs_by_family: {}
+latest_provisional_candidate_dispositions_by_family: {}
+index_generated_at: derived:empty
+index_sequence: 0
+`,
+	}
+	for relPath, body := range snapshots {
+		if err := os.WriteFile(filepath.Join(projectRoot, relPath), []byte(body), 0o644); err != nil {
+			t.Fatalf("failed to write %s: %v", relPath, err)
+		}
+	}
 }
 
 func copyDirectory(sourcePath, destinationPath string) error {

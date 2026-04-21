@@ -50,7 +50,8 @@ The current smoke target used by the release gate is:
 
 Real actor command construction is covered by runtime tests that assert
 profile-selected model and reasoning arguments. The release gate intentionally
-stays deterministic and does not require a live agent helper script.
+stays deterministic: it uses a local Codex shim for the post-pass smoke
+integrator handoff and does not require a live agent in CI.
 
 After running the gate, operators should also confirm:
 

@@ -828,7 +828,7 @@ func prepareSmokeProject(t *testing.T) (string, string) {
 		t.Fatalf("failed to write smoke_test.go: %v", err)
 	}
 
-	requestBody, err := os.ReadFile(filepath.Join(testRepoRoot(t), ".harness", "requests", "rail-bootstrap-smoke.yaml"))
+	requestBody, err := os.ReadFile(filepath.Join(testRepoRoot(t), "examples", "smoke-target", ".harness", "requests", "valid_request.yaml"))
 	if err != nil {
 		t.Fatalf("failed to read smoke request fixture: %v", err)
 	}

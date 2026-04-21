@@ -151,7 +151,7 @@ func prepareReportingSmokeProject(t *testing.T) (string, string) {
 	if err != nil {
 		t.Fatalf("failed to resolve repo root: %v", err)
 	}
-	requestBody, err := os.ReadFile(filepath.Join(repoRoot, ".harness", "requests", "rail-bootstrap-smoke.yaml"))
+	requestBody, err := os.ReadFile(filepath.Join(repoRoot, "examples", "smoke-target", ".harness", "requests", "valid_request.yaml"))
 	if err != nil {
 		t.Fatalf("failed to read smoke request fixture: %v", err)
 	}

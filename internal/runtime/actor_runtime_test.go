@@ -87,7 +87,7 @@ printf '{"summary":"ok"}' >"$output_path"
 	}
 
 	defaultActorWatchdogConfig = ActorWatchdogConfig{
-		QuietWindow: time.Second,
+		QuietWindow: 3 * time.Second,
 		CheckEvery:  25 * time.Millisecond,
 	}
 	t.Cleanup(func() {

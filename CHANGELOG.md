@@ -2,6 +2,27 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.2.5 - 2026-04-21
+
+### Added
+- Added actor backend policy configuration and embedded defaults for supervisor-controlled Codex actor execution.
+- Wired actor backend policy through runtime, runner, and integration paths.
+- Added release preparation and publishing scripts, plus GitHub release workflow support.
+- Added architecture and planning documentation for the Codex actor backend boundary.
+
+### Changed
+- Codex actor commands are now driven by backend policy instead of the legacy run-command bridge.
+- Release publishing now traces release steps and keeps release execution on a synced `main`.
+
+### Fixed
+- Reject full-access actor backends across backend policy, runtime contract, and all backend environments.
+- Prevent self-authorized full-access backend execution.
+- Fail publishing before attempting read-only pull request creation.
+
+### Verification
+- `tool/prepare_release.sh v0.2.5`
+
+
 ## v0.2.4 - 2026-04-21
 
 ### Fixed

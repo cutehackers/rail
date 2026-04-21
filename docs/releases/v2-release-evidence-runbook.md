@@ -150,6 +150,13 @@ For every `v2` release candidate, preserve:
 - `integration_result.yaml`
 - `evaluation_result.yaml`
 - `execution_report.yaml`
+  - `execution_report.yaml` now includes `actor_graph`, `actor_profiles_used`,
+    `critic_findings_applied`, `critic_to_evaluator_delta`,
+    `quality_trajectory`, and `quality_improvement_summary`
+  - review `actor_profiles_used` to confirm the run used the checked-in actor
+    execution policy intended for release
+  - review `critic_findings_applied` and `critic_to_evaluator_delta` to confirm
+    the critic stage materially influenced the evaluator outcome
 - the exact gate command used, including any `RAIL_RELEASE_SMOKE_TASK_ID`
   override
 
@@ -157,7 +164,30 @@ Representative repository example:
 
 - `docs/archive/v2-integrator-evidence-example.yaml`
 
-Use that file as the comparison shape when reviewing future handoffs.
+Use the current checked-in schema and release docs as the comparison shape when
+reviewing future handoffs, not an older archived example that may predate the
+current reporting contract.
+
+At minimum, confirm the reviewed `execution_report.yaml` includes:
+
+- `actor_graph`
+- `actor_profiles_used`
+- `critic_findings_applied`
+- `critic_to_evaluator_delta`
+- `quality_trajectory`
+- `quality_improvement_summary`
+
+Treat archived examples as historical reference only, not as the source of
+truth for the current evidence shape.
+
+Also keep the scope of this smoke/release evidence review narrow:
+
+- it proves the reviewed artifact set matches the current smoke gate outcome
+- it does not by itself prove repository-wide invariants such as “critic is
+  mandatory in all task families” or “structured actors never use actor-level
+  timeout”
+- those broader guarantees come from the repository-wide verification and test
+  coverage run for the release candidate, not from this single smoke artifact
 
 ## Release Decision Summary
 

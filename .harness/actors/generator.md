@@ -14,7 +14,11 @@ Produce the smallest correct patch that satisfies the plan.
 - `user_request`
 - `plan`
 - `context_pack`
+- `critic_report`
+- `constraints`
 - `forbidden_changes`
+
+Treat all inputs above as required, including `critic_report` and `constraints`.
 
 ## Output
 Return:
@@ -28,4 +32,3 @@ Return:
 - Keep naming aligned with adjacent feature files.
 - Avoid introducing new dependency packages.
 - Keep comments minimal and purposeful.
-

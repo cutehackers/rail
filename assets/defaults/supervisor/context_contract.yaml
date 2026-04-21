@@ -31,12 +31,24 @@ actor_flow_schema:
     out:
       - context_pack_yaml_matching_context_pack_schema
 
+  critic:
+    in:
+      - user_request
+      - plan
+      - context_pack
+      - forbidden_changes
+      - rubric
+    out:
+      - critic_report
+
   generator:
     in:
       - user_request
       - plan
       - context_pack
+      - critic_report
       - constraints
+      - forbidden_changes
     out:
       - implementation_result
 
@@ -82,6 +94,7 @@ workflow_semantics:
     core_supervisor_gate:
       - planner
       - context_builder
+      - critic
       - generator
       - executor
       - evaluator

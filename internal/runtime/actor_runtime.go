@@ -1,42 +1,34 @@
 package runtime
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 func runStructuredCodexCommand(
 	actorName string,
+	profile ActorProfile,
 	workingDirectory string,
 	prompt string,
 	logPath string,
 	schemaPath string,
-	timeout time.Duration,
 ) (map[string]any, error) {
-	model := strings.TrimSpace(os.Getenv("RAIL_ACTOR_MODEL"))
-	if model == "" {
-		model = "gpt-5.4-mini"
+	if strings.TrimSpace(profile.Model) == "" {
+		return nil, fmt.Errorf("missing actor profile model for structured actor %q", actorName)
 	}
-	reasoningEffort := strings.TrimSpace(os.Getenv("RAIL_ACTOR_REASONING_EFFORT"))
-	if reasoningEffort == "" {
-		reasoningEffort = "low"
+	if _, ok := supportedActorReasoningEfforts[strings.TrimSpace(profile.Reasoning)]; !ok {
+		return nil, fmt.Errorf("unsupported actor profile reasoning %q for structured actor %q", profile.Reasoning, actorName)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(
-		ctx,
+	cmd := exec.Command(
 		"codex",
 		"exec",
 		"-m",
-		model,
+		profile.Model,
 		"--cd",
 		workingDirectory,
 		"--ephemeral",
@@ -46,7 +38,7 @@ func runStructuredCodexCommand(
 		"danger-full-access",
 		"--skip-git-repo-check",
 		"-c",
-		fmt.Sprintf(`model_reasoning_effort="%s"`, reasoningEffort),
+		fmt.Sprintf(`model_reasoning_effort="%s"`, profile.Reasoning),
 		"-c",
 		`approval_policy="never"`,
 		"--output-schema",
@@ -57,9 +49,6 @@ func runStructuredCodexCommand(
 	)
 	cmd.Dir = workingDirectory
 	output, err := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		return nil, fmt.Errorf("timed out while executing actor `%s`", actorName)
-	}
 	if err != nil {
 		return nil, fmt.Errorf("actor `%s` failed: %s", actorName, strings.TrimSpace(string(output)))
 	}
@@ -131,6 +120,27 @@ func actorOutputJSONSchema(outputName string) (map[string]any, error) {
 				"implementation_hints": stringArraySchema(),
 			},
 		}, nil
+	case "critic_report":
+		return map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required": []string{
+				"priority_focus",
+				"missing_requirements",
+				"risk_hypotheses",
+				"validation_expectations",
+				"generator_guardrails",
+				"blocked_assumptions",
+			},
+			"properties": map[string]any{
+				"priority_focus":          boundedStringArraySchema(6),
+				"missing_requirements":    boundedStringArraySchema(8),
+				"risk_hypotheses":         boundedStringArraySchema(8),
+				"validation_expectations": boundedStringArraySchema(8),
+				"generator_guardrails":    boundedStringArraySchema(8),
+				"blocked_assumptions":     boundedStringArraySchema(8),
+			},
+		}, nil
 	case "implementation_result":
 		return map[string]any{
 			"type":                 "object",
@@ -145,18 +155,15 @@ func actorOutputJSONSchema(outputName string) (map[string]any, error) {
 		}, nil
 	case "evaluation_result":
 		return map[string]any{
-			"type":                 "object",
-			"additionalProperties": false,
-			"required":             []string{"decision", "scores", "findings", "reason_codes", "quality_confidence", "next_action"},
+			"type":     "object",
+			"required": []string{"decision", "findings", "reason_codes", "quality_confidence"},
 			"properties": map[string]any{
 				"decision": map[string]any{
 					"type": "string",
 					"enum": []string{"pass", "revise", "reject"},
 				},
 				"scores": map[string]any{
-					"type":                 "object",
-					"additionalProperties": false,
-					"required":             []string{"requirements", "architecture", "regression_risk"},
+					"type": "object",
 					"properties": map[string]any{
 						"requirements":    boundedNumberSchema(),
 						"architecture":    boundedNumberSchema(),
@@ -170,15 +177,8 @@ func actorOutputJSONSchema(outputName string) (map[string]any, error) {
 					"enum": []string{"high", "medium", "low"},
 				},
 				"next_action": map[string]any{
-					"anyOf": []map[string]any{
-						{
-							"type": "string",
-							"enum": []string{"revise_generator", "rebuild_context", "tighten_validation", "split_task", "block_environment"},
-						},
-						{
-							"type": "null",
-						},
-					},
+					"type": "string",
+					"enum": []string{"revise_generator", "rebuild_context", "tighten_validation", "split_task", "block_environment"},
 				},
 			},
 		}, nil
@@ -194,6 +194,16 @@ func stringArraySchema() map[string]any {
 			"type": "string",
 		},
 	}
+}
+
+func boundedStringArraySchema(maxItems int) map[string]any {
+	schema := stringArraySchema()
+	schema["maxItems"] = maxItems
+	schema["items"] = map[string]any{
+		"type":      "string",
+		"maxLength": 240,
+	}
+	return schema
 }
 
 func boundedNumberSchema() map[string]any {

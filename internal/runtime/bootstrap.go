@@ -223,27 +223,51 @@ type Workflow struct {
 }
 
 type State struct {
-	TaskID                             string   `json:"taskId"`
-	TaskFamily                         string   `json:"taskFamily"`
-	TaskFamilySource                   string   `json:"taskFamilySource"`
-	Status                             string   `json:"status"`
-	CurrentActor                       *string  `json:"currentActor"`
-	CompletedActors                    []string `json:"completedActors"`
-	GeneratorRetriesRemaining          int      `json:"generatorRetriesRemaining"`
-	ContextRebuildsRemaining           int      `json:"contextRebuildsRemaining"`
-	ValidationTighteningsRemaining     int      `json:"validationTighteningsRemaining"`
-	LastDecision                       *string  `json:"lastDecision"`
-	LastReasonCodes                    []string `json:"lastReasonCodes"`
-	ActionHistory                      []string `json:"actionHistory"`
-	GeneratorRevisionsUsed             int      `json:"generatorRevisionsUsed"`
-	ContextRefreshCount                int      `json:"contextRefreshCount"`
-	LastContextRefreshTrigger          *string  `json:"lastContextRefreshTrigger"`
-	LastContextRefreshReasonFamily     *string  `json:"lastContextRefreshReasonFamily"`
-	LastInterventionTriggerReasonCodes []string `json:"lastInterventionTriggerReasonCodes"`
-	LastInterventionTriggerCategory    *string  `json:"lastInterventionTriggerCategory"`
-	PendingContextRefreshTrigger       *string  `json:"pendingContextRefreshTrigger"`
-	PendingContextRefreshReasonFamily  *string  `json:"pendingContextRefreshReasonFamily"`
-	ValidationTighteningsUsed          int      `json:"validationTighteningsUsed"`
+	TaskID                             string             `json:"taskId"`
+	TaskFamily                         string             `json:"taskFamily"`
+	TaskFamilySource                   string             `json:"taskFamilySource"`
+	Status                             string             `json:"status"`
+	CurrentActor                       *string            `json:"currentActor"`
+	CompletedActors                    []string           `json:"completedActors"`
+	GeneratorRetriesRemaining          int                `json:"generatorRetriesRemaining"`
+	ContextRebuildsRemaining           int                `json:"contextRebuildsRemaining"`
+	ValidationTighteningsRemaining     int                `json:"validationTighteningsRemaining"`
+	LastDecision                       *string            `json:"lastDecision"`
+	LastReasonCodes                    []string           `json:"lastReasonCodes"`
+	ActionHistory                      []string           `json:"actionHistory"`
+	GeneratorRevisionsUsed             int                `json:"generatorRevisionsUsed"`
+	ContextRefreshCount                int                `json:"contextRefreshCount"`
+	LastContextRefreshTrigger          *string            `json:"lastContextRefreshTrigger"`
+	LastContextRefreshReasonFamily     *string            `json:"lastContextRefreshReasonFamily"`
+	LastInterventionTriggerReasonCodes []string           `json:"lastInterventionTriggerReasonCodes"`
+	LastInterventionTriggerCategory    *string            `json:"lastInterventionTriggerCategory"`
+	PendingContextRefreshTrigger       *string            `json:"pendingContextRefreshTrigger"`
+	PendingContextRefreshReasonFamily  *string            `json:"pendingContextRefreshReasonFamily"`
+	ValidationTighteningsUsed          int                `json:"validationTighteningsUsed"`
+	QualityTrajectory                  []QualityIteration `json:"qualityTrajectory"`
+	ActorProfilesUsed                  []ActorProfileUsed `json:"actorProfilesUsed"`
+}
+
+type ActorProfileUsed struct {
+	Actor     string `json:"actor"`
+	Model     string `json:"model"`
+	Reasoning string `json:"reasoning"`
+}
+
+type QualityIteration struct {
+	Iteration             int      `json:"iteration"`
+	Actor                 string   `json:"actor"`
+	Decision              string   `json:"decision"`
+	Action                string   `json:"action"`
+	QualityConfidence     string   `json:"qualityConfidence"`
+	ReasonCodes           []string `json:"reasonCodes"`
+	TriggerCategory       string   `json:"triggerCategory"`
+	Status                string   `json:"status"`
+	ExecutorInterventions int      `json:"executorInterventions"`
+	ContextRebuilds       int      `json:"contextRebuilds"`
+	GeneratorRevisions    int      `json:"generatorRevisions"`
+	ValidationTightenings int      `json:"validationTightenings"`
+	TotalInterventions    int      `json:"totalInterventions"`
 }
 
 type ExecutionPlan struct {
@@ -449,6 +473,8 @@ func initialState(workflow Workflow) State {
 		LastReasonCodes:                    []string{},
 		ActionHistory:                      []string{},
 		LastInterventionTriggerReasonCodes: []string{},
+		QualityTrajectory:                  []QualityIteration{},
+		ActorProfilesUsed:                  []ActorProfileUsed{},
 	}
 }
 
@@ -684,6 +710,8 @@ func inputPathForToken(token, artifactDirectory string, inputs materializedInput
 		return filepath.Join(artifactDirectory, "plan.yaml")
 	case "context_pack":
 		return filepath.Join(artifactDirectory, "context_pack.yaml")
+	case "critic_report":
+		return filepath.Join(artifactDirectory, "critic_report.yaml")
 	case "implementation_result":
 		return filepath.Join(artifactDirectory, "implementation_result.yaml")
 	case "execution_report":
@@ -701,6 +729,8 @@ func canonicalOutputForActor(actorName string) string {
 		return "plan"
 	case "context_builder":
 		return "context_pack"
+	case "critic":
+		return "critic_report"
 	case "generator":
 		return "implementation_result"
 	case "executor":
@@ -1167,6 +1197,15 @@ func placeholderContent(outputName string) map[string]any {
 			"implementation_hints":  []string{},
 			"approved_memory_hints": []map[string]any{},
 		}
+	case "critic_report":
+		return map[string]any{
+			"priority_focus":          []string{},
+			"missing_requirements":    []string{},
+			"risk_hypotheses":         []string{},
+			"validation_expectations": []string{},
+			"generator_guardrails":    []string{},
+			"blocked_assumptions":     []string{},
+		}
 	case "implementation_result":
 		return map[string]any{
 			"changed_files":          []string{},
@@ -1212,6 +1251,8 @@ func artifactFileName(outputName string) string {
 		return "plan.yaml"
 	case "context_pack":
 		return "context_pack.yaml"
+	case "critic_report":
+		return "critic_report.yaml"
 	case "implementation_result":
 		return "implementation_result.yaml"
 	case "execution_report":

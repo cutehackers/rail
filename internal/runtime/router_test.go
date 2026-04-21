@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"rail/internal/contracts"
+	"gopkg.in/yaml.v3"
 )
 
 func TestRouteEvaluationMapsFixtureToTightenValidation(t *testing.T) {
@@ -39,6 +40,22 @@ func TestRouteEvaluationMapsFixtureToTightenValidation(t *testing.T) {
 	}
 	if state.CurrentActor == nil || *state.CurrentActor != "executor" {
 		t.Fatalf("unexpected currentActor: got %v want %q", state.CurrentActor, "executor")
+	}
+	executionReport, err := os.ReadFile(filepath.Join(artifactPath, "execution_report.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read non-terminal execution_report.yaml: %v", err)
+	}
+	for _, fragment := range []string{
+		"actor_graph:",
+		"actor_profiles_used:",
+		"critic_findings_applied:",
+		"critic_to_evaluator_delta:",
+		"quality_trajectory:",
+		"terminal_status: tightening_validation",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected non-terminal execution report to contain %q, got:\n%s", fragment, string(executionReport))
+		}
 	}
 }
 
@@ -169,6 +186,102 @@ func TestRouteEvaluationRecoversTerminalSummaryOnRerun(t *testing.T) {
 	}
 }
 
+func TestRouteEvaluationRepairsTerminalExecutionReportOnRerun(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	staleExecutionReport := `format: fail
+analyze: pass
+tests:
+  total: 3
+  passed: 1
+  failed: 2
+failure_details:
+  - stale terminal base report
+logs:
+  - go test ./...
+`
+	if err := os.WriteFile(executionReportPath, []byte(staleExecutionReport), 0o644); err != nil {
+		t.Fatalf("failed to write stale terminal execution_report.yaml: %v", err)
+	}
+
+	summary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("expected rerun to repair stale terminal execution report, got error: %v", err)
+	}
+	if strings.Contains(summary, "skipped") {
+		t.Fatalf("expected rerun to refresh stale terminal execution report instead of skipping, got %q", summary)
+	}
+
+	executionReport, err := os.ReadFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("expected execution_report.yaml to exist after repair: %v", err)
+	}
+	for _, fragment := range []string{
+		"actor_graph:",
+		"actor_profiles_used:",
+		"critic_findings_applied:",
+		"critic_to_evaluator_delta:",
+		"quality_trajectory:",
+		"terminal_status: blocked_environment",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected repaired terminal execution report to contain %q, got:\n%s", fragment, string(executionReport))
+		}
+	}
+}
+
+func TestRouteEvaluationRepairsMissingTerminalExecutionReportOnRerun(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	if err := os.Remove(executionReportPath); err != nil {
+		t.Fatalf("failed to remove terminal execution_report.yaml: %v", err)
+	}
+
+	summary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("expected rerun to repair missing terminal execution report, got error: %v", err)
+	}
+	if strings.Contains(summary, "skipped") {
+		t.Fatalf("expected rerun to refresh missing terminal execution report instead of skipping, got %q", summary)
+	}
+
+	executionReport, err := os.ReadFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("expected execution_report.yaml to exist after repair: %v", err)
+	}
+	for _, fragment := range []string{
+		"actor_graph:",
+		"actor_profiles_used:",
+		"critic_findings_applied:",
+		"critic_to_evaluator_delta:",
+		"terminal_status: blocked_environment",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected repaired terminal execution report to contain %q, got:\n%s", fragment, string(executionReport))
+		}
+	}
+}
+
 func TestRouteEvaluationRecoversSupervisorTraceOnRerun(t *testing.T) {
 	projectRoot := t.TempDir()
 	router, err := NewRouter(projectRoot)
@@ -215,6 +328,157 @@ func TestRouteEvaluationRecoversSupervisorTraceOnRerun(t *testing.T) {
 	} {
 		if !strings.Contains(string(trace), fragment) {
 			t.Fatalf("expected recovered supervisor trace to contain %q, got:\n%s", fragment, string(trace))
+		}
+	}
+}
+
+func TestRouteEvaluationRecoversNonTerminalExecutionReportOnRerun(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	if err := os.Remove(executionReportPath); err != nil {
+		t.Fatalf("failed to remove execution_report.yaml: %v", err)
+	}
+
+	summary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("expected rerun to recover execution report, got error: %v", err)
+	}
+	if strings.Contains(summary, "skipped") {
+		t.Fatalf("expected rerun to refresh execution report instead of skipping, got %q", summary)
+	}
+
+	executionReport, err := os.ReadFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("expected execution_report.yaml to exist after recovery: %v", err)
+	}
+	for _, fragment := range []string{
+		"actor_graph:",
+		"actor_profiles_used:",
+		"critic_findings_applied:",
+		"critic_to_evaluator_delta:",
+		"terminal_status: tightening_validation",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected recovered execution report to contain %q, got:\n%s", fragment, string(executionReport))
+		}
+	}
+}
+
+func TestRouteEvaluationRepairsStaleNonTerminalExecutionReportOnRerun(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	staleExecutionReport := `format: fail
+analyze: pass
+tests:
+  total: 2
+  passed: 1
+  failed: 1
+failure_details:
+  - stale base report
+logs:
+  - go test ./...
+`
+	if err := os.WriteFile(executionReportPath, []byte(staleExecutionReport), 0o644); err != nil {
+		t.Fatalf("failed to write stale execution_report.yaml: %v", err)
+	}
+
+	summary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("expected rerun to repair stale execution report, got error: %v", err)
+	}
+	if strings.Contains(summary, "skipped") {
+		t.Fatalf("expected rerun to refresh stale execution report instead of skipping, got %q", summary)
+	}
+
+	executionReport, err := os.ReadFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("expected execution_report.yaml to exist after repair: %v", err)
+	}
+	for _, fragment := range []string{
+		"actor_graph:",
+		"actor_profiles_used:",
+		"critic_findings_applied:",
+		"critic_to_evaluator_delta:",
+		"quality_trajectory:",
+		"terminal_status: tightening_validation",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected repaired execution report to contain %q, got:\n%s", fragment, string(executionReport))
+		}
+	}
+}
+
+func TestRouteEvaluationRepairsMalformedNonTerminalExecutionReportOnRerun(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	malformedExecutionReport := `format: fail
+analyze: pass
+tests:
+  total: 2
+  passed: 1
+  failed: 1
+failure_details:
+  - malformed base report
+logs:
+  - go test ./...
+actor_graph: [
+`
+	if err := os.WriteFile(executionReportPath, []byte(malformedExecutionReport), 0o644); err != nil {
+		t.Fatalf("failed to write malformed execution_report.yaml: %v", err)
+	}
+
+	summary, err := router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("expected rerun to repair malformed execution report, got error: %v", err)
+	}
+	if strings.Contains(summary, "skipped") {
+		t.Fatalf("expected rerun to refresh malformed execution report instead of skipping, got %q", summary)
+	}
+
+	executionReport, err := os.ReadFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("expected execution_report.yaml to exist after repair: %v", err)
+	}
+	for _, fragment := range []string{
+		"actor_graph:",
+		"actor_profiles_used:",
+		"critic_findings_applied:",
+		"critic_to_evaluator_delta:",
+		"quality_trajectory:",
+		"terminal_status: tightening_validation",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected repaired execution report to contain %q, got:\n%s", fragment, string(executionReport))
 		}
 	}
 }
@@ -827,11 +1091,465 @@ func TestRouteEvaluationEnrichesExecutionReportForTerminalOutcome(t *testing.T) 
 		"last_intervention: block_environment",
 		"quality_confidence: low",
 		"outcome: bounded_refusal",
+		"actor_profiles_used:",
+		"- actor: planner",
+		"- actor: critic",
+		"critic_findings_applied:",
+		"total_findings: 6",
+		"unmet_count: 6",
+		"critic_to_evaluator_delta:",
+		"confirmed_count: 0",
+		"path:",
+		"- planner",
+		"- critic",
 		"terminal_status: blocked_environment",
 	} {
 		if !strings.Contains(string(executionReport), fragment) {
 			t.Fatalf("expected enriched execution report to contain %q, got:\n%s", fragment, string(executionReport))
 		}
+	}
+}
+
+func TestRouteEvaluationFailsWhenRequiredCriticReportIsMissing(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	if err := os.Remove(filepath.Join(artifactPath, "critic_report.yaml")); err != nil {
+		t.Fatalf("failed to remove critic_report.yaml: %v", err)
+	}
+
+	_, err = router.RouteEvaluation(artifactPath)
+	if err == nil {
+		t.Fatalf("expected RouteEvaluation to fail without required critic_report")
+	}
+	if !strings.Contains(err.Error(), "critic_report") {
+		t.Fatalf("expected missing critic_report error, got %v", err)
+	}
+}
+
+func TestRouteEvaluationFailsNonTerminalWhenRequiredCriticReportIsMissing(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	if err := os.Remove(filepath.Join(artifactPath, "critic_report.yaml")); err != nil {
+		t.Fatalf("failed to remove critic_report.yaml: %v", err)
+	}
+
+	_, err = router.RouteEvaluation(artifactPath)
+	if err == nil {
+		t.Fatalf("expected non-terminal RouteEvaluation to fail without required critic_report")
+	}
+	if !strings.Contains(err.Error(), "critic_report") {
+		t.Fatalf("expected missing critic_report error, got %v", err)
+	}
+}
+
+func TestRouteEvaluationFailsWhenCriticIsInGraphButWorkflowOmitsCriticReportOutput(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	workflowPath := filepath.Join(artifactPath, "workflow.json")
+	workflow, err := readWorkflow(workflowPath)
+	if err != nil {
+		t.Fatalf("failed to read workflow: %v", err)
+	}
+	workflow.RequiredOutputs = []string{"plan", "context_pack", "implementation_result", "execution_report", "evaluation_result"}
+	if err := writeJSON(workflowPath, workflow); err != nil {
+		t.Fatalf("failed to rewrite workflow.json: %v", err)
+	}
+	if err := os.Remove(filepath.Join(artifactPath, "critic_report.yaml")); err != nil {
+		t.Fatalf("failed to remove critic_report.yaml: %v", err)
+	}
+
+	_, err = router.RouteEvaluation(artifactPath)
+	if err == nil {
+		t.Fatalf("expected RouteEvaluation to fail when critic remains in graph but critic_report is missing")
+	}
+	if !strings.Contains(err.Error(), "critic_report") {
+		t.Fatalf("expected critic_report error, got %v", err)
+	}
+}
+
+func TestRouteEvaluationFailsWhenRequiredCriticReportIsMalformed(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	if err := os.WriteFile(filepath.Join(artifactPath, "critic_report.yaml"), []byte(`priority_focus:
+  - Preserve bounded supervisor routing.
+missing_requirements: invalid
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`), 0o644); err != nil {
+		t.Fatalf("failed to write malformed critic_report.yaml: %v", err)
+	}
+
+	_, err = router.RouteEvaluation(artifactPath)
+	if err == nil {
+		t.Fatalf("expected RouteEvaluation to fail for malformed critic_report")
+	}
+	if !strings.Contains(err.Error(), "critic_report") {
+		t.Fatalf("expected critic_report validation error, got %v", err)
+	}
+}
+
+func TestRouteEvaluationFailsNonTerminalWhenRequiredCriticReportIsMalformed(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	if err := os.WriteFile(filepath.Join(artifactPath, "critic_report.yaml"), []byte(`priority_focus:
+  - Preserve bounded supervisor routing.
+missing_requirements: invalid
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`), 0o644); err != nil {
+		t.Fatalf("failed to write malformed critic_report.yaml: %v", err)
+	}
+
+	_, err = router.RouteEvaluation(artifactPath)
+	if err == nil {
+		t.Fatalf("expected non-terminal RouteEvaluation to fail for malformed critic_report")
+	}
+	if !strings.Contains(err.Error(), "critic_report") {
+		t.Fatalf("expected critic_report validation error, got %v", err)
+	}
+}
+
+func TestRouteEvaluationDoesNotMarkUnrelatedPassPathCriticFindingsResolved(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	if err := os.WriteFile(filepath.Join(artifactPath, "critic_report.yaml"), []byte(`priority_focus:
+  - Keep repository docs unchanged.
+missing_requirements:
+  - Add CLI analytics dashboard support.
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`), 0o644); err != nil {
+		t.Fatalf("failed to write critic_report.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(`decision: pass
+scores:
+  requirements: 0.9
+  architecture: 0.9
+  regression_risk: 0.9
+quality_confidence: high
+findings:
+  - Validation completed successfully.
+reason_codes: []
+`), 0o644); err != nil {
+		t.Fatalf("failed to write evaluation_result.yaml: %v", err)
+	}
+
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReport, err := os.ReadFile(filepath.Join(artifactPath, "execution_report.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read execution_report.yaml: %v", err)
+	}
+	if strings.Contains(string(executionReport), "status: resolved") {
+		t.Fatalf("expected unrelated critic findings to avoid resolved status, got:\n%s", string(executionReport))
+	}
+	if !strings.Contains(string(executionReport), "status: unmet") {
+		t.Fatalf("expected unrelated critic findings to remain unmet, got:\n%s", string(executionReport))
+	}
+}
+
+func TestRouteEvaluationDoesNotTreatNegatedResolutionLanguageAsResolved(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	if err := os.WriteFile(filepath.Join(artifactPath, "critic_report.yaml"), []byte(`priority_focus: []
+missing_requirements:
+  - Add CLI analytics dashboard support.
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`), 0o644); err != nil {
+		t.Fatalf("failed to write critic_report.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(`decision: pass
+scores:
+  requirements: 0.9
+  architecture: 0.9
+  regression_risk: 0.9
+quality_confidence: high
+findings:
+  - CLI analytics dashboard support is not resolved and still not covered.
+reason_codes: []
+`), 0o644); err != nil {
+		t.Fatalf("failed to write evaluation_result.yaml: %v", err)
+	}
+
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReport, err := os.ReadFile(filepath.Join(artifactPath, "execution_report.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read execution_report.yaml: %v", err)
+	}
+	if strings.Contains(string(executionReport), "status: resolved") {
+		t.Fatalf("expected negated resolution language to avoid resolved status, got:\n%s", string(executionReport))
+	}
+	if !strings.Contains(string(executionReport), "status: confirmed") {
+		t.Fatalf("expected negated resolution language to remain confirmed-only, got:\n%s", string(executionReport))
+	}
+}
+
+func TestRouteEvaluationDoesNotConfirmAllCategoryFindingsFromOneSignal(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "tighten_validation")
+	if err := os.WriteFile(filepath.Join(artifactPath, "critic_report.yaml"), []byte(`priority_focus: []
+missing_requirements:
+  - Add validation target coverage for the CLI route.
+  - Add regression coverage for environment failures.
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`), 0o644); err != nil {
+		t.Fatalf("failed to write critic_report.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(`decision: reject
+scores:
+  requirements: 0.5
+  architecture: 0.9
+  regression_risk: 0.4
+quality_confidence: low
+findings:
+  - Validation target coverage is still missing for the CLI route.
+reason_codes:
+  - requirements_coverage_cli_route
+`), 0o644); err != nil {
+		t.Fatalf("failed to write evaluation_result.yaml: %v", err)
+	}
+
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReport, err := os.ReadFile(filepath.Join(artifactPath, "execution_report.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read execution_report.yaml: %v", err)
+	}
+	if count := strings.Count(string(executionReport), "status: confirmed"); count != 1 {
+		t.Fatalf("expected exactly one confirmed finding, got %d:\n%s", count, string(executionReport))
+	}
+	if count := strings.Count(string(executionReport), "status: unmet"); count == 0 {
+		t.Fatalf("expected unmatched findings to remain unmet, got:\n%s", string(executionReport))
+	}
+}
+
+func TestRouteEvaluationRejectsEnrichedExecutionReportMissingRequiredField(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	decoded, err := contracts.ReadYAMLFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("failed to decode execution_report.yaml: %v", err)
+	}
+	reportMap, err := contracts.AsMap(decoded, "execution_report")
+	if err != nil {
+		t.Fatalf("failed to convert execution_report to map: %v", err)
+	}
+	delete(reportMap, "critic_to_evaluator_delta")
+	body, err := yaml.Marshal(reportMap)
+	if err != nil {
+		t.Fatalf("failed to marshal execution report: %v", err)
+	}
+	if err := os.WriteFile(executionReportPath, body, 0o644); err != nil {
+		t.Fatalf("failed to rewrite execution_report.yaml: %v", err)
+	}
+
+	if _, err := router.validator.ValidateArtifactFile(executionReportPath, "execution_report"); err == nil {
+		t.Fatalf("expected execution_report validation to fail when critic_to_evaluator_delta is missing")
+	}
+}
+
+func TestRouteEvaluationRejectsEnrichedExecutionReportMissingNestedRequiredField(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	decoded, err := contracts.ReadYAMLFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("failed to decode execution_report.yaml: %v", err)
+	}
+	reportMap, err := contracts.AsMap(decoded, "execution_report")
+	if err != nil {
+		t.Fatalf("failed to convert execution_report to map: %v", err)
+	}
+	delta, err := contracts.AsMap(reportMap["critic_to_evaluator_delta"], "critic_to_evaluator_delta")
+	if err != nil {
+		t.Fatalf("failed to convert critic_to_evaluator_delta to map: %v", err)
+	}
+	delete(delta, "summary")
+	body, err := yaml.Marshal(reportMap)
+	if err != nil {
+		t.Fatalf("failed to marshal execution report: %v", err)
+	}
+	if err := os.WriteFile(executionReportPath, body, 0o644); err != nil {
+		t.Fatalf("failed to rewrite execution_report.yaml: %v", err)
+	}
+
+	if _, err := router.validator.ValidateArtifactFile(executionReportPath, "execution_report"); err == nil {
+		t.Fatalf("expected execution_report validation to fail when critic_to_evaluator_delta.summary is missing")
+	}
+}
+
+func TestRouteEvaluationRejectsMalformedActorProfilesUsedEntries(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	decoded, err := contracts.ReadYAMLFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("failed to decode execution_report.yaml: %v", err)
+	}
+	reportMap, err := contracts.AsMap(decoded, "execution_report")
+	if err != nil {
+		t.Fatalf("failed to convert execution_report to map: %v", err)
+	}
+	entries, ok := reportMap["actor_profiles_used"].([]any)
+	if !ok || len(entries) == 0 {
+		t.Fatalf("expected actor_profiles_used entries, got %T", reportMap["actor_profiles_used"])
+	}
+	entry, ok := entries[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected actor_profiles_used[0] to be a map, got %T", entries[0])
+	}
+	delete(entry, "model")
+	body, err := yaml.Marshal(reportMap)
+	if err != nil {
+		t.Fatalf("failed to marshal execution report: %v", err)
+	}
+	if err := os.WriteFile(executionReportPath, body, 0o644); err != nil {
+		t.Fatalf("failed to rewrite execution_report.yaml: %v", err)
+	}
+
+	if _, err := router.validator.ValidateArtifactFile(executionReportPath, "execution_report"); err == nil {
+		t.Fatalf("expected execution_report validation to fail when actor_profiles_used.model is missing")
+	}
+}
+
+func TestRouteEvaluationFailsWhenActorProfilesSnapshotIsIncomplete(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.ActorProfilesUsed = state.ActorProfilesUsed[:2]
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to rewrite state.json: %v", err)
+	}
+
+	_, err = router.RouteEvaluation(artifactPath)
+	if err == nil {
+		t.Fatalf("expected RouteEvaluation to fail for incomplete actorProfilesUsed snapshot")
+	}
+	if !strings.Contains(err.Error(), "actorProfilesUsed") {
+		t.Fatalf("expected actorProfilesUsed error, got %v", err)
+	}
+}
+
+func TestRouteEvaluationFailsWhenActorProfilesSnapshotHasUnsupportedReasoning(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.ActorProfilesUsed[0].Reasoning = "critical"
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to rewrite state.json: %v", err)
+	}
+
+	_, err = router.RouteEvaluation(artifactPath)
+	if err == nil {
+		t.Fatalf("expected RouteEvaluation to fail for unsupported actorProfilesUsed reasoning")
+	}
+	if !strings.Contains(err.Error(), "unsupported reasoning") {
+		t.Fatalf("expected unsupported reasoning error, got %v", err)
 	}
 }
 

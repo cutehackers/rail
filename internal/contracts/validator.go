@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"rail/internal/assets"
 	"rail/internal/request"
@@ -228,6 +229,8 @@ func schemaPathForName(schemaName string) (string, error) {
 		return ".harness/templates/plan.schema.yaml", nil
 	case "context_pack":
 		return ".harness/templates/context_pack.schema.yaml", nil
+	case "critic_report":
+		return ".harness/templates/critic_report.schema.yaml", nil
 	case "implementation_result":
 		return ".harness/templates/implementation_result.schema.yaml", nil
 	case "evaluation_result":
@@ -440,10 +443,19 @@ func (v *SchemaValidator) validateNode(schema map[string]any, value any, path st
 		if minItems, ok := schema["minItems"].(int); ok && len(listValue) < minItems {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s expected at least %d item(s)", path, minItems))
 		}
+		if maxItems, ok := schema["maxItems"].(int); ok && len(listValue) > maxItems {
+			validationErrors = append(validationErrors, fmt.Sprintf("%s expected at most %d item(s)", path, maxItems))
+		}
 		if itemSchema, ok := schema["items"].(map[string]any); ok {
 			for i, entry := range listValue {
 				validationErrors = append(validationErrors, v.validateNode(itemSchema, entry, fmt.Sprintf("%s[%d]", path, i))...)
 			}
+		}
+	}
+
+	if maxLength, ok := schema["maxLength"].(int); ok {
+		if stringValue, ok := value.(string); ok && utf8.RuneCountInString(stringValue) > maxLength {
+			validationErrors = append(validationErrors, fmt.Sprintf("%s expected length <= %d", path, maxLength))
 		}
 	}
 

@@ -33,6 +33,7 @@ func TestValidateRequestAcceptsCurrentValidFixture(t *testing.T) {
 }
 
 func TestBootstrapCreatesExpectedArtifactSkeleton(t *testing.T) {
+	repoRoot := testRepoRoot(t)
 	projectRoot := t.TempDir()
 	bootstrapper, err := NewBootstrapper(projectRoot)
 	if err != nil {
@@ -46,6 +47,29 @@ func TestBootstrapCreatesExpectedArtifactSkeleton(t *testing.T) {
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
 			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+
+	for _, relPath := range []string{
+		filepath.Join(".harness", "actors", "critic.md"),
+		filepath.Join(".harness", "actors", "generator.md"),
+		filepath.Join(".harness", "supervisor", "actor_profiles.yaml"),
+		filepath.Join(".harness", "supervisor", "task_router.yaml"),
+		filepath.Join(".harness", "supervisor", "registry.yaml"),
+		filepath.Join(".harness", "supervisor", "context_contract.yaml"),
+		filepath.Join(".harness", "templates", "critic_report.schema.yaml"),
+	} {
+		sourcePath := filepath.Join(repoRoot, relPath)
+		body, err := os.ReadFile(sourcePath)
+		if err != nil {
+			t.Fatalf("failed to read checked-in contract %q: %v", relPath, err)
+		}
+		destinationPath := filepath.Join(projectRoot, relPath)
+		if err := os.MkdirAll(filepath.Dir(destinationPath), 0o755); err != nil {
+			t.Fatalf("failed to create contract directory for %q: %v", relPath, err)
+		}
+		if err := os.WriteFile(destinationPath, body, 0o644); err != nil {
+			t.Fatalf("failed to write contract %q: %v", relPath, err)
 		}
 	}
 
@@ -85,6 +109,7 @@ validation_profile: standard
 		"workflow_steps.md",
 		"plan.yaml",
 		"context_pack.yaml",
+		"critic_report.yaml",
 		"implementation_result.yaml",
 		"execution_report.yaml",
 		"evaluation_result.yaml",
@@ -94,11 +119,35 @@ validation_profile: standard
 		filepath.Join("inputs", "execution_policy.yaml"),
 		filepath.Join("inputs", "rubric.yaml"),
 		filepath.Join("actor_briefs", "01_planner.md"),
-		filepath.Join("actor_briefs", "05_evaluator.md"),
+		filepath.Join("actor_briefs", "02_context_builder.md"),
+		filepath.Join("actor_briefs", "03_critic.md"),
+		filepath.Join("actor_briefs", "04_generator.md"),
+		filepath.Join("actor_briefs", "05_executor.md"),
+		filepath.Join("actor_briefs", "06_evaluator.md"),
 	} {
 		if _, err := os.Stat(filepath.Join(artifactPath, relPath)); err != nil {
 			t.Fatalf("expected bootstrap artifact %q to exist: %v", relPath, err)
 		}
+	}
+
+	validator, err := contracts.NewValidator(projectRoot)
+	if err != nil {
+		t.Fatalf("NewValidator returned error: %v", err)
+	}
+	criticReport, err := validator.ValidateArtifactFile(filepath.Join(".harness", "artifacts", "bootstrap-smoke", "critic_report.yaml"), "critic_report")
+	if err != nil {
+		t.Fatalf("ValidateArtifactFile returned error for critic_report placeholder: %v", err)
+	}
+	wantCriticPlaceholder := map[string]any{
+		"priority_focus":          []any{},
+		"missing_requirements":    []any{},
+		"risk_hypotheses":         []any{},
+		"validation_expectations": []any{},
+		"generator_guardrails":    []any{},
+		"blocked_assumptions":     []any{},
+	}
+	if !mapsEqual(criticReport, wantCriticPlaceholder) {
+		t.Fatalf("unexpected critic_report placeholder: got %#v want %#v", criticReport, wantCriticPlaceholder)
 	}
 
 	workflowPath := filepath.Join(artifactPath, workflowArtifactFileName)
@@ -160,8 +209,14 @@ validation_profile: standard
 	if state.Status != "initialized" {
 		t.Fatalf("unexpected state status: got %q want %q", state.Status, "initialized")
 	}
+	if len(state.ActorProfilesUsed) != 0 {
+		t.Fatalf("expected initial actorProfilesUsed snapshot to be empty, got %#v", state.ActorProfilesUsed)
+	}
 	if state.CurrentActor == nil || *state.CurrentActor != "planner" {
 		t.Fatalf("unexpected currentActor: got %v want %q", state.CurrentActor, "planner")
+	}
+	if got, want := workflow.Actors, []string{"planner", "context_builder", "critic", "generator", "executor", "evaluator"}; !slices.Equal(got, want) {
+		t.Fatalf("unexpected actors: got %v want %v", got, want)
 	}
 
 	workflowSteps, err := os.ReadFile(filepath.Join(artifactPath, "workflow_steps.md"))
@@ -193,20 +248,123 @@ validation_profile: standard
 		}
 	}
 
-	executionReport, err := os.ReadFile(filepath.Join(artifactPath, "execution_report.yaml"))
+	criticBrief, err := os.ReadFile(filepath.Join(artifactPath, "actor_briefs", "03_critic.md"))
 	if err != nil {
-		t.Fatalf("failed to read execution_report.yaml: %v", err)
+		t.Fatalf("failed to read critic brief: %v", err)
 	}
 	for _, fragment := range []string{
-		"approved_memory_consideration:",
-		"considered_ref: \"\"",
-		"lookup_key: \"\"",
-		"disposition: drop",
-		"originating_candidate_refs: []",
+		"priority_focus",
+		"missing_requirements",
+		"risk_hypotheses",
+		"validation_expectations",
+		"generator_guardrails",
+		"blocked_assumptions",
 	} {
-		if !strings.Contains(string(executionReport), fragment) {
-			t.Fatalf("expected execution_report placeholder to contain %q, got:\n%s", fragment, string(executionReport))
+		if !strings.Contains(string(criticBrief), fragment) {
+			t.Fatalf("expected critic brief to contain %q, got:\n%s", fragment, string(criticBrief))
 		}
+	}
+
+	generatorBrief, err := os.ReadFile(filepath.Join(artifactPath, "actor_briefs", "04_generator.md"))
+	if err != nil {
+		t.Fatalf("failed to read generator brief: %v", err)
+	}
+	for _, fragment := range []string{
+		"critic_report.yaml",
+		"forbidden_changes",
+		"constraints",
+		"Treat all inputs above as required",
+	} {
+		if !strings.Contains(string(generatorBrief), fragment) {
+			t.Fatalf("expected generator brief to contain %q, got:\n%s", fragment, string(generatorBrief))
+		}
+	}
+}
+
+func TestBootstrapCreatesExpectedArtifactSkeletonWithEmbeddedDefaults(t *testing.T) {
+	projectRoot := t.TempDir()
+	bootstrapper, err := NewBootstrapper(projectRoot)
+	if err != nil {
+		t.Fatalf("NewBootstrapper returned error: %v", err)
+	}
+
+	for _, relPath := range []string{
+		filepath.Join(".harness", "requests"),
+		filepath.Join("internal", "runtime"),
+		filepath.Join("cmd", "rail"),
+	} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	requestBody := `task_type: feature_addition
+goal: verify embedded defaults still bootstrap the critic graph
+context:
+  feature: runtime
+  suspected_files:
+    - internal/runtime/bootstrap.go
+  related_files:
+    - cmd/rail/main.go
+  validation_roots:
+    - internal
+  validation_targets:
+    - internal/runtime/bootstrap_test.go
+constraints: []
+definition_of_done:
+  - bootstrap should use embedded defaults when repo-owned contract files are absent
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write request fixture: %v", err)
+	}
+
+	artifactPath, err := bootstrapper.Bootstrap(requestPath, "bootstrap-defaults")
+	if err != nil {
+		t.Fatalf("Bootstrap returned error: %v", err)
+	}
+
+	for _, relPath := range []string{
+		"critic_report.yaml",
+		filepath.Join("actor_briefs", "03_critic.md"),
+		filepath.Join("actor_briefs", "04_generator.md"),
+		filepath.Join("actor_briefs", "06_evaluator.md"),
+	} {
+		if _, err := os.Stat(filepath.Join(artifactPath, relPath)); err != nil {
+			t.Fatalf("expected embedded-default bootstrap artifact %q to exist: %v", relPath, err)
+		}
+	}
+
+	generatorBrief, err := os.ReadFile(filepath.Join(artifactPath, "actor_briefs", "04_generator.md"))
+	if err != nil {
+		t.Fatalf("failed to read generator brief: %v", err)
+	}
+	for _, fragment := range []string{
+		"critic_report.yaml",
+		"forbidden_changes",
+	} {
+		if !strings.Contains(string(generatorBrief), fragment) {
+			t.Fatalf("expected embedded-default generator brief to contain %q, got:\n%s", fragment, string(generatorBrief))
+		}
+	}
+
+	workflowPath := filepath.Join(artifactPath, workflowArtifactFileName)
+	workflow, err := readWorkflow(workflowPath)
+	if err != nil {
+		t.Fatalf("failed to read embedded-default workflow: %v", err)
+	}
+	if got, want := workflow.Actors, []string{"planner", "context_builder", "critic", "generator", "executor", "evaluator"}; !slices.Equal(got, want) {
+		t.Fatalf("unexpected embedded-default actors: got %v want %v", got, want)
+	}
+
+	validator, err := contracts.NewValidator(projectRoot)
+	if err != nil {
+		t.Fatalf("NewValidator returned error: %v", err)
+	}
+	if _, err := validator.ValidateArtifactFile(filepath.Join(".harness", "artifacts", "bootstrap-defaults", "critic_report.yaml"), "critic_report"); err != nil {
+		t.Fatalf("ValidateArtifactFile returned error for embedded-default critic_report placeholder: %v", err)
 	}
 }
 
@@ -293,6 +451,12 @@ validation_profile: standard
 	if !slices.Equal(executionPlan.TestCommands, wantTests) {
 		t.Fatalf("unexpected testCommands: got %v want %v", executionPlan.TestCommands, wantTests)
 	}
+}
+
+func mapsEqual(left, right map[string]any) bool {
+	leftJSON, leftErr := json.Marshal(left)
+	rightJSON, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && string(leftJSON) == string(rightJSON)
 }
 
 func TestBootstrapRejectsEscapingValidationInputs(t *testing.T) {

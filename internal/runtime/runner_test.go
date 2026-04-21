@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -68,6 +69,22 @@ func TestExecutePreservesSupervisorTraceability(t *testing.T) {
 		t.Fatalf("expected execution summary to contain passed status, got %q", summary)
 	}
 
+	criticReportPath := filepath.Join(artifactPath, "critic_report.yaml")
+	criticReportData, err := os.ReadFile(criticReportPath)
+	if err != nil {
+		t.Fatalf("expected critic_report.yaml to exist after smoke execution: %v", err)
+	}
+	var criticReport map[string]any
+	if err := yaml.Unmarshal(criticReportData, &criticReport); err != nil {
+		t.Fatalf("failed to decode smoke critic_report.yaml: %v", err)
+	}
+	if got, want := criticReport["priority_focus"].([]any), []any{"Keep the smoke-path execution bounded, deterministic, and reviewable."}; !slices.Equal(got, want) {
+		t.Fatalf("unexpected smoke critic priority_focus: got %#v want %#v", got, want)
+	}
+	if got, want := criticReport["generator_guardrails"].([]any), []any{"Do not edit files outside the scoped target."}; !slices.Equal(got, want) {
+		t.Fatalf("unexpected smoke critic generator_guardrails: got %#v want %#v", got, want)
+	}
+
 	trace, err := os.ReadFile(filepath.Join(artifactPath, "supervisor_trace.md"))
 	if err != nil {
 		t.Fatalf("expected supervisor_trace.md to exist: %v", err)
@@ -75,6 +92,7 @@ func TestExecutePreservesSupervisorTraceability(t *testing.T) {
 	for _, fragment := range []string{
 		"# Supervisor Decision Trace",
 		"## Iteration 1",
+		"critic",
 		"- decision: `pass`",
 		"- selected_action: `pass`",
 		"- terminal_status: `passed`",
@@ -82,6 +100,44 @@ func TestExecutePreservesSupervisorTraceability(t *testing.T) {
 		if !strings.Contains(string(trace), fragment) {
 			t.Fatalf("expected supervisor trace to contain %q, got:\n%s", fragment, string(trace))
 		}
+	}
+}
+
+func TestExecuteFailsBeforeGeneratorWhenCriticReportMissing(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-smoke")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.CurrentActor = stringPtr("generator")
+	state.CompletedActors = []string{"planner", "context_builder", "critic"}
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to persist generator state: %v", err)
+	}
+
+	criticReportPath := filepath.Join(artifactPath, "critic_report.yaml")
+	if err := os.Remove(criticReportPath); err != nil {
+		t.Fatalf("failed to remove critic_report.yaml: %v", err)
+	}
+
+	_, err = runner.Execute(artifactPath)
+	if err == nil {
+		t.Fatalf("expected Execute to fail before generator when critic_report is missing")
+	}
+	if !strings.Contains(err.Error(), "critic_report") {
+		t.Fatalf("expected missing critic_report error, got %v", err)
 	}
 }
 
@@ -190,6 +246,53 @@ func TestExecuteRefreshesPersistedOutputsForCompletedArtifacts(t *testing.T) {
 	}
 }
 
+func TestExecuteRefreshesMissingExecutionReportForCompletedArtifacts(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-smoke")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if _, err := runner.Execute(artifactPath); err != nil {
+		t.Fatalf("initial Execute returned error: %v", err)
+	}
+
+	executionReportPath := filepath.Join(artifactPath, "execution_report.yaml")
+	if err := os.Remove(executionReportPath); err != nil {
+		t.Fatalf("failed to remove execution_report.yaml: %v", err)
+	}
+
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("refresh Execute returned error: %v", err)
+	}
+	if strings.Contains(summary, "already completed") {
+		t.Fatalf("expected Execute to refresh missing execution_report instead of returning early, got %q", summary)
+	}
+
+	executionReport, err := os.ReadFile(executionReportPath)
+	if err != nil {
+		t.Fatalf("expected execution_report.yaml to be recreated: %v", err)
+	}
+	for _, fragment := range []string{
+		"actor_graph:",
+		"actor_profiles_used:",
+		"critic_findings_applied:",
+		"critic_to_evaluator_delta:",
+		"terminal_status: passed",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected recovered execution report to contain %q, got:\n%s", fragment, string(executionReport))
+		}
+	}
+}
+
 func TestRunRejectsNonEmptyExistingArtifactDirectory(t *testing.T) {
 	projectRoot, requestPath := prepareSmokeProject(t)
 	artifactPath := filepath.Join(projectRoot, ".harness", "artifacts", "go-smoke")
@@ -260,6 +363,21 @@ func TestBuildSmokeEvaluationResultRejectsFormatFailure(t *testing.T) {
 func TestExecuteRunsRealActorPathThroughCodex(t *testing.T) {
 	projectRoot, requestPath := prepareRealProject(t)
 	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_ACTOR_MODEL", "wrong-model")
+	t.Setenv("RAIL_ACTOR_REASONING_EFFORT", "low")
+	profilesPath := filepath.Join(projectRoot, ".harness", "supervisor", "actor_profiles.yaml")
+	distinctProfiles := `version: 1
+actors:
+  planner: { model: gpt-5.4-planner, reasoning: high }
+  context_builder: { model: gpt-5.4-mini-context, reasoning: medium }
+  critic: { model: gpt-5.4-critic, reasoning: xhigh }
+  generator: { model: gpt-5.4-generator, reasoning: low }
+  evaluator: { model: gpt-5.4-evaluator, reasoning: none }
+  integrator: { model: gpt-5.4-integrator, reasoning: minimal }
+`
+	if err := os.WriteFile(profilesPath, []byte(distinctProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write distinct actor profiles: %v", err)
+	}
 
 	runner, err := NewRunner(projectRoot)
 	if err != nil {
@@ -283,7 +401,13 @@ func TestExecuteRunsRealActorPathThroughCodex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read fake codex actor log: %v", err)
 	}
-	if got, want := strings.TrimSpace(string(actorLog)), "planner\ncontext_builder\ngenerator\nevaluator"; got != want {
+	if got, want := strings.TrimSpace(string(actorLog)), strings.Join([]string{
+		"planner|gpt-5.4-planner|high",
+		"context_builder|gpt-5.4-mini-context|medium",
+		"critic|gpt-5.4-critic|xhigh",
+		"generator|gpt-5.4-generator|low",
+		"evaluator|gpt-5.4-evaluator|none",
+	}, "\n"); got != want {
 		t.Fatalf("unexpected actor execution order: got %q want %q", got, want)
 	}
 
@@ -302,6 +426,380 @@ func TestExecuteRunsRealActorPathThroughCodex(t *testing.T) {
 	if state.Status != "passed" {
 		t.Fatalf("unexpected terminal status: got %q want %q", state.Status, "passed")
 	}
+	if got := len(state.ActorProfilesUsed); got != 5 {
+		t.Fatalf("expected persisted actorProfilesUsed snapshot, got %#v", state.ActorProfilesUsed)
+	}
+
+	criticReport, err := os.ReadFile(filepath.Join(artifactPath, "critic_report.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read real-mode critic_report.yaml: %v", err)
+	}
+	for _, fragment := range []string{
+		"priority_focus:",
+		"generator_guardrails:",
+		"Keep the change scoped to feature/ready.go.",
+	} {
+		if !strings.Contains(string(criticReport), fragment) {
+			t.Fatalf("expected real-mode critic_report.yaml to contain %q, got:\n%s", fragment, string(criticReport))
+		}
+	}
+}
+
+func TestExecuteUsesWorkflowProjectRootActorProfiles(t *testing.T) {
+	targetRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, targetRoot)
+
+	targetProfiles := `version: 1
+actors:
+  planner: { model: gpt-5.4-target-planner, reasoning: high }
+  context_builder: { model: gpt-5.4-target-context, reasoning: medium }
+  critic: { model: gpt-5.4-target-critic, reasoning: xhigh }
+  generator: { model: gpt-5.4-target-generator, reasoning: low }
+  evaluator: { model: gpt-5.4-target-evaluator, reasoning: none }
+  integrator: { model: gpt-5.4-target-integrator, reasoning: minimal }
+`
+	if err := os.WriteFile(filepath.Join(targetRoot, ".harness", "supervisor", "actor_profiles.yaml"), []byte(targetProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write target actor profiles: %v", err)
+	}
+
+	targetRunner, err := NewRunner(targetRoot)
+	if err != nil {
+		t.Fatalf("NewRunner(targetRoot) returned error: %v", err)
+	}
+	artifactPath, err := targetRunner.Run(requestPath, "go-real-cross-root")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	controlRoot := t.TempDir()
+	for _, relPath := range []string{
+		filepath.Join(".harness", "supervisor"),
+	} {
+		if err := os.MkdirAll(filepath.Join(controlRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+	badProfiles := `version: 1
+actors:
+  planner: { model: wrong-control-planner, reasoning: critical }
+`
+	if err := os.WriteFile(filepath.Join(controlRoot, ".harness", "supervisor", "actor_profiles.yaml"), []byte(badProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write control-root actor profiles: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(controlRoot, ".harness", "artifacts"), 0o755); err != nil {
+		t.Fatalf("failed to create control-root artifacts directory: %v", err)
+	}
+	controlArtifactPath := filepath.Join(controlRoot, ".harness", "artifacts", "go-real-cross-root")
+	if err := copyDirectory(artifactPath, controlArtifactPath); err != nil {
+		t.Fatalf("failed to copy artifact into control root: %v", err)
+	}
+
+	controlRunner, err := NewRunner(controlRoot)
+	if err != nil {
+		t.Fatalf("NewRunner(controlRoot) returned error: %v", err)
+	}
+
+	summary, err := controlRunner.Execute(filepath.ToSlash(filepath.Join(".harness", "artifacts", "go-real-cross-root")))
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") {
+		t.Fatalf("expected execution summary to contain passed status, got %q", summary)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if got, want := strings.TrimSpace(string(actorLog)), strings.Join([]string{
+		"planner|gpt-5.4-target-planner|high",
+		"context_builder|gpt-5.4-target-context|medium",
+		"critic|gpt-5.4-target-critic|xhigh",
+		"generator|gpt-5.4-target-generator|low",
+		"evaluator|gpt-5.4-target-evaluator|none",
+	}, "\n"); got != want {
+		t.Fatalf("unexpected actor execution order: got %q want %q", got, want)
+	}
+
+	readySource, err := os.ReadFile(filepath.Join(targetRoot, "feature", "ready.go"))
+	if err != nil {
+		t.Fatalf("failed to read target ready.go: %v", err)
+	}
+	if !strings.Contains(string(readySource), "Real-mode actor path verified.") {
+		t.Fatalf("expected generator actor to update target ready.go, got:\n%s", string(readySource))
+	}
+}
+
+func TestExecutePersistsHistoricalActorProfilesForRouteEvaluation(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	installFakeCodexForRealMode(t, projectRoot)
+
+	originalProfiles := `version: 1
+actors:
+  planner: { model: gpt-5.4-history-planner, reasoning: high }
+  context_builder: { model: gpt-5.4-history-context, reasoning: medium }
+  critic: { model: gpt-5.4-history-critic, reasoning: xhigh }
+  generator: { model: gpt-5.4-history-generator, reasoning: low }
+  evaluator: { model: gpt-5.4-history-evaluator, reasoning: none }
+  integrator: { model: gpt-5.4-history-integrator, reasoning: minimal }
+`
+	if err := os.WriteFile(filepath.Join(projectRoot, ".harness", "supervisor", "actor_profiles.yaml"), []byte(originalProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write original actor profiles: %v", err)
+	}
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+	artifactPath, err := runner.Run(requestPath, "go-real-profile-history")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if _, err := runner.Execute(artifactPath); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	driftedProfiles := `version: 1
+actors:
+  planner: { model: drifted-planner, reasoning: low }
+  context_builder: { model: drifted-context, reasoning: low }
+  critic: { model: drifted-critic, reasoning: low }
+  generator: { model: drifted-generator, reasoning: low }
+  evaluator: { model: drifted-evaluator, reasoning: low }
+  integrator: { model: drifted-integrator, reasoning: low }
+`
+	if err := os.WriteFile(filepath.Join(projectRoot, ".harness", "supervisor", "actor_profiles.yaml"), []byte(driftedProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write drifted actor profiles: %v", err)
+	}
+	if err := os.Remove(filepath.Join(artifactPath, "terminal_summary.md")); err != nil {
+		t.Fatalf("failed to remove terminal_summary.md: %v", err)
+	}
+
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+
+	executionReport, err := os.ReadFile(filepath.Join(artifactPath, "execution_report.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read execution_report.yaml: %v", err)
+	}
+	if !strings.Contains(string(executionReport), "gpt-5.4-history-planner") {
+		t.Fatalf("expected historical actor profile to remain in execution report, got:\n%s", string(executionReport))
+	}
+	if strings.Contains(string(executionReport), "drifted-planner") {
+		t.Fatalf("expected route evaluation to avoid live-reloaded drifted profile, got:\n%s", string(executionReport))
+	}
+}
+
+func TestExecuteUsesPersistedActorProfilesSnapshotAfterProfileDrift(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+	artifactPath, err := runner.Run(requestPath, "go-real-resume-profile-snapshot")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.ActorProfilesUsed = []ActorProfileUsed{
+		{Actor: "planner", Model: "snapshot-planner", Reasoning: "high"},
+		{Actor: "context_builder", Model: "snapshot-context", Reasoning: "medium"},
+		{Actor: "critic", Model: "snapshot-critic", Reasoning: "xhigh"},
+		{Actor: "generator", Model: "snapshot-generator", Reasoning: "low"},
+		{Actor: "evaluator", Model: "snapshot-evaluator", Reasoning: "none"},
+	}
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to rewrite state.json: %v", err)
+	}
+
+	driftedProfiles := `version: 1
+actors:
+  planner: { model: drifted-planner, reasoning: low }
+  context_builder: { model: drifted-context, reasoning: low }
+  critic: { model: drifted-critic, reasoning: low }
+  generator: { model: drifted-generator, reasoning: low }
+  evaluator: { model: drifted-evaluator, reasoning: low }
+  integrator: { model: drifted-integrator, reasoning: low }
+`
+	if err := os.WriteFile(filepath.Join(projectRoot, ".harness", "supervisor", "actor_profiles.yaml"), []byte(driftedProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write drifted actor profiles: %v", err)
+	}
+
+	if _, err := runner.Execute(artifactPath); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if strings.Contains(string(actorLog), "drifted-planner") || strings.Contains(string(actorLog), "drifted-generator") {
+		t.Fatalf("expected resumed execution to avoid live drifted profiles, got:\n%s", string(actorLog))
+	}
+	for _, fragment := range []string{
+		"planner|snapshot-planner|high",
+		"context_builder|snapshot-context|medium",
+		"critic|snapshot-critic|xhigh",
+		"generator|snapshot-generator|low",
+		"evaluator|snapshot-evaluator|none",
+	} {
+		if !strings.Contains(string(actorLog), fragment) {
+			t.Fatalf("expected actor log to contain %q, got:\n%s", fragment, string(actorLog))
+		}
+	}
+}
+
+func TestExecuteFailsWhenPersistedActorProfilesSnapshotIsIncomplete(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	installFakeCodexForRealMode(t, projectRoot)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+	artifactPath, err := runner.Run(requestPath, "go-real-incomplete-profile-snapshot")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.ActorProfilesUsed = []ActorProfileUsed{
+		{Actor: "planner", Model: "gpt-5.4-planner", Reasoning: "high"},
+	}
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to rewrite state.json: %v", err)
+	}
+
+	_, err = runner.Execute(artifactPath)
+	if err == nil {
+		t.Fatalf("expected Execute to fail for incomplete actorProfilesUsed snapshot")
+	}
+	if !strings.Contains(err.Error(), "actorProfilesUsed") {
+		t.Fatalf("expected actorProfilesUsed error, got %v", err)
+	}
+}
+
+func TestExecuteFailsWhenPersistedActorProfilesSnapshotHasUnsupportedReasoning(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	installFakeCodexForRealMode(t, projectRoot)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+	artifactPath, err := runner.Run(requestPath, "go-real-invalid-profile-snapshot")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.ActorProfilesUsed = []ActorProfileUsed{
+		{Actor: "planner", Model: "gpt-5.4-planner", Reasoning: "high"},
+		{Actor: "context_builder", Model: "gpt-5.4-context", Reasoning: "medium"},
+		{Actor: "critic", Model: "gpt-5.4-critic", Reasoning: "critical"},
+		{Actor: "generator", Model: "gpt-5.4-generator", Reasoning: "low"},
+		{Actor: "evaluator", Model: "gpt-5.4-evaluator", Reasoning: "none"},
+	}
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to rewrite state.json: %v", err)
+	}
+
+	_, err = runner.Execute(artifactPath)
+	if err == nil {
+		t.Fatalf("expected Execute to fail for unsupported actorProfilesUsed reasoning")
+	}
+	if !strings.Contains(err.Error(), "unsupported reasoning") {
+		t.Fatalf("expected unsupported reasoning error, got %v", err)
+	}
+}
+
+func TestExecuteFailsForInvalidActorProfiles(t *testing.T) {
+	t.Run("missing required actor profile", func(t *testing.T) {
+		projectRoot, requestPath := prepareRealProject(t)
+		profilesPath := filepath.Join(projectRoot, ".harness", "supervisor", "actor_profiles.yaml")
+		missingActorProfiles := `version: 1
+actors:
+  planner: { model: gpt-5.4, reasoning: high }
+  context_builder: { model: gpt-5.4-mini, reasoning: high }
+  generator: { model: gpt-5.4, reasoning: high }
+  evaluator: { model: gpt-5.4, reasoning: high }
+`
+		if err := os.WriteFile(profilesPath, []byte(missingActorProfiles), 0o644); err != nil {
+			t.Fatalf("failed to write missing-actor profiles: %v", err)
+		}
+
+		runner, err := NewRunner(projectRoot)
+		if err != nil {
+			t.Fatalf("NewRunner returned error: %v", err)
+		}
+
+		artifactPath, err := runner.Run(requestPath, "go-real-missing-profiles")
+		if err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+
+		_, err = runner.Execute(artifactPath)
+		if err == nil {
+			t.Fatalf("expected Execute to fail for missing required actor profile")
+		}
+		if !strings.Contains(err.Error(), "missing required actors") {
+			t.Fatalf("expected missing required actor error, got %v", err)
+		}
+	})
+
+	t.Run("invalid actor profiles file", func(t *testing.T) {
+		projectRoot, requestPath := prepareRealProject(t)
+		profilesPath := filepath.Join(projectRoot, ".harness", "supervisor", "actor_profiles.yaml")
+		invalidProfiles := `version: 1
+actors:
+  planner: { model: gpt-5.4, reasoning: high }
+  context_builder: { model: gpt-5.4-mini, reasoning: high }
+  critic: { model: gpt-5.4, reasoning: critical }
+  generator: { model: gpt-5.4, reasoning: high }
+  evaluator: { model: gpt-5.4, reasoning: high }
+`
+		if err := os.WriteFile(profilesPath, []byte(invalidProfiles), 0o644); err != nil {
+			t.Fatalf("failed to write invalid actor profiles: %v", err)
+		}
+
+		runner, err := NewRunner(projectRoot)
+		if err != nil {
+			t.Fatalf("NewRunner returned error: %v", err)
+		}
+
+		artifactPath, err := runner.Run(requestPath, "go-real-invalid-profiles")
+		if err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+
+		_, err = runner.Execute(artifactPath)
+		if err == nil {
+			t.Fatalf("expected Execute to fail for invalid actor profiles")
+		}
+		if !strings.Contains(err.Error(), "unsupported reasoning") {
+			t.Fatalf("expected invalid actor profiles error, got %v", err)
+		}
+	})
 }
 
 func prepareSmokeProject(t *testing.T) (string, string) {
@@ -349,6 +847,7 @@ func prepareRealProject(t *testing.T) (string, string) {
 	for _, relPath := range []string{
 		filepath.Join(".harness", "requests"),
 		filepath.Join(".harness", "artifacts"),
+		filepath.Join(".harness", "supervisor"),
 		"feature",
 	} {
 		if err := os.MkdirAll(filepath.Join(projectRoot, relPath), 0o755); err != nil {
@@ -392,6 +891,13 @@ validation_profile: standard
 	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
 		t.Fatalf("failed to write real request fixture: %v", err)
 	}
+	actorProfilesBody, err := os.ReadFile(filepath.Join(testRepoRoot(t), ".harness", "supervisor", "actor_profiles.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read checked-in actor profiles: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".harness", "supervisor", "actor_profiles.yaml"), actorProfilesBody, 0o644); err != nil {
+		t.Fatalf("failed to write checked-in actor profiles: %v", err)
+	}
 
 	return projectRoot, requestPath
 }
@@ -422,9 +928,20 @@ root_match = re.search(r"Project root: (.+)", prompt)
 if root_match:
     project_root = root_match.group(1).strip()
 
+model = ""
+reasoning = ""
+for index, value in enumerate(sys.argv):
+    if value == "-m" and index + 1 < len(sys.argv):
+        model = sys.argv[index + 1]
+    if value == "-c" and index + 1 < len(sys.argv):
+        config_value = sys.argv[index + 1]
+        config_match = re.match(r'model_reasoning_effort="([^"]+)"', config_value)
+        if config_match:
+            reasoning = config_match.group(1)
+
 if project_root:
     with open(os.path.join(project_root, ".actor-log"), "a", encoding="utf-8") as handle:
-        handle.write(actor + "\n")
+        handle.write(actor + "|" + model + "|" + reasoning + "\n")
 
 response = {}
 if actor == "planner":
@@ -443,6 +960,15 @@ elif actor == "context_builder":
         "test_patterns": ["Use package-local Go tests."],
         "forbidden_changes": ["No unrelated files."],
         "implementation_hints": ["Add a narrow comment-only change."]
+    }
+elif actor == "critic":
+    response = {
+        "priority_focus": ["Keep the change scoped to feature/ready.go."],
+        "missing_requirements": [],
+        "risk_hypotheses": ["Editing outside the feature package would broaden the diff."],
+        "validation_expectations": ["Keep go test coverage green for the feature package."],
+        "generator_guardrails": ["Do not modify unrelated files."],
+        "blocked_assumptions": []
     }
 elif actor == "generator":
     ready_path = os.path.join(project_root, "feature", "ready.go")
@@ -490,6 +1016,43 @@ with open(output_path, "w", encoding="utf-8") as handle:
 type stubCommandRunner struct {
 	results []CommandResult
 	call    int
+}
+
+func copyDirectory(source string, destination string) error {
+	return filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relativePath, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		targetPath := filepath.Join(destination, relativePath)
+		if info.IsDir() {
+			return os.MkdirAll(targetPath, info.Mode())
+		}
+		return copyFile(path, targetPath, info.Mode())
+	})
+}
+
+func copyFile(source string, destination string, mode os.FileMode) error {
+	sourceFile, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return err
+	}
+	destinationFile, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return err
+	}
+	defer destinationFile.Close()
+
+	_, err = io.Copy(destinationFile, sourceFile)
+	return err
 }
 
 func (s *stubCommandRunner) RunShell(command, workingDirectory string, timeout time.Duration) (CommandResult, error) {

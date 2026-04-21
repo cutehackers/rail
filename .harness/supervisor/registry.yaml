@@ -6,6 +6,7 @@ task_registry:
     actors:
       - planner
       - context_builder
+      - critic
       - generator
       - executor
       - evaluator
@@ -15,6 +16,7 @@ task_registry:
     required_output:
       - plan
       - context_pack
+      - critic_report
       - implementation_result
       - execution_report
       - evaluation_result
@@ -24,6 +26,7 @@ task_registry:
     actors:
       - planner
       - context_builder
+      - critic
       - generator
       - executor
       - evaluator
@@ -33,6 +36,7 @@ task_registry:
     required_output:
       - plan
       - context_pack
+      - critic_report
       - implementation_result
       - execution_report
       - evaluation_result
@@ -42,6 +46,7 @@ task_registry:
     actors:
       - planner
       - context_builder
+      - critic
       - generator
       - executor
       - evaluator
@@ -51,6 +56,7 @@ task_registry:
     required_output:
       - plan
       - context_pack
+      - critic_report
       - implementation_result
       - execution_report
       - evaluation_result
@@ -60,6 +66,7 @@ task_registry:
     actors:
       - planner
       - context_builder
+      - critic
       - generator
       - executor
       - evaluator
@@ -69,6 +76,7 @@ task_registry:
     required_output:
       - plan
       - context_pack
+      - critic_report
       - implementation_result
       - execution_report
       - evaluation_result

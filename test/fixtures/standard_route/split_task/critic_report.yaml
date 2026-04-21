@@ -1,0 +1,12 @@
+priority_focus:
+  - Preserve bounded supervisor routing.
+missing_requirements:
+  - Keep scope aligned to one independently shippable change.
+risk_hypotheses:
+  - Mixed scopes may require task decomposition.
+validation_expectations:
+  - Confirm each acceptance criterion maps to one bounded task.
+generator_guardrails:
+  - Avoid spanning unrelated files or acceptance criteria.
+blocked_assumptions:
+  - The request may combine multiple independent deliverables.

@@ -3,6 +3,7 @@ routes:
     actors:
       - planner
       - context_builder
+      - critic
       - generator
       - executor
       - evaluator
@@ -11,6 +12,7 @@ routes:
     actors:
       - planner
       - context_builder
+      - critic
       - generator
       - executor
       - evaluator
@@ -19,6 +21,7 @@ routes:
     actors:
       - planner
       - context_builder
+      - critic
       - generator
       - executor
       - evaluator
@@ -27,6 +30,7 @@ routes:
     actors:
       - planner
       - context_builder
+      - critic
       - generator
       - executor
       - evaluator

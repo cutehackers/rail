@@ -7,6 +7,7 @@
   "completedActors": [
     "planner",
     "context_builder",
+    "critic",
     "generator",
     "executor"
   ],
@@ -24,5 +25,12 @@
   "lastInterventionTriggerCategory": null,
   "pendingContextRefreshTrigger": null,
   "pendingContextRefreshReasonFamily": null,
-  "validationTighteningsUsed": 0
+  "validationTighteningsUsed": 0,
+  "actorProfilesUsed": [
+    {"actor":"planner","model":"gpt-5.4","reasoning":"high"},
+    {"actor":"context_builder","model":"gpt-5.4-mini","reasoning":"high"},
+    {"actor":"critic","model":"gpt-5.4","reasoning":"high"},
+    {"actor":"generator","model":"gpt-5.4","reasoning":"high"},
+    {"actor":"evaluator","model":"gpt-5.4","reasoning":"high"}
+  ]
 }

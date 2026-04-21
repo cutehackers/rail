@@ -125,8 +125,16 @@ func TestAppRunExecutesArtifactForExecuteCommand(t *testing.T) {
 		t.Fatalf("expected zero exit code for execute, got %d", got)
 	}
 
-	if _, err := os.Stat(filepath.Join(projectRoot, ".harness", "artifacts", "cli-execute-smoke", "terminal_summary.md")); err != nil {
+	terminalSummaryPath := filepath.Join(projectRoot, ".harness", "artifacts", "cli-execute-smoke", "terminal_summary.md")
+	if _, err := os.Stat(terminalSummaryPath); err != nil {
 		t.Fatalf("expected execute command to create terminal summary: %v", err)
+	}
+	terminalSummary, err := os.ReadFile(terminalSummaryPath)
+	if err != nil {
+		t.Fatalf("expected terminal summary to be readable: %v", err)
+	}
+	if !strings.Contains(string(terminalSummary), "critic") {
+		t.Fatalf("expected execute terminal summary to include critic traversal, got:\n%s", string(terminalSummary))
 	}
 }
 
@@ -633,6 +641,147 @@ func TestRunRouteEvaluationDiscoversProjectFromAbsoluteArtifactPath(t *testing.T
 	}
 	if !strings.Contains(stdout.String(), "status=tightening_validation") {
 		t.Fatalf("unexpected route-evaluation output: %q", stdout.String())
+	}
+}
+
+func TestRunRouteEvaluationRewritesExecutionReportWithCriticReporting(t *testing.T) {
+	repoRoot := repoRootFromCLIPackage(t)
+	projectRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	artifactPath := copyStandardRouteFixtureForCLI(t, repoRoot, projectRoot, "blocked_environment")
+	var stdout bytes.Buffer
+	if err := RunRouteEvaluation([]string{"--artifact", artifactPath}, &stdout); err != nil {
+		t.Fatalf("RunRouteEvaluation returned error: %v", err)
+	}
+
+	executionReport, err := os.ReadFile(filepath.Join(artifactPath, "execution_report.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read rewritten execution_report.yaml: %v", err)
+	}
+	for _, fragment := range []string{
+		"actor_profiles_used:",
+		"critic_findings_applied:",
+		"critic_to_evaluator_delta:",
+	} {
+		if !strings.Contains(string(executionReport), fragment) {
+			t.Fatalf("expected execution report to contain %q, got:\n%s", fragment, string(executionReport))
+		}
+	}
+}
+
+func TestRunRouteEvaluationFailsWhenRequiredCriticReportIsMissing(t *testing.T) {
+	repoRoot := repoRootFromCLIPackage(t)
+	projectRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	artifactPath := copyStandardRouteFixtureForCLI(t, repoRoot, projectRoot, "blocked_environment")
+	if err := os.Remove(filepath.Join(artifactPath, "critic_report.yaml")); err != nil {
+		t.Fatalf("failed to remove critic_report.yaml: %v", err)
+	}
+	var stdout bytes.Buffer
+
+	err = RunRouteEvaluation([]string{"--artifact", artifactPath}, &stdout)
+	if err == nil {
+		t.Fatalf("expected RunRouteEvaluation to fail without required critic_report")
+	}
+	if !strings.Contains(err.Error(), "critic_report") {
+		t.Fatalf("expected critic_report error, got %v", err)
+	}
+}
+
+func TestRunRouteEvaluationFailsWhenRequiredCriticReportIsMalformed(t *testing.T) {
+	repoRoot := repoRootFromCLIPackage(t)
+	projectRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	artifactPath := copyStandardRouteFixtureForCLI(t, repoRoot, projectRoot, "blocked_environment")
+	if err := os.WriteFile(filepath.Join(artifactPath, "critic_report.yaml"), []byte(`priority_focus:
+  - Preserve bounded supervisor routing.
+missing_requirements: invalid
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`), 0o644); err != nil {
+		t.Fatalf("failed to write malformed critic_report.yaml: %v", err)
+	}
+	var stdout bytes.Buffer
+
+	err = RunRouteEvaluation([]string{"--artifact", artifactPath}, &stdout)
+	if err == nil {
+		t.Fatalf("expected RunRouteEvaluation to fail for malformed critic_report")
+	}
+	if !strings.Contains(err.Error(), "critic_report") {
+		t.Fatalf("expected critic_report validation error, got %v", err)
+	}
+}
+
+func TestRunRouteEvaluationFailsNonTerminalWhenRequiredCriticReportIsMissing(t *testing.T) {
+	repoRoot := repoRootFromCLIPackage(t)
+	projectRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	artifactPath := copyStandardRouteFixtureForCLI(t, repoRoot, projectRoot, "tighten_validation")
+	if err := os.Remove(filepath.Join(artifactPath, "critic_report.yaml")); err != nil {
+		t.Fatalf("failed to remove critic_report.yaml: %v", err)
+	}
+	var stdout bytes.Buffer
+
+	err = RunRouteEvaluation([]string{"--artifact", artifactPath}, &stdout)
+	if err == nil {
+		t.Fatalf("expected RunRouteEvaluation to fail without required non-terminal critic_report")
+	}
+	if !strings.Contains(err.Error(), "critic_report") {
+		t.Fatalf("expected critic_report error, got %v", err)
 	}
 }
 

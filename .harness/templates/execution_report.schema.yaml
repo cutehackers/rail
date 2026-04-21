@@ -102,6 +102,200 @@ properties:
     items:
       type: string
 
+  actor_graph:
+    type: object
+    required:
+      - path
+      - total_steps
+      - segments
+      - visit_counts
+      - current_actor
+    properties:
+      path:
+        type: array
+        items:
+          type: string
+      total_steps:
+        type: integer
+      segments:
+        type: array
+        items:
+          type: string
+      visit_counts:
+        type: object
+        additionalProperties:
+          type: integer
+      current_actor:
+        type:
+          - string
+          - 'null'
+
+  actor_profiles_used:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - actor
+        - model
+        - reasoning
+      properties:
+        actor:
+          type: string
+        model:
+          type: string
+        reasoning:
+          type: string
+          enum:
+            - none
+            - minimal
+            - low
+            - medium
+            - high
+            - xhigh
+
+  critic_findings_applied:
+    type: object
+    required:
+      - total_findings
+      - resolved_count
+      - confirmed_count
+      - unmet_count
+      - findings
+    properties:
+      total_findings:
+        type: integer
+      resolved_count:
+        type: integer
+      confirmed_count:
+        type: integer
+      unmet_count:
+        type: integer
+      findings:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - category
+            - finding
+            - status
+          properties:
+            category:
+              type: string
+            finding:
+              type: string
+            status:
+              type: string
+              enum:
+                - resolved
+                - confirmed
+                - unmet
+            matched_reason_codes:
+              type: array
+              items:
+                type: string
+
+  critic_to_evaluator_delta:
+    type: object
+    required:
+      - summary
+      - confirmed_count
+      - resolved_count
+      - unmet_count
+      - evaluator_reason_codes
+      - confirmed_categories
+    properties:
+      summary:
+        type: string
+      confirmed_count:
+        type: integer
+      resolved_count:
+        type: integer
+      unmet_count:
+        type: integer
+      evaluator_reason_codes:
+        type: array
+        items:
+          type: string
+      confirmed_categories:
+        type: array
+        items:
+          type: string
+
+  quality_trajectory:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - iteration
+        - actor
+        - decision
+        - action
+        - quality_confidence
+        - reason_codes
+        - trigger_category
+        - status
+        - executor_interventions
+        - context_rebuilds
+        - generator_revisions
+        - validation_tightenings
+        - total_interventions
+      properties:
+        iteration:
+          type: integer
+        actor:
+          type: string
+        decision:
+          type: string
+        action:
+          type: string
+        quality_confidence:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        reason_codes:
+          type: array
+          items:
+            type: string
+        trigger_category:
+          type: string
+        status:
+          type: string
+        executor_interventions:
+          type: integer
+        context_rebuilds:
+          type: integer
+        generator_revisions:
+          type: integer
+        validation_tightenings:
+          type: integer
+        total_interventions:
+          type: integer
+
+  quality_improvement_summary:
+    type: object
+    required:
+      - trend
+      - summary
+      - improved_iterations
+      - declined_iterations
+      - iteration_count
+    properties:
+      trend:
+        type: string
+      summary:
+        type: string
+      improved_iterations:
+        type: integer
+      declined_iterations:
+        type: integer
+      iteration_count:
+        type: integer
+
   hardening_candidate_refs:
     type: array
     items:
@@ -146,3 +340,89 @@ properties:
           - 'null'
 
 additionalProperties: false
+
+allOf:
+  - if:
+      required:
+        - actor_graph
+    then:
+      required:
+        - actor_graph
+        - actor_profiles_used
+        - critic_findings_applied
+        - critic_to_evaluator_delta
+        - quality_trajectory
+        - quality_improvement_summary
+        - terminal_status
+  - if:
+      required:
+        - actor_profiles_used
+    then:
+      required:
+        - actor_graph
+        - actor_profiles_used
+        - critic_findings_applied
+        - critic_to_evaluator_delta
+        - quality_trajectory
+        - quality_improvement_summary
+        - terminal_status
+  - if:
+      required:
+        - critic_findings_applied
+    then:
+      required:
+        - actor_graph
+        - actor_profiles_used
+        - critic_findings_applied
+        - critic_to_evaluator_delta
+        - quality_trajectory
+        - quality_improvement_summary
+        - terminal_status
+  - if:
+      required:
+        - critic_to_evaluator_delta
+    then:
+      required:
+        - actor_graph
+        - actor_profiles_used
+        - critic_findings_applied
+        - critic_to_evaluator_delta
+        - quality_trajectory
+        - quality_improvement_summary
+        - terminal_status
+  - if:
+      required:
+        - quality_trajectory
+    then:
+      required:
+        - actor_graph
+        - actor_profiles_used
+        - critic_findings_applied
+        - critic_to_evaluator_delta
+        - quality_trajectory
+        - quality_improvement_summary
+        - terminal_status
+  - if:
+      required:
+        - quality_improvement_summary
+    then:
+      required:
+        - actor_graph
+        - actor_profiles_used
+        - critic_findings_applied
+        - critic_to_evaluator_delta
+        - quality_trajectory
+        - quality_improvement_summary
+        - terminal_status
+  - if:
+      required:
+        - terminal_status
+    then:
+      required:
+        - actor_graph
+        - actor_profiles_used
+        - critic_findings_applied
+        - critic_to_evaluator_delta
+        - quality_trajectory
+        - quality_improvement_summary
+        - terminal_status

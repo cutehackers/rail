@@ -7,6 +7,7 @@
   "actors": [
     "planner",
     "context_builder",
+    "critic",
     "generator",
     "executor",
     "evaluator"
@@ -20,6 +21,7 @@
   "requiredOutputs": [
     "plan",
     "context_pack",
+    "critic_report",
     "implementation_result",
     "execution_report",
     "evaluation_result"

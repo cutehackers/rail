@@ -1,0 +1,12 @@
+priority_focus:
+  - Preserve bounded supervisor routing.
+missing_requirements:
+  - Ensure repository grounding is refreshed before retry.
+risk_hypotheses:
+  - Context may be stale after conflicting executor evidence.
+validation_expectations:
+  - Re-run validation against the refreshed repository state.
+generator_guardrails:
+  - Avoid speculative changes when context is stale.
+blocked_assumptions:
+  - Current repository evidence may no longer reflect head state.

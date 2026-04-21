@@ -104,3 +104,165 @@ with open(output_path, "w", encoding="utf-8") as handle:
 		t.Fatalf("unexpected blocking_issues: %v", blockingIssues)
 	}
 }
+
+func TestIntegrateFailsForInvalidIntegratorProfile(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	_ = installFakeCodexForRealMode(t, projectRoot)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-integrator-invalid-profile")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if _, err := runner.Execute(artifactPath); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	profilesPath := filepath.Join(projectRoot, ".harness", "supervisor", "actor_profiles.yaml")
+	invalidProfiles := `version: 1
+actors:
+  planner: { model: gpt-5.4, reasoning: high }
+  context_builder: { model: gpt-5.4-mini, reasoning: high }
+  critic: { model: gpt-5.4, reasoning: high }
+  generator: { model: gpt-5.4, reasoning: high }
+  evaluator: { model: gpt-5.4, reasoning: high }
+  integrator: { model: gpt-5.4, reasoning: critical }
+`
+	if err := os.WriteFile(profilesPath, []byte(invalidProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write invalid actor profiles: %v", err)
+	}
+
+	_, err = runner.Integrate(artifactPath, projectRoot)
+	if err == nil {
+		t.Fatalf("expected Integrate to fail for invalid integrator profile")
+	}
+	if !strings.Contains(err.Error(), "unsupported reasoning") {
+		t.Fatalf("expected invalid integrator profile error, got %v", err)
+	}
+}
+
+func TestIntegrateUsesOverrideRootActorProfiles(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	_ = installFakeCodexForRealMode(t, projectRoot)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-integrator-override-profile")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if _, err := runner.Execute(artifactPath); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	overrideRoot := t.TempDir()
+	for _, relPath := range []string{
+		filepath.Join(".harness", "supervisor"),
+		"feature",
+	} {
+		if err := os.MkdirAll(filepath.Join(overrideRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+	overrideProfiles := `version: 1
+actors:
+  planner: { model: gpt-5.4, reasoning: high }
+  context_builder: { model: gpt-5.4-mini, reasoning: high }
+  critic: { model: gpt-5.4, reasoning: high }
+  generator: { model: gpt-5.4, reasoning: high }
+  evaluator: { model: gpt-5.4, reasoning: high }
+  integrator: { model: gpt-5.4-override-integrator, reasoning: xhigh }
+`
+	if err := os.WriteFile(filepath.Join(overrideRoot, ".harness", "supervisor", "actor_profiles.yaml"), []byte(overrideProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write override actor profiles: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(overrideRoot, "feature", "ready.go"), []byte("package feature\n\nfunc Ready() bool { return true }\n"), 0o644); err != nil {
+		t.Fatalf("failed to write override ready.go: %v", err)
+	}
+
+	_, err = runner.Integrate(artifactPath, overrideRoot)
+	if err != nil {
+		t.Fatalf("Integrate returned error: %v", err)
+	}
+
+	actorLog, err := os.ReadFile(filepath.Join(overrideRoot, ".actor-log"))
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if !strings.Contains(string(actorLog), "integrator|gpt-5.4-override-integrator|xhigh") {
+		t.Fatalf("expected integrator to use override-root actor profile, got:\n%s", string(actorLog))
+	}
+}
+
+func TestIntegrateUsesWorkflowProjectRootActorProfiles(t *testing.T) {
+	targetRoot, requestPath := prepareRealProject(t)
+	_ = installFakeCodexForRealMode(t, targetRoot)
+
+	targetProfiles := `version: 1
+actors:
+  planner: { model: gpt-5.4, reasoning: high }
+  context_builder: { model: gpt-5.4-mini, reasoning: high }
+  critic: { model: gpt-5.4, reasoning: high }
+  generator: { model: gpt-5.4, reasoning: high }
+  evaluator: { model: gpt-5.4, reasoning: high }
+  integrator: { model: gpt-5.4-workflow-integrator, reasoning: xhigh }
+`
+	if err := os.WriteFile(filepath.Join(targetRoot, ".harness", "supervisor", "actor_profiles.yaml"), []byte(targetProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write target actor profiles: %v", err)
+	}
+
+	targetRunner, err := NewRunner(targetRoot)
+	if err != nil {
+		t.Fatalf("NewRunner(targetRoot) returned error: %v", err)
+	}
+	artifactPath, err := targetRunner.Run(requestPath, "go-real-integrator-cross-root")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if _, err := targetRunner.Execute(artifactPath); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	controlRoot := t.TempDir()
+	for _, relPath := range []string{filepath.Join(".harness", "supervisor"), filepath.Join(".harness", "artifacts")} {
+		if err := os.MkdirAll(filepath.Join(controlRoot, relPath), 0o755); err != nil {
+			t.Fatalf("failed to create %q: %v", relPath, err)
+		}
+	}
+	controlProfiles := `version: 1
+actors:
+  planner: { model: bad-control-planner, reasoning: critical }
+`
+	if err := os.WriteFile(filepath.Join(controlRoot, ".harness", "supervisor", "actor_profiles.yaml"), []byte(controlProfiles), 0o644); err != nil {
+		t.Fatalf("failed to write control-root actor profiles: %v", err)
+	}
+	controlArtifactPath := filepath.Join(controlRoot, ".harness", "artifacts", "go-real-integrator-cross-root")
+	if err := copyDirectory(artifactPath, controlArtifactPath); err != nil {
+		t.Fatalf("failed to copy artifact into control root: %v", err)
+	}
+
+	controlRunner, err := NewRunner(controlRoot)
+	if err != nil {
+		t.Fatalf("NewRunner(controlRoot) returned error: %v", err)
+	}
+
+	_, err = controlRunner.Integrate(filepath.ToSlash(filepath.Join(".harness", "artifacts", "go-real-integrator-cross-root")), "")
+	if err != nil {
+		t.Fatalf("Integrate returned error: %v", err)
+	}
+
+	actorLog, err := os.ReadFile(filepath.Join(targetRoot, ".actor-log"))
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if !strings.Contains(string(actorLog), "integrator|gpt-5.4-workflow-integrator|xhigh") {
+		t.Fatalf("expected integrator to use workflow project-root actor profile, got:\n%s", string(actorLog))
+	}
+}

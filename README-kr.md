@@ -126,9 +126,11 @@ override 규칙은 단순합니다.
 - request 파일의 모드 값은 `validation_profile: standard|smoke`
 - draft composition 단계에서는 `real`도 기본 `standard`의 alias로 허용됩니다
 - `smoke`는 기본값이 아니라 명시적 opt-in으로 취급해야 합니다
-- real actor 호출의 기본 모델은 `RAIL_ACTOR_MODEL=gpt-5.4-mini` 입니다
-- actor 모델을 바꾸려면 `RAIL_ACTOR_MODEL` 을 사용합니다
-- actor 추론 강도를 바꾸려면 `RAIL_ACTOR_REASONING_EFFORT` 를 사용합니다
+- 이제 모든 task family는 `planner -> context_builder -> critic -> generator -> executor -> evaluator` 경로를 통과합니다
+- `critic` 는 선택적 보조 단계가 아니라 필수 graph 단계입니다
+- actor의 모델과 추론 강도는 체크인된 `.harness/supervisor/actor_profiles.yaml` 에서만 옵니다
+- 환경 변수는 더 이상 기본 actor 품질 계약이 아닙니다
+- structured actor는 actor-level timeout을 사용하지 않습니다
 
 ## 이 소스 저장소의 역할
 

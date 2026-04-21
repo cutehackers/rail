@@ -121,9 +121,11 @@ Advanced users should also know:
 - request files use `validation_profile: standard|smoke`
 - draft composition also accepts `real` as an alias for the default `standard`
 - `smoke` should be treated as an explicit opt-in, not the default path
-- real actor invocation defaults to `RAIL_ACTOR_MODEL=gpt-5.4-mini`
-- override actor model with `RAIL_ACTOR_MODEL`
-- override actor reasoning effort with `RAIL_ACTOR_REASONING_EFFORT`
+- every task family now traverses `planner -> context_builder -> critic -> generator -> executor -> evaluator`
+- `critic` is a mandatory graph stage, not an optional advisory pass
+- actor model and reasoning come from checked-in `.harness/supervisor/actor_profiles.yaml`
+- environment variables are not the default actor-quality contract
+- structured actors do not use actor-level timeouts
 
 ## Source Repository Role
 

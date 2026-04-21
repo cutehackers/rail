@@ -74,7 +74,7 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		return "", err
 	}
 	if currentState.CurrentActor == nil {
-		if needsPersistedOutputRefresh(artifactDirectory, currentState) {
+		if r.needsPersistedOutputRefresh(artifactDirectory, currentState) {
 			return r.router.RouteEvaluation(artifactDirectory)
 		}
 		return fmt.Sprintf("Harness execution already completed for %s", artifactDirectory), nil
@@ -83,6 +83,30 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 	requestValue, err := readArtifactRequest(filepath.Join(artifactDirectory, "request.yaml"))
 	if err != nil {
 		return "", err
+	}
+	effectiveProjectRoot := workflow.ProjectRoot
+	if strings.TrimSpace(effectiveProjectRoot) == "" {
+		effectiveProjectRoot = r.projectRoot
+	}
+	workingDirectory, err := filepath.Abs(effectiveProjectRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve workflow project root: %w", err)
+	}
+	var actorProfiles ActorProfiles
+	if len(currentState.ActorProfilesUsed) == 0 {
+		actorProfiles, err = loadActorProfiles(workingDirectory, structuredActorsForWorkflow(workflow))
+		if err != nil {
+			return "", fmt.Errorf("load actor profiles: %w", err)
+		}
+		currentState.ActorProfilesUsed = snapshotActorProfilesUsed(workflow, actorProfiles)
+		if err := writeJSON(statePath, currentState); err != nil {
+			return "", err
+		}
+	} else {
+		if err := validateActorProfilesSnapshot(workflow, currentState.ActorProfilesUsed); err != nil {
+			return "", err
+		}
+		actorProfiles = actorProfilesFromSnapshot(currentState.ActorProfilesUsed)
 	}
 
 	runsDirectory := filepath.Join(artifactDirectory, "runs")
@@ -101,13 +125,16 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		if actorIndex == -1 {
 			return "", fmt.Errorf("unknown actor in state: %s", actorName)
 		}
+		if err := r.validateActorExecutionPrerequisites(workflow, currentState, artifactDirectory, actorName); err != nil {
+			return "", err
+		}
 
 		outputName := canonicalOutputForActor(actorName)
 		outputPath := filepath.Join(artifactDirectory, artifactFileName(outputName))
 		logPath := filepath.Join(runsDirectory, actorLogFileName(actorIndex, actorName, currentState.CompletedActors))
 		briefPath := filepath.Join(artifactDirectory, "actor_briefs", fmt.Sprintf("%02d_%s.md", actorIndex+1, actorName))
 
-		response, err := r.runActor(actorName, actorIndex, artifactDirectory, briefPath, logPath, requestValue, executionPlan)
+		response, err := r.runActor(actorName, actorIndex, artifactDirectory, briefPath, logPath, requestValue, executionPlan, actorProfiles, workingDirectory)
 		if err != nil {
 			return "", err
 		}
@@ -163,17 +190,21 @@ func (r *Runner) runActor(
 	logPath string,
 	requestValue request.CanonicalRequest,
 	executionPlan ExecutionPlan,
+	actorProfiles ActorProfiles,
+	workingDirectory string,
 ) (map[string]any, error) {
 	if requestValue.ValidationProfile == "smoke" {
 		switch actorName {
 		case "planner":
-			return buildSmokePlan(artifactDirectory, r.projectRoot, requestValue), nil
+			return buildSmokePlan(artifactDirectory, workingDirectory, requestValue), nil
 		case "context_builder":
 			return buildSmokeContextPack(artifactDirectory)
+		case "critic":
+			return buildSmokeCriticReport(), nil
 		case "generator":
 			return buildSmokeImplementationResult(artifactDirectory)
 		case "executor":
-			return r.buildExecutionReport(executionPlan)
+			return r.buildExecutionReport(executionPlan, workingDirectory)
 		case "evaluator":
 			return buildSmokeEvaluationResult(artifactDirectory)
 		default:
@@ -183,8 +214,12 @@ func (r *Runner) runActor(
 
 	switch actorName {
 	case "executor":
-		return r.buildExecutionReport(executionPlan)
-	case "planner", "context_builder", "generator", "evaluator":
+		return r.buildExecutionReport(executionPlan, workingDirectory)
+	case "planner", "context_builder", "critic", "generator", "evaluator":
+		profile, err := actorProfiles.ProfileFor(actorName)
+		if err != nil {
+			return nil, err
+		}
 		schemaPath, err := materializeActorOutputSchema(filepath.Join(artifactDirectory, "runs"), actorIndex, actorName, canonicalOutputForActor(actorName))
 		if err != nil {
 			return nil, err
@@ -194,13 +229,94 @@ func (r *Runner) runActor(
 			"Actor name: " + actorName,
 			"Actor brief: " + briefPath,
 			"Artifact directory: " + artifactDirectory,
-			"Project root: " + r.projectRoot,
+			"Project root: " + workingDirectory,
 			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the structured actor response.",
 		}, "\n")
-		return runStructuredCodexCommand(actorName, r.projectRoot, prompt, logPath, schemaPath, 10*time.Minute)
+		return runStructuredCodexCommand(actorName, profile, workingDirectory, prompt, logPath, schemaPath)
 	default:
 		return nil, fmt.Errorf("actor execution is not implemented for %s", actorName)
 	}
+}
+
+func (r *Runner) validateActorExecutionPrerequisites(workflow Workflow, state State, artifactDirectory string, actorName string) error {
+	actorIndex := workflowActorIndex(workflow, actorName)
+	if actorIndex <= 0 {
+		return nil
+	}
+
+	completedActors := make(map[string]struct{}, len(state.CompletedActors))
+	for _, completedActor := range state.CompletedActors {
+		completedActors[completedActor] = struct{}{}
+	}
+
+	for _, prerequisiteActor := range workflow.Actors[:actorIndex] {
+		if _, ok := completedActors[prerequisiteActor]; !ok {
+			return fmt.Errorf("cannot run %s: prerequisite actor %s has not completed", actorName, prerequisiteActor)
+		}
+
+		outputName := canonicalOutputForActor(prerequisiteActor)
+		outputPath := filepath.Join(artifactDirectory, artifactFileName(outputName))
+		if _, err := r.bootstrapper.validator.ValidateArtifactFile(outputPath, outputName); err != nil {
+			return fmt.Errorf("cannot run %s: prerequisite %s output invalid: %w", actorName, outputName, err)
+		}
+	}
+
+	return nil
+}
+
+func buildSmokeCriticReport() map[string]any {
+	return map[string]any{
+		"priority_focus":          []string{"Keep the smoke-path execution bounded, deterministic, and reviewable."},
+		"missing_requirements":    []string{},
+		"risk_hypotheses":         []string{},
+		"validation_expectations": []string{"Preserve passing format, analyze, and tests evidence for the smoke execution plan."},
+		"generator_guardrails":    []string{"Do not edit files outside the scoped target."},
+		"blocked_assumptions":     []string{},
+	}
+}
+
+func snapshotActorProfilesUsed(workflow Workflow, actorProfiles ActorProfiles) []ActorProfileUsed {
+	snapshot := make([]ActorProfileUsed, 0, len(workflow.Actors))
+	for _, actorName := range workflow.Actors {
+		if actorName == "executor" {
+			continue
+		}
+		profile, err := actorProfiles.ProfileFor(actorName)
+		if err != nil {
+			continue
+		}
+		snapshot = append(snapshot, ActorProfileUsed{
+			Actor:     actorName,
+			Model:     profile.Model,
+			Reasoning: profile.Reasoning,
+		})
+	}
+	return snapshot
+}
+
+func actorProfilesFromSnapshot(snapshot []ActorProfileUsed) ActorProfiles {
+	actors := make(map[string]ActorProfile, len(snapshot))
+	for _, profile := range snapshot {
+		actors[profile.Actor] = ActorProfile{
+			Model:     profile.Model,
+			Reasoning: profile.Reasoning,
+		}
+	}
+	return ActorProfiles{
+		Version: 1,
+		Actors:  actors,
+	}
+}
+
+func structuredActorsForWorkflow(workflow Workflow) []string {
+	structuredActors := make([]string, 0, len(workflow.Actors))
+	for _, actorName := range workflow.Actors {
+		if actorName == "executor" {
+			continue
+		}
+		structuredActors = append(structuredActors, actorName)
+	}
+	return structuredActors
 }
 
 func defaultTaskID(requestPath string) string {
@@ -289,10 +405,16 @@ func actorLogFileName(actorIndex int, actorName string, completedActors []string
 	return fmt.Sprintf("%02d_%s-visit-%02d-last-message.txt", actorIndex+1, actorName, visit)
 }
 
-func needsPersistedOutputRefresh(artifactDirectory string, state State) bool {
+func (r *Runner) needsPersistedOutputRefresh(artifactDirectory string, state State) bool {
 	tracePath := filepath.Join(artifactDirectory, "supervisor_trace.md")
 	if len(state.ActionHistory) > 0 && persistedOutputMissing(tracePath) {
 		return true
+	}
+	if len(state.ActionHistory) > 0 {
+		executionPath := filepath.Join(artifactDirectory, "execution_report.yaml")
+		if _, err := r.bootstrapper.validator.ValidateArtifactFile(executionPath, "execution_report"); err != nil {
+			return true
+		}
 	}
 
 	if !shouldTerminate(state) {
@@ -437,7 +559,7 @@ func buildSmokeImplementationResult(artifactDirectory string) (map[string]any, e
 	return result, nil
 }
 
-func (r *Runner) buildExecutionReport(executionPlan ExecutionPlan) (map[string]any, error) {
+func (r *Runner) buildExecutionReport(executionPlan ExecutionPlan, workingDirectory string) (map[string]any, error) {
 	logs := []string{}
 	failureDetails := []string{}
 	formatPass := executionPlan.FormatCommand == nil
@@ -446,7 +568,7 @@ func (r *Runner) buildExecutionReport(executionPlan ExecutionPlan) (map[string]a
 	failedTests := 0
 
 	if executionPlan.FormatCommand != nil {
-		result, err := r.commands.RunShell(*executionPlan.FormatCommand, r.projectRoot, time.Minute)
+		result, err := r.commands.RunShell(*executionPlan.FormatCommand, workingDirectory, time.Minute)
 		if err != nil {
 			return nil, err
 		}
@@ -458,7 +580,7 @@ func (r *Runner) buildExecutionReport(executionPlan ExecutionPlan) (map[string]a
 	}
 
 	for _, command := range executionPlan.AnalyzeCommands {
-		result, err := r.commands.RunShell(command, r.projectRoot, time.Minute)
+		result, err := r.commands.RunShell(command, workingDirectory, time.Minute)
 		if err != nil {
 			return nil, err
 		}
@@ -470,7 +592,7 @@ func (r *Runner) buildExecutionReport(executionPlan ExecutionPlan) (map[string]a
 	}
 
 	for _, command := range executionPlan.TestCommands {
-		result, err := r.commands.RunShell(command, r.projectRoot, time.Minute)
+		result, err := r.commands.RunShell(command, workingDirectory, time.Minute)
 		if err != nil {
 			return nil, err
 		}

@@ -83,6 +83,18 @@ func TestValidateArtifactFileSupportsLearningAndIntegrationSchemas(t *testing.T)
 		content    string
 	}{
 		{
+			name:       "critic_report",
+			filePath:   filepath.Join(".harness", "artifacts", "sample", "critic_report.yaml"),
+			schemaName: "critic_report",
+			content: `priority_focus: []
+missing_requirements: []
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`,
+		},
+		{
 			name:       "integration_result",
 			filePath:   filepath.Join(".harness", "artifacts", "sample", "integration_result.yaml"),
 			schemaName: "integration_result",
@@ -189,6 +201,185 @@ func TestValidateArtifactFileRejectsUnknownSchemaName(t *testing.T) {
 
 	if _, err := validator.ValidateArtifactFile(filepath.Join(".harness", "artifacts", "sample", "integration_result.yaml"), "does_not_exist"); err == nil {
 		t.Fatalf("expected unknown schema error")
+	}
+}
+
+func TestValidateArtifactFileRejectsInvalidCriticReport(t *testing.T) {
+	projectRoot := t.TempDir()
+	if err := copyDirectory(
+		filepath.Join(testRepoRootFromContracts(t), ".harness", "templates"),
+		filepath.Join(projectRoot, ".harness", "templates"),
+	); err != nil {
+		t.Fatalf("failed to copy templates: %v", err)
+	}
+
+	validator, err := NewValidator(projectRoot)
+	if err != nil {
+		t.Fatalf("NewValidator returned error: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{
+			name: "missing_required_field",
+			content: `priority_focus: []
+missing_requirements: []
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+`,
+		},
+		{
+			name: "extra_property",
+			content: `priority_focus: []
+missing_requirements: []
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+surprise_field: true
+`,
+		},
+		{
+			name: "too_many_items",
+			content: `priority_focus:
+  - one
+  - two
+  - three
+  - four
+  - five
+  - six
+  - seven
+missing_requirements: []
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`,
+		},
+		{
+			name: "item_exceeds_max_length",
+			content: `priority_focus:
+  - ` + strings.Repeat("x", 241) + `
+missing_requirements: []
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			filePath := filepath.Join(projectRoot, ".harness", "artifacts", "sample", "critic_report.yaml")
+			if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+				t.Fatalf("failed to create artifact directory: %v", err)
+			}
+			if err := os.WriteFile(filePath, []byte(tc.content), 0o644); err != nil {
+				t.Fatalf("failed to write critic_report fixture: %v", err)
+			}
+
+			if _, err := validator.ValidateArtifactFile(filepath.Join(".harness", "artifacts", "sample", "critic_report.yaml"), "critic_report"); err == nil {
+				t.Fatalf("expected invalid critic_report to fail validation")
+			}
+		})
+	}
+}
+
+func TestValidateArtifactFileRejectsInvalidCriticReportUsingEmbeddedDefaults(t *testing.T) {
+	projectRoot := t.TempDir()
+
+	validator, err := NewValidator(projectRoot)
+	if err != nil {
+		t.Fatalf("NewValidator returned error: %v", err)
+	}
+
+	filePath := filepath.Join(projectRoot, ".harness", "artifacts", "sample", "critic_report.yaml")
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		t.Fatalf("failed to create artifact directory: %v", err)
+	}
+	if err := os.WriteFile(filePath, []byte(`priority_focus:
+  - one
+  - two
+  - three
+  - four
+  - five
+  - six
+  - seven
+missing_requirements: []
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`), 0o644); err != nil {
+		t.Fatalf("failed to write critic_report fixture: %v", err)
+	}
+
+	if _, err := validator.ValidateArtifactFile(filepath.Join(".harness", "artifacts", "sample", "critic_report.yaml"), "critic_report"); err == nil {
+		t.Fatalf("expected invalid critic_report to fail validation using embedded defaults")
+	}
+}
+
+func TestValidateArtifactFileAcceptsUnicodeCriticReportAtMaxLength(t *testing.T) {
+	projectRoot := t.TempDir()
+	if err := copyDirectory(
+		filepath.Join(testRepoRootFromContracts(t), ".harness", "templates"),
+		filepath.Join(projectRoot, ".harness", "templates"),
+	); err != nil {
+		t.Fatalf("failed to copy templates: %v", err)
+	}
+
+	validator, err := NewValidator(projectRoot)
+	if err != nil {
+		t.Fatalf("NewValidator returned error: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		value     string
+		wantError bool
+	}{
+		{
+			name:      "at_limit",
+			value:     strings.Repeat("한", 240),
+			wantError: false,
+		},
+		{
+			name:      "over_limit",
+			value:     strings.Repeat("한", 241),
+			wantError: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			filePath := filepath.Join(projectRoot, ".harness", "artifacts", "sample", "critic_report.yaml")
+			if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+				t.Fatalf("failed to create artifact directory: %v", err)
+			}
+			content := `priority_focus:
+  - ` + tc.value + `
+missing_requirements: []
+risk_hypotheses: []
+validation_expectations: []
+generator_guardrails: []
+blocked_assumptions: []
+`
+			if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+				t.Fatalf("failed to write critic_report fixture: %v", err)
+			}
+
+			_, err := validator.ValidateArtifactFile(filepath.Join(".harness", "artifacts", "sample", "critic_report.yaml"), "critic_report")
+			if tc.wantError && err == nil {
+				t.Fatalf("expected unicode critic_report to fail validation")
+			}
+			if !tc.wantError && err != nil {
+				t.Fatalf("expected unicode critic_report to pass validation: %v", err)
+			}
+		})
 	}
 }
 

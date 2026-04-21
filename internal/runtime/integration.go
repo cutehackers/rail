@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"rail/internal/contracts"
 )
@@ -57,6 +56,14 @@ func (r *Runner) Integrate(artifactPath string, projectRootOverride string) (str
 	workingDirectory, err := filepath.Abs(effectiveProjectRoot)
 	if err != nil {
 		return "", fmt.Errorf("resolve integration project root: %w", err)
+	}
+	actorProfiles, err := loadActorProfiles(workingDirectory, []string{"integrator"})
+	if err != nil {
+		return "", fmt.Errorf("load actor profiles: %w", err)
+	}
+	integratorProfile, err := actorProfiles.ProfileFor("integrator")
+	if err != nil {
+		return "", err
 	}
 
 	executionPlan, err := readExecutionPlanFile(filepath.Join(artifactDirectory, "execution_plan.json"))
@@ -125,7 +132,7 @@ func (r *Runner) Integrate(artifactPath string, projectRootOverride string) (str
 	if err != nil {
 		return "", err
 	}
-	responseObject, err := runIntegratorActor(workingDirectory, briefPath, artifactDirectory, outputPath, logPath, schemaPath)
+	responseObject, err := runIntegratorActor(workingDirectory, integratorProfile, briefPath, artifactDirectory, outputPath, logPath, schemaPath)
 	if err != nil {
 		return "", err
 	}
@@ -251,6 +258,7 @@ func materializeOutputSchema(runsDirectory string, actorIndex int) (string, erro
 
 func runIntegratorActor(
 	workingDirectory string,
+	profile ActorProfile,
 	briefPath string,
 	artifactDirectory string,
 	outputPath string,
@@ -259,12 +267,13 @@ func runIntegratorActor(
 ) (map[string]any, error) {
 	prompt := strings.Join([]string{
 		"Read the Rail integrator brief and produce only the structured post-pass handoff output.",
+		"Actor name: integrator",
 		"Actor brief: " + briefPath,
 		"Artifact directory: " + artifactDirectory,
 		"Project root: " + workingDirectory,
 		"Write no files yourself except the structured response via Codex output handling.",
 	}, "\n")
-	return runStructuredCodexCommand("integrator", workingDirectory, prompt, logPath, schemaPath, 5*time.Minute)
+	return runStructuredCodexCommand("integrator", profile, workingDirectory, prompt, logPath, schemaPath)
 }
 
 func normalizeIntegrationResult(

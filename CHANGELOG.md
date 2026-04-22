@@ -2,6 +2,13 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.2.8 - 2026-04-22
+
+### Verification
+
+- `tool/prepare_release.sh v0.2.8`
+
+
 ## v0.2.7 - 2026-04-21
 
 ### Added

@@ -19,7 +19,7 @@ usage() {
 Usage: tool/publish.sh vX.Y.Z [--local-only] [--agent-changelog]
 
 Prepares a release pull request by:
-  - creating release/vX.Y.Z from main
+  - creating release/vX.Y.Z from the current non-main branch
   - adding a CHANGELOG.md section for vX.Y.Z
   - updating packaging/homebrew/rail.rb to vX.Y.Z
   - committing with a Conventional Commit message
@@ -82,20 +82,16 @@ restore_start_branch() {
   git switch --quiet "$start_branch" >/dev/null 2>&1 || true
 }
 
-assert_main_synchronized() {
-  local upstream counts behind ahead
-  upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
-  if [[ -z "$upstream" ]]; then
-    echo "main must track origin/main before publishing" >&2
+assert_origin_main_ancestor() {
+  git fetch --quiet origin main
+
+  if ! git rev-parse -q --verify "refs/remotes/origin/main" >/dev/null; then
+    echo "origin/main must exist before publishing" >&2
     exit 1
   fi
 
-  git fetch --quiet origin main
-  counts=$(git rev-list --left-right --count "${upstream}...HEAD")
-  behind="${counts%%[[:space:]]*}"
-  ahead="${counts##*[[:space:]]}"
-  if [[ "$behind" != "0" || "$ahead" != "0" ]]; then
-    echo "main must be synchronized with origin/main before publishing; behind=$behind ahead=$ahead" >&2
+  if ! git merge-base --is-ancestor origin/main HEAD; then
+    echo "publish branch must contain origin/main before publishing" >&2
     exit 1
   fi
 }
@@ -241,8 +237,12 @@ if [[ "$(git rev-parse --is-inside-work-tree)" != "true" ]]; then
 fi
 
 start_branch=$(git branch --show-current)
-if [[ "$start_branch" != "main" ]]; then
-  echo "publish must start from main" >&2
+if [[ -z "$start_branch" ]]; then
+  echo "publish must start from a named non-main branch" >&2
+  exit 1
+fi
+if [[ "$start_branch" == "main" ]]; then
+  echo "publish must start from a non-main branch" >&2
   exit 1
 fi
 trap restore_start_branch EXIT
@@ -252,7 +252,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-assert_main_synchronized
+assert_origin_main_ancestor
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "gh is required to open the release pull request" >&2
@@ -272,7 +272,7 @@ if git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null 2>&1;
   exit 1
 fi
 
-# 04. Create an isolated release branch from main.
+# 04. Create an isolated release branch from the current branch.
 branch="release/${version}"
 if git rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
   echo "release branch already exists locally: $branch" >&2

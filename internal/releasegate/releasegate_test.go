@@ -154,7 +154,7 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 		"# 01. Validate input and execution mode.",
 		"# 02. Validate repository state before creating release edits.",
 		"# 03. Ensure this version and release branch do not already exist.",
-		"# 04. Create an isolated release branch from main.",
+		"# 04. Create an isolated release branch from the current branch.",
 		"# 05. Generate and insert the release changelog section.",
 		"# 06. Update the source Homebrew formula to the release tag.",
 		"# 07. Verify generated edits before committing.",
@@ -170,7 +170,7 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 		"GH_PROMPT_DISABLED",
 		"GIT_TERMINAL_PROMPT",
 		"BatchMode=yes",
-		"assert_main_synchronized",
+		"assert_origin_main_ancestor",
 		"assert_pr_create_permission",
 		"viewerPermission",
 		"codex exec",
@@ -190,6 +190,7 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 
 func TestPublishScriptRejectsReadOnlyPRPermission(t *testing.T) {
 	repo := newPublishFixture(t)
+	gitRun(t, repo, "checkout", "-b", "work/publish")
 
 	fakeBin := filepath.Join(t.TempDir(), "fake-bin")
 	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
@@ -216,7 +217,7 @@ func TestPublishScriptRejectsReadOnlyPRPermission(t *testing.T) {
 	if !strings.Contains(string(output), "gh cannot create pull requests for this repository") {
 		t.Fatalf("unexpected output: %s", string(output))
 	}
-	if branch := strings.TrimSpace(gitOutput(t, repo, "branch", "--show-current")); branch != "main" {
+	if branch := strings.TrimSpace(gitOutput(t, repo, "branch", "--show-current")); branch != "work/publish" {
 		t.Fatalf("publish should fail before creating release branch, got branch %q", branch)
 	}
 	if branches := gitOutput(t, repo, "branch", "--list", "release/*"); strings.TrimSpace(branches) != "" {
@@ -224,14 +225,35 @@ func TestPublishScriptRejectsReadOnlyPRPermission(t *testing.T) {
 	}
 }
 
-func TestPublishScriptRejectsUnsyncedMain(t *testing.T) {
+func TestPublishScriptRejectsMainStartBranch(t *testing.T) {
 	repo := newPublishFixture(t)
 
-	if err := os.WriteFile(filepath.Join(repo, "unsynced.txt"), []byte("pending"), 0o644); err != nil {
-		t.Fatalf("write unsynced fixture file: %v", err)
+	cmd := exec.Command("./tool/publish.sh", "v7.8.8", "--local-only")
+	cmd.Dir = repo
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected main start branch to fail")
 	}
-	gitRun(t, repo, "add", "unsynced.txt")
-	gitRun(t, repo, "commit", "-m", "test unsynced main")
+	if !strings.Contains(string(output), "publish must start from a non-main branch") {
+		t.Fatalf("unexpected output: %s", string(output))
+	}
+}
+
+func TestPublishScriptRejectsBranchBehindOriginMain(t *testing.T) {
+	repo := newPublishFixture(t)
+	gitRun(t, repo, "checkout", "-b", "work/publish")
+
+	upstreamWork := t.TempDir()
+	gitRun(t, upstreamWork, "clone", filepath.Join(filepath.Dir(repo), "origin.git"), "upstream")
+	upstream := filepath.Join(upstreamWork, "upstream")
+	gitRun(t, upstream, "config", "user.email", "rail-release-test@example.invalid")
+	gitRun(t, upstream, "config", "user.name", "Rail Release Test")
+	if err := os.WriteFile(filepath.Join(upstream, "upstream.txt"), []byte("upstream\n"), 0o644); err != nil {
+		t.Fatalf("write upstream fixture file: %v", err)
+	}
+	gitRun(t, upstream, "add", "upstream.txt")
+	gitRun(t, upstream, "commit", "-m", "test upstream main change")
+	gitRun(t, upstream, "push", "origin", "main")
 
 	fakeBin := filepath.Join(t.TempDir(), "fake-bin")
 	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
@@ -244,15 +266,21 @@ func TestPublishScriptRejectsUnsyncedMain(t *testing.T) {
 	cmd.Env = append(os.Environ(), "PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	output, err := cmd.CombinedOutput()
 	if err == nil {
-		t.Fatalf("expected unsynced main to fail")
+		t.Fatalf("expected stale publish branch to fail")
 	}
-	if !strings.Contains(string(output), "main must be synchronized with origin/main") {
+	if !strings.Contains(string(output), "publish branch must contain origin/main") {
 		t.Fatalf("unexpected output: %s", string(output))
 	}
 }
 
 func TestPublishScriptUsesAgentChangelogWhenRequested(t *testing.T) {
 	repo := newPublishFixture(t)
+	gitRun(t, repo, "checkout", "-b", "work/publish")
+	if err := os.WriteFile(filepath.Join(repo, "branch-only.txt"), []byte("must not enter release\n"), 0o644); err != nil {
+		t.Fatalf("write branch-only fixture file: %v", err)
+	}
+	gitRun(t, repo, "add", "branch-only.txt")
+	gitRun(t, repo, "commit", "-m", "test work branch only change")
 
 	fakeBin := filepath.Join(t.TempDir(), "fake-bin")
 	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
@@ -298,8 +326,8 @@ func TestPublishScriptUsesAgentChangelogWhenRequested(t *testing.T) {
 	}
 
 	currentBranch := strings.TrimSpace(gitOutput(t, repo, "branch", "--show-current"))
-	if currentBranch != "main" {
-		t.Fatalf("publish should return to main, got %q", currentBranch)
+	if currentBranch != "work/publish" {
+		t.Fatalf("publish should return to work branch, got %q", currentBranch)
 	}
 
 	changelog := gitOutput(t, repo, "show", "release/v7.8.9:CHANGELOG.md")
@@ -315,9 +343,9 @@ func TestPublishScriptUsesAgentChangelogWhenRequested(t *testing.T) {
 	if strings.Contains(changelog, "Prepared v7.8.9 release.") {
 		t.Fatalf("agent changelog should replace the template changelog:\n%s", changelog)
 	}
-	mainChangelog := readFile(t, filepath.Join(repo, "CHANGELOG.md"))
-	if strings.Contains(mainChangelog, "## v7.8.9") {
-		t.Fatalf("main branch should not contain release changelog after publish returns:\n%s", mainChangelog)
+	workBranchChangelog := readFile(t, filepath.Join(repo, "CHANGELOG.md"))
+	if strings.Contains(workBranchChangelog, "## v7.8.9") {
+		t.Fatalf("work branch should not contain release changelog after publish returns:\n%s", workBranchChangelog)
 	}
 
 	formula := gitOutput(t, repo, "show", "release/v7.8.9:packaging/homebrew/rail.rb")
@@ -334,6 +362,9 @@ func TestPublishScriptUsesAgentChangelogWhenRequested(t *testing.T) {
 	commit := gitOutput(t, repo, "log", "-1", "--pretty=%s", "release/v7.8.9")
 	if strings.TrimSpace(commit) != "chore: prepare v7.8.9 release" {
 		t.Fatalf("unexpected commit subject: %q", strings.TrimSpace(commit))
+	}
+	if err := exec.Command("git", "-C", repo, "cat-file", "-e", "release/v7.8.9:branch-only.txt").Run(); err != nil {
+		t.Fatalf("release branch should be created from the starting work branch")
 	}
 }
 

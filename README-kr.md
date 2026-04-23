@@ -15,7 +15,7 @@
 설치는 한 번만 합니다.
 
 ```bash
-brew install rail
+brew install cutehackers/rail/rail
 ```
 
 대상 저장소에서는 한 번만 초기화합니다.
@@ -23,6 +23,16 @@ brew install rail
 ```bash
 cd /absolute/path/to/target-repo
 rail init
+```
+
+`rail init`은 번들된 Rail skill을 활성 Codex 사용자 skill 루트에
+일반 파일 형태로 등록합니다. 따라서 소스 체크아웃이 없어도 Codex가
+해당 skill을 발견할 수 있고, 심볼릭 링크 디렉터리에도 의존하지 않습니다.
+등록 상태가 꼬였다면 다음으로 복구할 수 있습니다.
+
+```bash
+rail doctor
+rail install-codex-skill --repair
 ```
 
 그 다음의 일반적인 진입점은 Codex의 번들 Rail skill입니다.
@@ -151,11 +161,33 @@ override 규칙은 단순합니다.
 Rail 자체를 다루는 기여자 기준:
 
 - 자동 smoke gate: `./tool/v2_release_gate.sh`
+- 릴리즈 workflow: `.github/workflows/release.yml`
 
 smoke gate는 request 생성, 실행, 통합, artifact 검증, learning-state 검증을
 포함한 빠른 control-plane 경로를 증명합니다. Real actor command wiring은
 profile에서 선택된 model과 reasoning 인자를 검증하는 runtime test로
 확인하며, live helper script에 의존하지 않습니다.
+
+## 배포
+
+현재 주 배포 채널은 `cutehackers/rail` Homebrew tap입니다.
+
+```bash
+brew install cutehackers/rail/rail
+```
+
+태그 릴리즈는 `https://github.com/cutehackers/rail`에서 GitHub 릴리즈 산출물을
+배포한 뒤 Homebrew tap formula를 갱신합니다. GoReleaser 기반 릴리즈 파이프라인에서
+`rail` 바이너리, 번들된 Rail Codex skill, checksum, provenance attestation을
+같은 릴리즈 단위로 발행합니다.
+
+Homebrew 패키지는 product prefix에 canonical skill asset을 설치하고,
+`rail init`은 활성 Codex 사용자-facing copy를 materialize 합니다. 이후
+`rail doctor`는 해당 복사본의 설치 여부를 정상/누락/오래됨/심볼릭 링크 기반
+각 상태로 알려줍니다.
+
+`homebrew/core`는 초기 채널이 아니라 뒤이은 배포 대상입니다. Rail이 공개
+릴리즈 운용과 패키지 관리자 인지도를 안정화하는 동안 tap가 권장 install 경로입니다.
 
 ## 추가 문서
 

@@ -24,11 +24,17 @@ class Rail < Formula
 
       A prefix-local Codex-facing copy is also installed under:
         #{opt_prefix}/share/codex/skills/rail
+
+      Run rail init once per target repository to register the Rail skill in
+      the active Codex user skill root.
     EOS
   end
 
   test do
-    assert_match "compose-request", shell_output("#{bin}/rail compose-request 2>&1", 1)
+    ENV["CODEX_HOME"] = (testpath/".codex").to_s
+    system "#{bin}/rail", "init", "--project-root", testpath/"target"
+    assert_path_exists testpath/"target/.harness/project.yaml"
+    assert_path_exists testpath/".codex/skills/rail/SKILL.md"
     assert_predicate pkgshare/"skill"/"Rail"/"SKILL.md", :exist?
     assert_predicate prefix/"share/codex/skills/rail"/"SKILL.md", :exist?
   end

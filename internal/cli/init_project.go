@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"rail/internal/install"
 	"rail/internal/project"
 )
 
@@ -26,5 +27,10 @@ func RunInit(args []string) error {
 		}
 	}
 
-	return project.Init(targetRoot)
+	if err := project.Init(targetRoot); err != nil {
+		return err
+	}
+
+	_, err = install.MaterializeCodexUserSkill("", appVersion)
+	return err
 }

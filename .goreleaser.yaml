@@ -72,7 +72,12 @@ brews:
       codex_skill_dir = prefix/"share/codex/skills/rail"
       codex_skill_dir.mkpath
       cp_r (pkgshare/"skill/Rail").children, codex_skill_dir
+    caveats: |
+      Run rail init once per target repository to register the Rail skill in
+      the active Codex user skill root.
     test: |
+      ENV["CODEX_HOME"] = (testpath/".codex").to_s
       system "#{bin}/rail", "init", "--project-root", testpath/"target"
       assert_path_exists testpath/"target/.harness/project.yaml"
+      assert_path_exists testpath/".codex/skills/rail/SKILL.md"
       assert_path_exists prefix/"share/codex/skills/rail/SKILL.md"

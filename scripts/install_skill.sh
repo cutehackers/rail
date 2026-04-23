@@ -19,6 +19,12 @@ The Homebrew formula in this repository is release-packaging material:
 
   packaging/homebrew/rail.rb
 
+Rail now registers the active Codex user skill copy during project setup:
+
+  rail init
+  rail doctor
+  rail install-codex-skill --repair
+
 Contributor checks for the packaged skill layout:
 
   go test ./internal/install -v

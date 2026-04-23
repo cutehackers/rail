@@ -31,7 +31,16 @@ cd /absolute/path/to/target-repo
 rail init
 ```
 
-After that, the normal entrypoint is Codex with the bundled Rail skill.
+`rail init` also registers the bundled Rail skill into the active Codex user
+skill root as regular files, so Codex can discover it without a source checkout
+or symlinked skill directory. If that registration needs repair, run:
+
+```bash
+rail doctor
+rail install-codex-skill --repair
+```
+
+After initialization, the normal entrypoint is Codex with the bundled Rail skill.
 
 Example prompts:
 
@@ -161,6 +170,10 @@ Tagged releases publish GitHub Release artifacts from
 The release pipeline is GoReleaser-based and keeps the `rail` binary, bundled
 Rail Codex skill, checksums, and provenance attestation in the same release
 unit.
+
+The Homebrew package installs canonical skill assets under the product prefix.
+`rail init` materializes the active Codex user-facing copy, and `rail doctor`
+reports whether that copy is installed, stale, missing, or symlink-based.
 
 `homebrew/core` is a later distribution target, not the initial channel. The
 tap remains the authoritative install path while Rail is still establishing its

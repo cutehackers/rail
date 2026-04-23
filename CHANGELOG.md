@@ -2,6 +2,24 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.3.0 - 2026-04-23
+
+### Added
+- Added Codex skill installation support with dedicated installer logic, CLI wiring, shell installer updates, and tests.
+- Added doctor workflow coverage for Codex skill installation checks.
+
+### Changed
+- Updated README and architecture docs in English and Korean for the hardened skill installation and doctor workflow.
+- Updated release packaging configuration, including GoReleaser and Homebrew formula metadata.
+
+### Fixed
+- Fixed release publishing to validate the publish branch against its upstream.
+- Fixed release publishing to publish from the current branch after checking main freshness.
+
+### Verification
+- `tool/prepare_release.sh v0.3.0`
+
+
 ## v0.2.8 - 2026-04-22
 
 ### Verification

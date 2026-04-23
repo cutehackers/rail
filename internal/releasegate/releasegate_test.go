@@ -170,7 +170,7 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 		"GH_PROMPT_DISABLED",
 		"GIT_TERMINAL_PROMPT",
 		"BatchMode=yes",
-		"assert_origin_main_ancestor",
+		"assert_origin_start_branch_ancestor",
 		"assert_pr_create_permission",
 		"viewerPermission",
 		"codex exec",
@@ -191,6 +191,7 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 func TestPublishScriptRejectsReadOnlyPRPermission(t *testing.T) {
 	repo := newPublishFixture(t)
 	gitRun(t, repo, "checkout", "-b", "work/publish")
+	gitRun(t, repo, "push", "-u", "origin", "work/publish")
 
 	fakeBin := filepath.Join(t.TempDir(), "fake-bin")
 	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
@@ -239,12 +240,13 @@ func TestPublishScriptRejectsMainStartBranch(t *testing.T) {
 	}
 }
 
-func TestPublishScriptRejectsBranchBehindOriginMain(t *testing.T) {
+func TestPublishScriptRejectsBranchBehindOriginStartBranch(t *testing.T) {
 	repo := newPublishFixture(t)
 	gitRun(t, repo, "checkout", "-b", "work/publish")
+	gitRun(t, repo, "push", "-u", "origin", "work/publish")
 
 	upstreamWork := t.TempDir()
-	gitRun(t, upstreamWork, "clone", filepath.Join(filepath.Dir(repo), "origin.git"), "upstream")
+	gitRun(t, upstreamWork, "clone", "--branch", "work/publish", filepath.Join(filepath.Dir(repo), "origin.git"), "upstream")
 	upstream := filepath.Join(upstreamWork, "upstream")
 	gitRun(t, upstream, "config", "user.email", "rail-release-test@example.invalid")
 	gitRun(t, upstream, "config", "user.name", "Rail Release Test")
@@ -252,8 +254,8 @@ func TestPublishScriptRejectsBranchBehindOriginMain(t *testing.T) {
 		t.Fatalf("write upstream fixture file: %v", err)
 	}
 	gitRun(t, upstream, "add", "upstream.txt")
-	gitRun(t, upstream, "commit", "-m", "test upstream main change")
-	gitRun(t, upstream, "push", "origin", "main")
+	gitRun(t, upstream, "commit", "-m", "test upstream work branch change")
+	gitRun(t, upstream, "push", "origin", "work/publish")
 
 	fakeBin := filepath.Join(t.TempDir(), "fake-bin")
 	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
@@ -268,7 +270,7 @@ func TestPublishScriptRejectsBranchBehindOriginMain(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected stale publish branch to fail")
 	}
-	if !strings.Contains(string(output), "publish branch must contain origin/main") {
+	if !strings.Contains(string(output), "publish branch must contain origin/work/publish") {
 		t.Fatalf("unexpected output: %s", string(output))
 	}
 }
@@ -281,6 +283,7 @@ func TestPublishScriptUsesAgentChangelogWhenRequested(t *testing.T) {
 	}
 	gitRun(t, repo, "add", "branch-only.txt")
 	gitRun(t, repo, "commit", "-m", "test work branch only change")
+	gitRun(t, repo, "push", "-u", "origin", "work/publish")
 
 	fakeBin := filepath.Join(t.TempDir(), "fake-bin")
 	if err := os.MkdirAll(fakeBin, 0o755); err != nil {

@@ -82,16 +82,18 @@ restore_start_branch() {
   git switch --quiet "$start_branch" >/dev/null 2>&1 || true
 }
 
-assert_origin_main_ancestor() {
-  git fetch --quiet origin main
+assert_origin_start_branch_ancestor() {
+  local origin_branch="origin/${start_branch}"
 
-  if ! git rev-parse -q --verify "refs/remotes/origin/main" >/dev/null; then
-    echo "origin/main must exist before publishing" >&2
+  git fetch --quiet origin "refs/heads/${start_branch}:refs/remotes/origin/${start_branch}"
+
+  if ! git rev-parse -q --verify "refs/remotes/origin/${start_branch}" >/dev/null; then
+    echo "${origin_branch} must exist before publishing" >&2
     exit 1
   fi
 
-  if ! git merge-base --is-ancestor origin/main HEAD; then
-    echo "publish branch must contain origin/main before publishing" >&2
+  if ! git merge-base --is-ancestor "$origin_branch" HEAD; then
+    echo "publish branch must contain ${origin_branch} before publishing" >&2
     exit 1
   fi
 }
@@ -252,7 +254,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-assert_origin_main_ancestor
+assert_origin_start_branch_ancestor
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "gh is required to open the release pull request" >&2

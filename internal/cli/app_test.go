@@ -19,6 +19,8 @@ func TestAppRegistersCoreCommands(t *testing.T) {
 		"validate-request",
 		"validate-artifact",
 		"init",
+		"install-codex-skill",
+		"doctor",
 		"init-user-outcome-feedback",
 		"init-learning-review",
 		"init-hardening-review",
@@ -86,6 +88,63 @@ func TestAppRunAcceptsKnownCommand(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(projectRoot, ".harness", "project.yaml")); err != nil {
 		t.Fatalf("expected init to create project scaffold: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("CODEX_HOME"), "skills", "rail", "SKILL.md")); err != nil {
+		t.Fatalf("expected init to register Codex skill: %v", err)
+	}
+}
+
+func TestAppRunInstallsAndDoctorsCodexSkill(t *testing.T) {
+	codexHome := t.TempDir()
+
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{"install-codex-skill", "--codex-home", codexHome}); got != 0 {
+		t.Fatalf("expected zero exit code for install-codex-skill, got %d", got)
+	}
+	if got := NewApp().Run([]string{"doctor", "--codex-home", codexHome}); got != 0 {
+		t.Fatalf("expected zero exit code for doctor, got %d", got)
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Codex skill installed:") {
+		t.Fatalf("unexpected install-codex-skill output: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Codex skill: installed") {
+		t.Fatalf("unexpected doctor output: %q", stdout.String())
+	}
+
+	info, err := os.Lstat(filepath.Join(codexHome, "skills", "rail", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("expected installed skill file: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("expected installed SKILL.md to be a regular file")
+	}
+}
+
+func TestRunDoctorRepairHintPreservesCodexHomeOverride(t *testing.T) {
+	codexHome := t.TempDir()
+	var stdout bytes.Buffer
+
+	err := RunDoctor([]string{"--codex-home", codexHome}, &stdout)
+	if err == nil {
+		t.Fatal("expected doctor to report missing Codex skill")
+	}
+	if !strings.Contains(err.Error(), "--codex-home") || !strings.Contains(err.Error(), codexHome) {
+		t.Fatalf("expected repair hint to preserve custom Codex home, got %q", err.Error())
 	}
 }
 

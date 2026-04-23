@@ -69,6 +69,99 @@ func TestMaterializeBundledSkillCreatesPackagedAndCodexFacingLayouts(t *testing.
 	assertMaterializedFile(t, layout.CodexSkillDir, filepath.Join("references", "examples.md"), indexed["references/examples.md"])
 }
 
+func TestMaterializeCodexUserSkillCreatesRegularFilesAndManifest(t *testing.T) {
+	codexHome := t.TempDir()
+
+	result, err := MaterializeCodexUserSkill(codexHome, "test-version")
+	if err != nil {
+		t.Fatalf("MaterializeCodexUserSkill returned error: %v", err)
+	}
+
+	if got, want := result.SkillDir, filepath.Join(codexHome, "skills", "rail"); got != want {
+		t.Fatalf("unexpected Codex skill dir: got %q want %q", got, want)
+	}
+
+	files, err := BundledSkillFiles()
+	if err != nil {
+		t.Fatalf("BundledSkillFiles returned error: %v", err)
+	}
+	indexed := indexBundledSkillFiles(t, files)
+
+	assertMaterializedFile(t, result.SkillDir, "SKILL.md", indexed["SKILL.md"])
+	assertMaterializedFile(t, result.SkillDir, filepath.Join("references", "examples.md"), indexed["references/examples.md"])
+	if _, err := os.Stat(filepath.Join(result.SkillDir, manifestFileName)); err != nil {
+		t.Fatalf("expected install manifest: %v", err)
+	}
+
+	info, err := os.Lstat(filepath.Join(result.SkillDir, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("stat installed SKILL.md: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("expected SKILL.md to be a regular file")
+	}
+}
+
+func TestMaterializeCodexUserSkillRepairsSymlinkInstall(t *testing.T) {
+	codexHome := t.TempDir()
+	targetDir := filepath.Join(codexHome, "skills", "rail")
+	if err := os.MkdirAll(filepath.Dir(targetDir), 0o755); err != nil {
+		t.Fatalf("create skill parent: %v", err)
+	}
+	linkTarget := filepath.Join(codexHome, "outside-skill")
+	if err := os.MkdirAll(linkTarget, 0o755); err != nil {
+		t.Fatalf("create link target: %v", err)
+	}
+	if err := os.Symlink(linkTarget, targetDir); err != nil {
+		t.Fatalf("create stale symlink: %v", err)
+	}
+
+	status, err := CheckCodexUserSkill(codexHome)
+	if err != nil {
+		t.Fatalf("CheckCodexUserSkill returned error: %v", err)
+	}
+	if status.Healthy {
+		t.Fatal("expected symlinked skill directory to need repair")
+	}
+	if !strings.Contains(status.Problem, "symlink") {
+		t.Fatalf("expected symlink problem, got %q", status.Problem)
+	}
+
+	if _, err := MaterializeCodexUserSkill(codexHome, "test-version"); err != nil {
+		t.Fatalf("MaterializeCodexUserSkill returned error: %v", err)
+	}
+	repaired, err := CheckCodexUserSkill(codexHome)
+	if err != nil {
+		t.Fatalf("CheckCodexUserSkill after repair returned error: %v", err)
+	}
+	if !repaired.Healthy {
+		t.Fatalf("expected repaired skill to be healthy, got %q", repaired.Problem)
+	}
+}
+
+func TestCheckCodexUserSkillReportsStaleFiles(t *testing.T) {
+	codexHome := t.TempDir()
+	if _, err := MaterializeCodexUserSkill(codexHome, "test-version"); err != nil {
+		t.Fatalf("MaterializeCodexUserSkill returned error: %v", err)
+	}
+
+	stalePath := filepath.Join(codexHome, "skills", "rail", "SKILL.md")
+	if err := os.WriteFile(stalePath, []byte("stale\n"), 0o644); err != nil {
+		t.Fatalf("write stale skill file: %v", err)
+	}
+
+	status, err := CheckCodexUserSkill(codexHome)
+	if err != nil {
+		t.Fatalf("CheckCodexUserSkill returned error: %v", err)
+	}
+	if status.Healthy {
+		t.Fatal("expected stale skill file to need repair")
+	}
+	if !strings.Contains(status.Problem, "differs from the bundled Rail skill") {
+		t.Fatalf("expected stale file problem, got %q", status.Problem)
+	}
+}
+
 func TestBundledSkillMatchesCurrentCLIWorkflow(t *testing.T) {
 	files, err := BundledSkillFiles()
 	if err != nil {
@@ -192,6 +285,7 @@ func TestHomebrewFormulaMatchesInstallLayout(t *testing.T) {
 		`prefix/"share/codex/skills/rail"`,
 		`#{opt_pkgshare}/skill/Rail`,
 		`#{opt_prefix}/share/codex/skills/rail`,
+		`ENV["CODEX_HOME"] = (testpath/".codex").to_s`,
 		filepath.ToSlash(filepath.Join("share", "codex", "skills", "rail")),
 	} {
 		if !strings.Contains(formulaText, want) {
@@ -227,6 +321,7 @@ func TestGoReleaserArchiveIncludesFullSkillTree(t *testing.T) {
 	for _, want := range []string{
 		"assets/skill/Rail/SKILL.md",
 		"assets/skill/Rail/references/examples.md",
+		`ENV["CODEX_HOME"] = (testpath/".codex").to_s`,
 	} {
 		if !strings.Contains(configText, want) {
 			t.Fatalf("expected GoReleaser archive config to include %q", want)

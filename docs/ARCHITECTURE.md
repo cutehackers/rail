@@ -31,7 +31,11 @@ The source repository is the development and contribution origin for those asset
 Rail is distributed first through the `cutehackers/rail` Homebrew tap backed by
 GitHub Releases from `https://github.com/cutehackers/rail`. GoReleaser builds
 the tagged CLI artifacts, attaches checksums and provenance, and publishes the
-tap formula that installs both the binary and bundled Codex skill assets.
+tap formula that installs both the binary and canonical bundled Codex skill
+assets under the product prefix. `rail init` then registers the active
+user-facing Codex skill copy in the current Codex home as regular files. This
+keeps package-manager state separate from per-user Codex discovery state while
+still making the skill available through the normal installed workflow.
 
 Rail configures Codex execution through actor backend policy. The first backend
 is the Codex CLI, and local default execution uses the `workspace-write`
@@ -57,6 +61,11 @@ execution deterministically.
 ### Bundled Rail Skill
 
 The Rail skill is the natural-language entrypoint. It interprets the user goal, constraints, and definition of done, then hands a request draft to the CLI. The skill assumes `rail` is installed on `PATH`; it does not assume a local source checkout.
+
+The CLI owns user-level skill registration. `rail init` materializes the
+bundled skill into the active Codex user skill root, and `rail doctor` reports
+missing, stale, or symlink-based registrations that should be repaired with
+`rail install-codex-skill --repair`.
 
 ### Actor Backend Policy
 

@@ -18,6 +18,8 @@ func NewApp() *App {
 		"validate-request",
 		"validate-artifact",
 		"init",
+		"install-codex-skill",
+		"doctor",
 		"init-user-outcome-feedback",
 		"init-learning-review",
 		"init-hardening-review",
@@ -57,6 +59,22 @@ func (a *App) Run(args []string) int {
 
 	if args[0] == "init" {
 		if err := RunInit(args[1:]); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "install-codex-skill" {
+		if err := RunInstallCodexSkill(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "doctor" {
+		if err := RunDoctor(args[1:], os.Stdout); err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			return 1
 		}

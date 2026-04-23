@@ -31,7 +31,11 @@ rail init
 Rail은 먼저 `cutehackers/rail` Homebrew tap으로 배포됩니다. 배포
 artifact는 `https://github.com/cutehackers/rail`의 GitHub Releases에
 게시되고, GoReleaser가 태그된 CLI artifact, checksum, provenance, 그리고
-바이너리와 번들 Codex skill asset을 함께 설치하는 tap formula를 생성합니다.
+바이너리와 제품 prefix 아래의 canonical 번들 Codex skill asset을 설치하는
+tap formula를 생성합니다. 이후 `rail init`이 현재 Codex home에 user-facing
+Codex skill copy를 regular file로 등록합니다. 이렇게 package-manager state와
+per-user Codex discovery state를 분리하면서도 일반 설치 workflow에서 skill을
+바로 사용할 수 있게 합니다.
 
 Rail은 actor backend policy를 통해 Codex 실행 방식을 설정합니다. 첫 번째
 backend는 Codex CLI이며, 로컬 기본 실행에는 `workspace-write` sandbox를
@@ -57,6 +61,11 @@ CLI는 실행 엔진입니다. 다음 책임을 가집니다.
 ### 번들 Rail Skill
 
 Rail skill은 자연어 진입점입니다. 사용자의 goal, constraint, definition of done을 해석한 뒤 구조화된 draft를 CLI에 전달합니다. 이 skill은 `rail`이 `PATH`에 있다고 가정하지만, 로컬 소스 checkout은 가정하지 않습니다.
+
+CLI는 user-level skill registration을 소유합니다. `rail init`은 번들 skill을
+현재 Codex user skill root에 materialize하고, `rail doctor`는 missing, stale,
+symlink 기반 registration 상태를 보고합니다. 문제가 있으면
+`rail install-codex-skill --repair`로 복구합니다.
 
 ### Actor Backend Policy
 

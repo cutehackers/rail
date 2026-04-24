@@ -53,9 +53,11 @@ backends:
     sandbox: read-only
     approval_policy: on-request
     session_mode: per_actor
-    ephemeral: false
-    capture_json_events: false
-    skip_git_repo_check: false
+    ephemeral: true
+    capture_json_events: true
+    skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
     capabilities:
       user_skills: disabled
       user_rules: disabled
@@ -86,8 +88,52 @@ execution_environments:
 		if backend.ApprovalPolicy != "on-request" {
 			t.Fatalf("unexpected approval policy: got %q want %q", backend.ApprovalPolicy, "on-request")
 		}
-		if backend.CaptureJSONEvents {
-			t.Fatalf("expected capture_json_events to be false")
+		if !backend.CaptureJSONEvents {
+			t.Fatalf("expected capture_json_events to remain enforced")
+		}
+	})
+
+	t.Run("rejects project-local policy that disables sealed execution", func(t *testing.T) {
+		projectRoot := writeActorBackendFixture(t, `
+version: 1
+execution_environment: local
+default_backend: codex_cli
+
+backends:
+  codex_cli:
+    command: codex
+    subcommand: exec
+    sandbox: workspace-write
+    approval_policy: never
+    session_mode: per_actor
+    ephemeral: false
+    capture_json_events: false
+    skip_git_repo_check: true
+    ignore_user_config: false
+    ignore_rules: false
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
+
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - workspace-write
+`)
+
+		_, err := loadActorBackendPolicy(projectRoot)
+		if err == nil {
+			t.Fatalf("expected loadActorBackendPolicy to reject disabled sealed execution")
+		}
+		for _, fragment := range []string{"ephemeral", "true"} {
+			if !strings.Contains(err.Error(), fragment) {
+				t.Fatalf("expected sealed execution validation error containing %q, got %v", fragment, err)
+			}
 		}
 	})
 
@@ -148,6 +194,8 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
     capabilities:
       user_skills: disabled
       user_rules: disabled
@@ -188,6 +236,8 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
     capabilities:
       user_skills: disabled
       user_rules: disabled
@@ -229,6 +279,8 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
     capabilities:
       user_skills: disabled
       user_rules: disabled
@@ -270,6 +322,8 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
     capabilities:
       user_skills: disabled
       user_rules: disabled
@@ -313,6 +367,8 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
     capabilities:
       user_skills: disabled
       user_rules: disabled
@@ -356,6 +412,8 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
     capabilities:
       user_skills: disabled
       user_rules: disabled
@@ -395,6 +453,8 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
     capabilities:
       user_skills: disabled
       user_rules: disabled

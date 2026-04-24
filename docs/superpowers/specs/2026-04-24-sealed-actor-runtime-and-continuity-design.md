@@ -483,4 +483,3 @@ Documentation checks:
 - plugin/MCP allowlist는 project-local `.harness`가 아니라 더 신뢰도 높은 policy source가 필요한가?
 - final answer contract를 YAML artifact로 둘 것인가, terminal summary schema에 통합할 것인가?
 - event audit violation은 즉시 reject로 볼 것인가, `block_environment`로 볼 것인가?
-

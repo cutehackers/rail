@@ -496,6 +496,44 @@ execution_environments:
 	}
 }
 
+func TestExecuteRoutesAuditViolationToTerminalSummary(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_VIOLATION_ACTOR", "evaluator")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-audit-violation")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("expected Execute to route audit violation to terminal summary, got error: %v", err)
+	}
+	if !strings.Contains(summary, "status=blocked_environment") {
+		t.Fatalf("expected blocked_environment summary, got %q", summary)
+	}
+
+	terminalSummary, err := os.ReadFile(filepath.Join(artifactPath, "terminal_summary.md"))
+	if err != nil {
+		t.Fatalf("expected terminal_summary.md to exist: %v", err)
+	}
+	for _, fragment := range []string{
+		"## Reporting Limits",
+		"backend_policy_violation",
+		"Final answer must not claim successful implementation",
+	} {
+		if !strings.Contains(string(terminalSummary), fragment) {
+			t.Fatalf("expected terminal summary to contain %q, got:\n%s", fragment, string(terminalSummary))
+		}
+	}
+}
+
 func TestExecuteUsesWorkflowProjectRootActorProfiles(t *testing.T) {
 	targetRoot, requestPath := prepareRealProject(t)
 	actorLogPath := installFakeCodexForRealMode(t, targetRoot)
@@ -997,6 +1035,12 @@ for index, value in enumerate(sys.argv):
 if project_root:
     with open(os.path.join(project_root, ".actor-log"), "a", encoding="utf-8") as handle:
         handle.write(actor + "|" + model + "|" + reasoning + "|" + sandbox + "|json=" + str(has_json).lower() + "\n")
+
+violation_actor = os.environ.get("RAIL_TEST_CODEX_VIOLATION_ACTOR", "")
+if actor == violation_actor:
+    print(json.dumps({"type": "item.started", "item": {"type": "command_execution", "command": "sed -n '1,40p' /tmp/.codex/superpowers/skills/using-superpowers/SKILL.md"}}))
+else:
+    print(json.dumps({"type": "thread.started", "thread_id": actor}))
 
 response = {}
 if actor == "planner":

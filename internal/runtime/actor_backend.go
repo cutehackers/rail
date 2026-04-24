@@ -139,6 +139,21 @@ func validateActorBackendConfig(config ActorBackendConfig) error {
 	if config.SessionMode != "per_actor" {
 		return fmt.Errorf("actor backend session_mode must be per_actor, got %q", config.SessionMode)
 	}
+	if !config.Ephemeral {
+		return fmt.Errorf("actor backend ephemeral must be true for sealed execution")
+	}
+	if !config.CaptureJSONEvents {
+		return fmt.Errorf("actor backend capture_json_events must be true for sealed execution")
+	}
+	if !config.SkipGitRepoCheck {
+		return fmt.Errorf("actor backend skip_git_repo_check must be true for sealed execution")
+	}
+	if !config.IgnoreUserConfig {
+		return fmt.Errorf("actor backend ignore_user_config must be true for sealed execution")
+	}
+	if !config.IgnoreRules {
+		return fmt.Errorf("actor backend ignore_rules must be true for sealed execution")
+	}
 	if err := validateActorBackendCapabilities(config); err != nil {
 		return err
 	}

@@ -126,6 +126,21 @@ func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]a
 func buildActorEnvironment(parent []string) []string {
 	allowedPrefixes := []string{
 		"PATH=",
+		"CODEX_HOME=",
+		"OPENAI_API_KEY=",
+		"OPENAI_BASE_URL=",
+		"OPENAI_ORG_ID=",
+		"OPENAI_PROJECT=",
+		"HTTPS_PROXY=",
+		"HTTP_PROXY=",
+		"NO_PROXY=",
+		"ALL_PROXY=",
+		"https_proxy=",
+		"http_proxy=",
+		"no_proxy=",
+		"all_proxy=",
+		"SSL_CERT_FILE=",
+		"SSL_CERT_DIR=",
 		"RAIL_TEST_",
 	}
 	env := make([]string, 0, len(parent))

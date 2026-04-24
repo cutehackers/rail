@@ -2,6 +2,27 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.4.0 - 2026-04-24
+
+### Added
+- Added sealed Codex actor execution defaults with user config/rule isolation, restricted actor capabilities, clean subprocess environment handling, and JSON event auditing.
+- Added workflow continuity artifacts so actor runs can resume from `work_ledger.md`, `next_action.yaml`, evidence, and final-answer contract files instead of conversation memory.
+- Added terminal reporting limits that surface backend policy violations and prevent unsupported success claims.
+
+### Changed
+- Strengthened supervisor transitions so `next_action.yaml` and `work_ledger.md` are updated after actor completion and evaluator routing.
+- Updated architecture and README documentation to distinguish user-facing Codex sessions from sealed actor Codex sessions.
+
+### Fixed
+- Fixed sealed backend policy validation so project-local overrides cannot disable required isolation and audit behavior.
+- Fixed actor environment filtering to preserve required Codex auth, OpenAI, proxy, and certificate variables while still dropping user config surface.
+- Fixed corrective-loop accounting so revision, context rebuild, and validation tightening state survives until evaluator reentry.
+- Fixed event audit handling to reduce false positives on target-local `skills/` paths and detect MCP/hook event usage.
+- Fixed backend policy violations so they are persisted into terminal reporting instead of escaping only as raw execution errors.
+
+### Verification
+- `go test ./internal/runtime -count=1`
+
 ## v0.3.0 - 2026-04-23
 
 ### Added

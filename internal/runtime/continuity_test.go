@@ -104,3 +104,63 @@ func TestAppendWorkLedgerEntryAddsReadableSection(t *testing.T) {
 		}
 	}
 }
+
+func TestAdvanceAfterActorPreservesCorrectiveStatusUntilEvaluatorReentry(t *testing.T) {
+	workflow := Workflow{Actors: []string{"generator", "executor", "evaluator"}}
+	state := State{
+		Status:        "revising",
+		CurrentActor:  stringPtr("generator"),
+		ActionHistory: []string{"revise_generator"},
+	}
+
+	state = advanceAfterActor(state, workflow, "generator")
+	if state.Status != "revising" {
+		t.Fatalf("expected revising status after generator, got %q", state.Status)
+	}
+	state = advanceAfterActor(state, workflow, "executor")
+	if state.Status != "revising" {
+		t.Fatalf("expected revising status to survive executor before evaluator reentry, got %q", state.Status)
+	}
+	if state.CurrentActor == nil || *state.CurrentActor != "evaluator" {
+		t.Fatalf("expected evaluator reentry, got %v", state.CurrentActor)
+	}
+
+	normalized := normalizeEvaluatorEntryState(state)
+	if normalized.GeneratorRevisionsUsed != 1 {
+		t.Fatalf("expected generator revision count to increment at evaluator reentry, got %d", normalized.GeneratorRevisionsUsed)
+	}
+}
+
+func TestAdvanceAfterActorPreservesContextRebuildStatusUntilEvaluatorReentry(t *testing.T) {
+	pendingTrigger := "reason_codes"
+	pendingFamily := "context"
+	workflow := Workflow{Actors: []string{"context_builder", "critic", "generator", "executor", "evaluator"}}
+	state := State{
+		Status:                            "rebuilding_context",
+		CurrentActor:                      stringPtr("context_builder"),
+		ActionHistory:                     []string{"rebuild_context"},
+		PendingContextRefreshTrigger:      &pendingTrigger,
+		PendingContextRefreshReasonFamily: &pendingFamily,
+	}
+
+	for _, actorName := range []string{"context_builder", "critic", "generator", "executor"} {
+		state = advanceAfterActor(state, workflow, actorName)
+		if state.Status != "rebuilding_context" {
+			t.Fatalf("expected rebuilding_context status after %s, got %q", actorName, state.Status)
+		}
+	}
+	if state.CurrentActor == nil || *state.CurrentActor != "evaluator" {
+		t.Fatalf("expected evaluator reentry, got %v", state.CurrentActor)
+	}
+
+	normalized := normalizeEvaluatorEntryState(state)
+	if normalized.ContextRefreshCount != 1 {
+		t.Fatalf("expected context refresh count to increment at evaluator reentry, got %d", normalized.ContextRefreshCount)
+	}
+	if normalized.LastContextRefreshTrigger == nil || *normalized.LastContextRefreshTrigger != pendingTrigger {
+		t.Fatalf("expected last context refresh trigger to be preserved, got %v", normalized.LastContextRefreshTrigger)
+	}
+	if normalized.PendingContextRefreshTrigger != nil {
+		t.Fatalf("expected pending context refresh trigger to clear, got %v", normalized.PendingContextRefreshTrigger)
+	}
+}

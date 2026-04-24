@@ -145,6 +145,9 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 
 		response, err := r.runActor(actorName, actorIndex, artifactDirectory, briefPath, logPath, eventsPath, requestValue, executionPlan, actorProfiles, backend, workingDirectory)
 		if err != nil {
+			if isBackendPolicyViolation(err) {
+				return r.blockForBackendPolicyViolation(artifactDirectory, statePath, currentState, actorName, err)
+			}
 			return "", err
 		}
 		if err := writeActorLog(logPath, response); err != nil {
@@ -192,6 +195,87 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		return lastSummary, nil
 	}
 	return formatExecutionSummary(artifactDirectory, currentState, "Harness execution completed"), nil
+}
+
+func isBackendPolicyViolation(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "backend_policy_violation")
+}
+
+func (r *Runner) blockForBackendPolicyViolation(
+	artifactDirectory string,
+	statePath string,
+	state State,
+	actorName string,
+	violation error,
+) (string, error) {
+	nextState := state
+	nextState.Status = "blocked_environment"
+	nextState.CurrentActor = nil
+	nextState.LastReasonCodes = []string{"backend_policy_violation"}
+	nextState.ActionHistory = append(nextState.ActionHistory, "block_environment")
+	nextState.LastDecision = stringPtr("reject")
+
+	if err := writePolicyViolationExecutionReport(artifactDirectory, violation); err != nil {
+		return "", err
+	}
+	if err := writePolicyViolationCriticReportIfMissing(artifactDirectory); err != nil {
+		return "", err
+	}
+	if err := updateContinuityAfterEvaluation(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
+	if err := writeJSON(statePath, nextState); err != nil {
+		return "", err
+	}
+	if err := appendSupervisorDecisionTrace(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
+	if err := r.router.writeTerminalSummary(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
+	return formatExecutionSummary(artifactDirectory, nextState, "Harness execution blocked by backend policy"), nil
+}
+
+func writePolicyViolationExecutionReport(artifactDirectory string, violation error) error {
+	executionPath := filepath.Join(artifactDirectory, "execution_report.yaml")
+	executionMap, err := readYAMLMap(executionPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		executionMap = recoveredExecutionReportBase(State{Status: "blocked_environment"})
+	}
+	executionMap["format"] = "fail"
+	executionMap["analyze"] = "fail"
+	executionMap["tests"] = map[string]any{
+		"total":  0,
+		"passed": 0,
+		"failed": 0,
+	}
+	failureDetails, _ := readOptionalStringList(executionMap, "failure_details")
+	failureDetails = append(failureDetails, violation.Error())
+	executionMap["failure_details"] = failureDetails
+	logs, _ := readOptionalStringList(executionMap, "logs")
+	logs = append(logs, violation.Error())
+	executionMap["logs"] = logs
+	return writeYAML(executionPath, executionMap)
+}
+
+func writePolicyViolationCriticReportIfMissing(artifactDirectory string) error {
+	criticPath := filepath.Join(artifactDirectory, "critic_report.yaml")
+	if _, err := os.Stat(criticPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return writeYAML(criticPath, map[string]any{
+		"priority_focus":          []string{"Backend policy violation blocked actor execution before normal evaluation could complete."},
+		"missing_requirements":    []string{},
+		"risk_hypotheses":         []string{"The actor runtime may have inherited a forbidden user surface."},
+		"validation_expectations": []string{"Do not claim implementation success while backend policy violations are present."},
+		"generator_guardrails":    []string{"Stop execution and surface the policy violation to the operator."},
+		"blocked_assumptions":     []string{"Normal critic evidence may be unavailable because execution was blocked by policy."},
+	})
 }
 
 func (r *Runner) runActor(
@@ -483,11 +567,11 @@ func advanceAfterActor(state State, workflow Workflow, actorName string) State {
 	switch {
 	case nextActor == nil:
 		nextState.Status = "completed"
-	case state.Status == "revising" && actorName == "generator":
+	case state.Status == "revising":
 		nextState.Status = "revising"
-	case state.Status == "rebuilding_context" && actorName == "context_builder":
+	case state.Status == "rebuilding_context":
 		nextState.Status = "rebuilding_context"
-	case state.Status == "tightening_validation" && actorName == "executor":
+	case state.Status == "tightening_validation":
 		nextState.Status = "tightening_validation"
 	default:
 		nextState.Status = "in_progress"

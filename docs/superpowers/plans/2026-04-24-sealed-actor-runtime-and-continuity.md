@@ -465,7 +465,7 @@ git commit -m "feat: audit codex actor events"
 - Modify: `internal/runtime/bootstrap.go`
 - Modify: `internal/runtime/bootstrap_test.go`
 
-- [ ] **Step 1: Write failing bootstrap test**
+- [x] **Step 1: Write failing bootstrap test**
 
 In `internal/runtime/bootstrap_test.go`, extend the artifact skeleton test to assert these files exist:
 
@@ -486,7 +486,7 @@ Run: `go test ./internal/runtime -run TestBootstrapCreatesExpectedArtifactSkelet
 
 Expected: FAIL because continuity artifacts are not created yet.
 
-- [ ] **Step 2: Add continuity helpers**
+- [x] **Step 2: Add continuity helpers**
 
 Create `internal/runtime/continuity.go` with constants:
 
@@ -501,7 +501,7 @@ const (
 
 Add `initialWorkLedger(workflow Workflow) string`, `initialNextAction(workflow Workflow) map[string]any`, `initialEvidence() map[string]any`, and `initialFinalAnswerContract() map[string]any`.
 
-- [ ] **Step 3: Materialize files during bootstrap**
+- [x] **Step 3: Materialize files during bootstrap**
 
 In `Bootstrapper.Bootstrap`, after placeholder outputs are created, write:
 
@@ -514,7 +514,7 @@ writeYAML(filepath.Join(artifactDirectory, finalAnswerContractFileName), initial
 
 Use existing `writeYAML` helper for YAML files.
 
-- [ ] **Step 4: Add continuity input paths to actor briefs**
+- [x] **Step 4: Add continuity input paths to actor briefs**
 
 Modify `buildActorBrief` so every actor brief includes:
 
@@ -525,7 +525,7 @@ Modify `buildActorBrief` so every actor brief includes:
 - `evidence`: `<artifactDirectory>/evidence.yaml`
 ```
 
-- [ ] **Step 5: Test brief references**
+- [x] **Step 5: Test brief references**
 
 Add assertions to `internal/runtime/bootstrap_test.go` that the planner and generator briefs contain `work_ledger.md`, `next_action.yaml`, and `evidence.yaml`.
 
@@ -537,7 +537,7 @@ go test ./internal/runtime -run 'TestBootstrapCreatesExpectedArtifactSkeleton|Te
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit continuity bootstrap**
+- [x] **Step 6: Commit continuity bootstrap**
 
 ```bash
 git add internal/runtime/continuity.go internal/runtime/continuity_test.go internal/runtime/bootstrap.go internal/runtime/bootstrap_test.go

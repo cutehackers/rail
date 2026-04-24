@@ -165,6 +165,19 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 		}
 	}
 
+	if err := os.WriteFile(filepath.Join(artifactDirectory, workLedgerFileName), []byte(initialWorkLedger(workflow)), 0o644); err != nil {
+		return "", fmt.Errorf("write %s: %w", workLedgerFileName, err)
+	}
+	if err := writeYAML(filepath.Join(artifactDirectory, nextActionFileName), initialNextAction(workflow)); err != nil {
+		return "", err
+	}
+	if err := writeYAML(filepath.Join(artifactDirectory, evidenceFileName), initialEvidence()); err != nil {
+		return "", err
+	}
+	if err := writeYAML(filepath.Join(artifactDirectory, finalAnswerContractFileName), initialFinalAnswerContract()); err != nil {
+		return "", err
+	}
+
 	if err := os.WriteFile(
 		filepath.Join(artifactDirectory, "workflow_steps.md"),
 		[]byte(buildWorkflowSteps(workflow, executionPlan)),
@@ -676,6 +689,10 @@ func buildActorBrief(
 	for _, input := range contract.Inputs {
 		builder.WriteString(fmt.Sprintf("- `%s`: `%s`\n", input, inputPathForToken(input, artifactDirectory, materializedInputs)))
 	}
+	builder.WriteString("\n## Continuity Inputs\n")
+	builder.WriteString(fmt.Sprintf("- `work_ledger`: `%s`\n", filepath.Join(artifactDirectory, workLedgerFileName)))
+	builder.WriteString(fmt.Sprintf("- `next_action`: `%s`\n", filepath.Join(artifactDirectory, nextActionFileName)))
+	builder.WriteString(fmt.Sprintf("- `evidence`: `%s`\n", filepath.Join(artifactDirectory, evidenceFileName)))
 	builder.WriteString("\n## Contract Outputs\n")
 	for _, output := range contract.Outputs {
 		builder.WriteString(fmt.Sprintf("- `%s`\n", output))

@@ -26,6 +26,8 @@ type ActorBackendConfig struct {
 	Ephemeral         bool   `yaml:"ephemeral"`
 	CaptureJSONEvents bool   `yaml:"capture_json_events"`
 	SkipGitRepoCheck  bool   `yaml:"skip_git_repo_check"`
+	IgnoreUserConfig  bool   `yaml:"ignore_user_config"`
+	IgnoreRules       bool   `yaml:"ignore_rules"`
 }
 
 type ActorBackendEnvironment struct {

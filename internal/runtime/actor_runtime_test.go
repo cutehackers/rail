@@ -212,6 +212,8 @@ func TestBuildCodexCLIArgsUsesBackendPolicy(t *testing.T) {
 		"--color", "never",
 		"-s", "workspace-write",
 		"--skip-git-repo-check",
+		"--ignore-user-config",
+		"--ignore-rules",
 		"-c", `model_reasoning_effort="high"`,
 		"-c", `approval_policy="never"`,
 		"--output-schema", schemaPath,
@@ -311,6 +313,8 @@ with open(output_path, "w", encoding="utf-8") as handle:
 		"--color", "never",
 		"-s", "workspace-write",
 		"--skip-git-repo-check",
+		"--ignore-user-config",
+		"--ignore-rules",
 		"-c", `model_reasoning_effort="high"`,
 		"-c", `approval_policy="never"`,
 		"--output-schema", schemaPath,
@@ -361,6 +365,8 @@ func defaultTestActorBackend() ActorBackendConfig {
 		Ephemeral:         true,
 		CaptureJSONEvents: false,
 		SkipGitRepoCheck:  true,
+		IgnoreUserConfig:  true,
+		IgnoreRules:       true,
 	}
 }
 

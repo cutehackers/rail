@@ -32,6 +32,12 @@ func TestLoadActorBackendPolicy(t *testing.T) {
 		if !backend.CaptureJSONEvents {
 			t.Fatalf("expected capture_json_events to be true")
 		}
+		if !backend.IgnoreUserConfig {
+			t.Fatalf("expected ignore_user_config to be true")
+		}
+		if !backend.IgnoreRules {
+			t.Fatalf("expected ignore_rules to be true")
+		}
 	})
 
 	t.Run("project-local policy overrides embedded defaults", func(t *testing.T) {

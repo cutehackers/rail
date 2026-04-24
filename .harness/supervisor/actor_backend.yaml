@@ -12,6 +12,8 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
 
 execution_environments:
   local:

@@ -42,7 +42,7 @@ Do not change downstream application code. Do not change request draft UX in the
 - Modify: `internal/runtime/actor_runtime.go`
 - Modify: `internal/runtime/actor_runtime_test.go`
 
-- [ ] **Step 1: Write failing backend policy tests**
+- [x] **Step 1: Write failing backend policy tests**
 
 Add a test to `internal/runtime/actor_backend_test.go` that loads embedded defaults and asserts the new flags:
 
@@ -69,7 +69,7 @@ Run: `go test ./internal/runtime -run TestLoadActorBackendPolicyDefaultsToIsolat
 
 Expected: FAIL because `IgnoreUserConfig` and `IgnoreRules` do not exist yet.
 
-- [ ] **Step 2: Add policy fields**
+- [x] **Step 2: Add policy fields**
 
 Extend `ActorBackendConfig` in `internal/runtime/actor_backend.go`:
 
@@ -80,7 +80,7 @@ IgnoreRules      bool `yaml:"ignore_rules"`
 
 No defaulting should happen in Go for now. The embedded and source policies must explicitly set both fields.
 
-- [ ] **Step 3: Update backend policy YAML**
+- [x] **Step 3: Update backend policy YAML**
 
 Add these keys to both `.harness/supervisor/actor_backend.yaml` and `assets/defaults/supervisor/actor_backend.yaml` under `backends.codex_cli`:
 
@@ -89,7 +89,7 @@ Add these keys to both `.harness/supervisor/actor_backend.yaml` and `assets/defa
     ignore_rules: true
 ```
 
-- [ ] **Step 4: Add CLI args test**
+- [x] **Step 4: Add CLI args test**
 
 Update `TestRunCommandUsesBackendPolicyForCodexInvocation` in `internal/runtime/actor_runtime_test.go` so expected args include:
 
@@ -104,7 +104,7 @@ Run: `go test ./internal/runtime -run TestRunCommandUsesBackendPolicyForCodexInv
 
 Expected: FAIL until `buildCodexCLIArgs` is updated.
 
-- [ ] **Step 5: Implement CLI arg construction**
+- [x] **Step 5: Implement CLI arg construction**
 
 Modify `buildCodexCLIArgs` in `internal/runtime/actor_runtime.go`:
 
@@ -119,7 +119,7 @@ if backend.IgnoreRules {
 
 Keep this in the pure arg builder so fake Codex tests can prove the exact command shape.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -129,7 +129,7 @@ go test ./internal/runtime -run 'TestLoadActorBackendPolicyDefaultsToIsolatedCod
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit immediate isolation flags**
+- [x] **Step 7: Commit immediate isolation flags**
 
 ```bash
 git add .harness/supervisor/actor_backend.yaml assets/defaults/supervisor/actor_backend.yaml internal/runtime/actor_backend.go internal/runtime/actor_backend_test.go internal/runtime/actor_runtime.go internal/runtime/actor_runtime_test.go

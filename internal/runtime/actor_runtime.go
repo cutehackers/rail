@@ -43,6 +43,12 @@ func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []stri
 	if backend.SkipGitRepoCheck {
 		args = append(args, "--skip-git-repo-check")
 	}
+	if backend.IgnoreUserConfig {
+		args = append(args, "--ignore-user-config")
+	}
+	if backend.IgnoreRules {
+		args = append(args, "--ignore-rules")
+	}
 	args = append(args,
 		"-c",
 		fmt.Sprintf(`model_reasoning_effort="%s"`, spec.Profile.Reasoning),

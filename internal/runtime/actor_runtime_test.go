@@ -15,6 +15,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestBuildActorEnvironmentDropsUserCodexSurface(t *testing.T) {
+	env := buildActorEnvironment([]string{
+		"PATH=/usr/bin",
+		"CODEX_HOME=/tmp/user-codex",
+		"RAIL_TEST_INVOCATION_PATH=/tmp/invocation.json",
+		"HOME=/tmp/home",
+	})
+	joined := strings.Join(env, "\n")
+	if !strings.Contains(joined, "PATH=/usr/bin") {
+		t.Fatalf("expected PATH to be preserved, got %v", env)
+	}
+	if strings.Contains(joined, "CODEX_HOME=") {
+		t.Fatalf("expected CODEX_HOME to be removed, got %v", env)
+	}
+	if strings.Contains(joined, "HOME=") {
+		t.Fatalf("expected HOME to be removed from actor env, got %v", env)
+	}
+	if !strings.Contains(joined, "RAIL_TEST_INVOCATION_PATH=/tmp/invocation.json") {
+		t.Fatalf("expected test harness env to be preserved for fake codex tests, got %v", env)
+	}
+}
+
 func TestRunCommandStopsWhenActorWatchdogSeesNoProgress(t *testing.T) {
 	workingDirectory := t.TempDir()
 	fakeBin := t.TempDir()

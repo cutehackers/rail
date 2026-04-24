@@ -269,7 +269,7 @@ git commit -m "feat: add actor capability policy"
 - Modify: `internal/runtime/actor_runtime.go`
 - Modify: `internal/runtime/actor_runtime_test.go`
 
-- [ ] **Step 1: Write failing environment builder test**
+- [x] **Step 1: Write failing environment builder test**
 
 Add this test to `internal/runtime/actor_runtime_test.go`:
 
@@ -301,7 +301,7 @@ Run: `go test ./internal/runtime -run TestBuildActorEnvironmentDropsUserCodexSur
 
 Expected: FAIL because `buildActorEnvironment` does not exist yet.
 
-- [ ] **Step 2: Implement environment builder**
+- [x] **Step 2: Implement environment builder**
 
 Add `buildActorEnvironment(parent []string) []string` to `internal/runtime/actor_runtime.go`.
 
@@ -328,7 +328,7 @@ func buildActorEnvironment(parent []string) []string {
 
 This intentionally keeps the first version small. Auth-specific handling can be added only after there is a concrete failing real-run requirement.
 
-- [ ] **Step 3: Wire environment into actor command**
+- [x] **Step 3: Wire environment into actor command**
 
 In `runCommand`, set:
 
@@ -338,7 +338,7 @@ cmd.Env = buildActorEnvironment(os.Environ())
 
 Place this after `cmd.Dir = spec.WorkingDirectory`.
 
-- [ ] **Step 4: Preserve fake Codex tests**
+- [x] **Step 4: Preserve fake Codex tests**
 
 Run:
 
@@ -348,7 +348,7 @@ go test ./internal/runtime -run 'TestBuildActorEnvironmentDropsUserCodexSurface|
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit clean actor environment**
+- [x] **Step 5: Commit clean actor environment**
 
 ```bash
 git add internal/runtime/actor_runtime.go internal/runtime/actor_runtime_test.go

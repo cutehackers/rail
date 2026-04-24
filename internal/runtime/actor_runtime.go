@@ -84,6 +84,7 @@ func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]a
 
 	cmd := exec.CommandContext(ctx, backend.Command, buildCodexCLIArgs(backend, spec)...)
 	cmd.Dir = spec.WorkingDirectory
+	cmd.Env = buildActorEnvironment(os.Environ())
 
 	output := &synchronizedBuffer{}
 	watchdog := newActorWatchdog(spec.ActorName, defaultActorWatchdogConfig)
@@ -120,6 +121,23 @@ func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]a
 		return nil, fmt.Errorf("decode %s actor response: %w", spec.ActorName, err)
 	}
 	return response, nil
+}
+
+func buildActorEnvironment(parent []string) []string {
+	allowedPrefixes := []string{
+		"PATH=",
+		"RAIL_TEST_",
+	}
+	env := make([]string, 0, len(parent))
+	for _, entry := range parent {
+		for _, prefix := range allowedPrefixes {
+			if strings.HasPrefix(entry, prefix) {
+				env = append(env, entry)
+				break
+			}
+		}
+	}
+	return env
 }
 
 type synchronizedBuffer struct {

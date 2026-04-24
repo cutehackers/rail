@@ -99,7 +99,7 @@ func interruptedRunStatus(artifactDirectory string, phase string, actorName stri
 		Phase:               phase,
 		CurrentActor:        fallbackString(actorName, actorLabel(state.CurrentActor)),
 		LastSuccessfulActor: lastSuccessfulActor(state),
-		InterruptionKind:    classifyInterruption(err),
+		InterruptionKind:    classifyInterruption(phase, err),
 		Message:             strings.TrimSpace(err.Error()),
 		ArtifactDir:         artifactDirectory,
 		Evidence: []string{
@@ -217,7 +217,7 @@ func FormatRunStatusSummary(status RunStatus) string {
 	return builder.String()
 }
 
-func classifyInterruption(err error) string {
+func classifyInterruption(phase string, err error) string {
 	if err == nil {
 		return "unknown"
 	}
@@ -229,6 +229,8 @@ func classifyInterruption(err error) string {
 		return "backend_policy_violation"
 	case strings.Contains(message, "unknown actor in state"):
 		return "execution_error"
+	case phase == "actor_execution" && strings.Contains(message, " output:"):
+		return "actor_failed"
 	case strings.Contains(message, "validate"):
 		return "artifact_validation_failed"
 	case strings.Contains(message, "codex") || strings.Contains(message, "actor"):

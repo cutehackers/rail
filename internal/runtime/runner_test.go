@@ -678,6 +678,46 @@ func TestSuperviseRetriesTransientActorFailureToTerminal(t *testing.T) {
 	}
 }
 
+func TestSuperviseRetriesMissingActorOutputToTerminal(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_SKIP_OUTPUT_ONCE_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-supervise-missing-output")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Supervise(artifactPath, SuperviseOptions{RetryBudget: 1})
+	if err != nil {
+		t.Fatalf("Supervise should retry a missing actor output once and finish, got: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") || !strings.Contains(summary, "supervised") {
+		t.Fatalf("expected supervised passing summary, got %q", summary)
+	}
+
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "passed" || runStatus.Phase != "terminal" {
+		t.Fatalf("expected supervised missing-output retry to finish terminal passed, got %#v", runStatus)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if got := strings.Count(string(actorLog), "planner|"); got != 2 {
+		t.Fatalf("expected planner to run twice after missing-output retry, got %d log:\n%s", got, string(actorLog))
+	}
+}
+
 func TestSuperviseDoesNotRetryNonRetryableStateErrors(t *testing.T) {
 	projectRoot, requestPath := prepareSmokeProject(t)
 
@@ -1229,6 +1269,14 @@ if actor == fail_once_actor and project_root:
             marker.write("failed\n")
         print("intentional one-time fake codex failure for " + actor, file=sys.stderr)
         raise SystemExit(43)
+
+skip_output_once_actor = os.environ.get("RAIL_TEST_CODEX_SKIP_OUTPUT_ONCE_ACTOR", "")
+if actor == skip_output_once_actor and project_root:
+    marker_path = os.path.join(project_root, ".actor-skip-output-once-" + actor)
+    if not os.path.exists(marker_path):
+        with open(marker_path, "w", encoding="utf-8") as marker:
+            marker.write("skipped\n")
+        raise SystemExit(0)
 
 violation_actor = os.environ.get("RAIL_TEST_CODEX_VIOLATION_ACTOR", "")
 if actor == violation_actor:

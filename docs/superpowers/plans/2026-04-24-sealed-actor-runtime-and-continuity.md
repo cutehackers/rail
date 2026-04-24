@@ -639,7 +639,7 @@ git commit -m "feat: update continuity through supervisor transitions"
 - Modify: `internal/runtime/router.go`
 - Modify: `internal/runtime/router_test.go`
 
-- [ ] **Step 1: Write failing terminal summary test**
+- [x] **Step 1: Write failing terminal summary test**
 
 Add a test in `internal/reporting/terminal_summary_test.go` that builds a terminal summary for a blocked or policy-violating run and asserts it does not say the work passed.
 
@@ -658,7 +658,7 @@ Run: `go test ./internal/reporting -run TestTerminalSummary -count=1`
 
 Expected: FAIL until reporting carries the policy violation reason.
 
-- [ ] **Step 2: Thread policy violation reason into terminal summary data**
+- [x] **Step 2: Thread policy violation reason into terminal summary data**
 
 Use existing `TerminalOutcome` or equivalent reporting structure. Add the smallest field needed, such as:
 
@@ -668,7 +668,7 @@ PolicyViolations []string
 
 Do not change artifact schemas unless tests prove they are required.
 
-- [ ] **Step 3: Include final answer contract guidance**
+- [x] **Step 3: Include final answer contract guidance**
 
 Update summary output to include a short section when policy violations or missing validation evidence exist:
 
@@ -678,11 +678,11 @@ Update summary output to include a short section when policy violations or missi
 - Final answer must not claim successful implementation because policy violations were detected.
 ```
 
-- [ ] **Step 4: Route event audit failures as blocked**
+- [x] **Step 4: Route event audit failures as blocked**
 
 If event audit errors currently bubble as raw `Execute` errors, keep that behavior for Task 4. In this task, add a controlled path only if the runtime already has enough state to produce terminal summary. Prefer a small follow-up if this grows large.
 
-- [ ] **Step 5: Run reporting tests**
+- [x] **Step 5: Run reporting tests**
 
 Run:
 
@@ -693,7 +693,7 @@ go test ./internal/runtime -run 'TestRouteEvaluation|TestExecute' -count=1
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit final reporting contract**
+- [x] **Step 6: Commit final reporting contract**
 
 ```bash
 git add internal/reporting/terminal_summary.go internal/reporting/terminal_summary_test.go internal/runtime/router.go internal/runtime/router_test.go

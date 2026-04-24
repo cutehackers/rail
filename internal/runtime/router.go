@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"rail/internal/contracts"
+	"rail/internal/reporting"
 
 	"gopkg.in/yaml.v3"
 )
@@ -937,6 +938,11 @@ func (r *Router) writeTerminalSummary(artifactDirectory string, state State) err
 	builder.WriteString(terminalOutcomeSummary(state.Status))
 	builder.WriteString("\n\n## Recommended Next Step\n\n")
 	builder.WriteString("- " + terminalOutcomeNextStep(state.Status) + "\n\n")
+	builder.WriteString(reporting.BuildReportingLimits(reporting.TerminalOutcome{
+		Status:                    state.Status,
+		PolicyViolations:          collectPolicyViolations(state.LastReasonCodes, findings, failureDetails, logs),
+		MissingValidationEvidence: collectMissingValidationEvidence(state.LastReasonCodes, failureDetails),
+	}))
 
 	builder.WriteString("## Guardrail Cost\n\n")
 	builder.WriteString(fmt.Sprintf("- executed_intervention_count: `%d`\n", executedInterventionCount))
@@ -1061,6 +1067,45 @@ func (r *Router) writeTerminalSummary(artifactDirectory string, state State) err
 	}
 
 	return os.WriteFile(summaryPath, []byte(builder.String()), 0o644)
+}
+
+func collectPolicyViolations(groups ...[]string) []string {
+	return collectMatchingStrings("backend_policy_violation", groups...)
+}
+
+func collectMissingValidationEvidence(groups ...[]string) []string {
+	matches := collectMatchingStrings("validation_evidence_", groups...)
+	matches = append(matches, collectMatchingStrings("missing validation evidence", groups...)...)
+	return uniqueStrings(matches)
+}
+
+func collectMatchingStrings(needle string, groups ...[]string) []string {
+	var matches []string
+	for _, group := range groups {
+		for _, value := range group {
+			if strings.Contains(strings.ToLower(value), strings.ToLower(needle)) {
+				matches = append(matches, value)
+			}
+		}
+	}
+	return uniqueStrings(matches)
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	output := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		output = append(output, trimmed)
+	}
+	return output
 }
 
 func (r *Router) writeEnrichedExecutionReport(artifactDirectory string, workflow Workflow, state State, evaluationMap map[string]any) error {

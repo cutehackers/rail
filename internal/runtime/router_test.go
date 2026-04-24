@@ -123,6 +123,51 @@ func TestRouteEvaluationCreatesTerminalSummaryForTerminalFixtures(t *testing.T) 
 	}
 }
 
+func TestRouteEvaluationTerminalSummaryExposesPolicyViolation(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	evaluationBody := `decision: reject
+scores:
+  requirements: 0.2
+  architecture: 0.2
+  regression_risk: 0.9
+quality_confidence: high
+findings:
+  - 'backend_policy_violation: unexpected_skill_path in runs/01_planner-events.jsonl'
+reason_codes:
+  - backend_policy_violation_unexpected_skill
+`
+	if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(evaluationBody), 0o644); err != nil {
+		t.Fatalf("failed to override evaluation_result.yaml: %v", err)
+	}
+
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+	terminalSummary, err := os.ReadFile(filepath.Join(artifactPath, "terminal_summary.md"))
+	if err != nil {
+		t.Fatalf("expected terminal_summary.md to exist: %v", err)
+	}
+	summary := string(terminalSummary)
+	if strings.Contains(summary, "- status: `passed`") {
+		t.Fatalf("policy violation summary must not report passed:\n%s", summary)
+	}
+	for _, fragment := range []string{
+		"## Reporting Limits",
+		"backend_policy_violation",
+		"Final answer must not claim successful implementation",
+	} {
+		if !strings.Contains(summary, fragment) {
+			t.Fatalf("expected terminal summary to contain %q, got:\n%s", fragment, summary)
+		}
+	}
+}
+
 func TestRouteEvaluationRecoversTerminalSummaryOnRerun(t *testing.T) {
 	projectRoot := t.TempDir()
 	router, err := NewRouter(projectRoot)

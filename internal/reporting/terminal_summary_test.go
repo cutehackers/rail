@@ -1,4 +1,4 @@
-package reporting
+package reporting_test
 
 import (
 	"os"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"rail/internal/reporting"
 	"rail/internal/runtime"
 )
 
@@ -26,7 +27,7 @@ func TestExecuteProducesTerminalSummaryAndState(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 
-	state, err := LoadState(filepath.Join(artifactPath, "state.json"))
+	state, err := reporting.LoadState(filepath.Join(artifactPath, "state.json"))
 	if err != nil {
 		t.Fatalf("LoadState returned error: %v", err)
 	}
@@ -37,7 +38,7 @@ func TestExecuteProducesTerminalSummaryAndState(t *testing.T) {
 		t.Fatalf("expected terminal state to clear current actor, got %v", state.CurrentActor)
 	}
 
-	summary, err := ReadTerminalSummary(filepath.Join(artifactPath, "terminal_summary.md"))
+	summary, err := reporting.ReadTerminalSummary(filepath.Join(artifactPath, "terminal_summary.md"))
 	if err != nil {
 		t.Fatalf("ReadTerminalSummary returned error: %v", err)
 	}
@@ -52,6 +53,23 @@ func TestExecuteProducesTerminalSummaryAndState(t *testing.T) {
 	}
 }
 
+func TestTerminalSummaryReportingLimitsExposePolicyViolations(t *testing.T) {
+	summary := reporting.BuildReportingLimits(reporting.TerminalOutcome{
+		Status:           "blocked_environment",
+		PolicyViolations: []string{"backend_policy_violation: unexpected_skill_path in runs/01_planner-events.jsonl"},
+	})
+
+	if strings.Contains(summary, "status: `passed`") {
+		t.Fatalf("policy violation summary must not report passed:\n%s", summary)
+	}
+	if !strings.Contains(summary, "backend_policy_violation") {
+		t.Fatalf("expected policy violation to be visible:\n%s", summary)
+	}
+	if !strings.Contains(summary, "Final answer must not claim successful implementation") {
+		t.Fatalf("expected final answer limit guidance, got:\n%s", summary)
+	}
+}
+
 func TestWriteStatePreservesRuntimeMetadata(t *testing.T) {
 	currentActor := "evaluator"
 	lastDecision := "revise"
@@ -61,7 +79,7 @@ func TestWriteStatePreservesRuntimeMetadata(t *testing.T) {
 	pendingContextRefreshTrigger := "next_action"
 	pendingContextRefreshReasonFamily := "context"
 
-	original := State{
+	original := reporting.State{
 		TaskID:                             "task-123",
 		TaskFamily:                         "test_repair",
 		TaskFamilySource:                   "task_type",
@@ -86,11 +104,11 @@ func TestWriteStatePreservesRuntimeMetadata(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "state.json")
-	if err := WriteState(path, original); err != nil {
+	if err := reporting.WriteState(path, original); err != nil {
 		t.Fatalf("WriteState returned error: %v", err)
 	}
 
-	reloaded, err := LoadState(path)
+	reloaded, err := reporting.LoadState(path)
 	if err != nil {
 		t.Fatalf("LoadState returned error: %v", err)
 	}

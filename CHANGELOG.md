@@ -2,44 +2,26 @@
 
 All notable Rail release changes are summarized here by tag.
 
-## v0.4.0 - 2026-04-24
-
-### Added
-- Added sealed Codex actor execution defaults with user config/rule isolation, restricted actor capabilities, clean subprocess environment handling, and JSON event auditing.
-- Added workflow continuity artifacts so actor runs can resume from `work_ledger.md`, `next_action.yaml`, evidence, and final-answer contract files instead of conversation memory.
-- Added terminal reporting limits that surface backend policy violations and prevent unsupported success claims.
-
-### Changed
-- Strengthened supervisor transitions so `next_action.yaml` and `work_ledger.md` are updated after actor completion and evaluator routing.
-- Updated architecture and README documentation to distinguish user-facing Codex sessions from sealed actor Codex sessions.
-
-### Fixed
-- Fixed sealed backend policy validation so project-local overrides cannot disable required isolation and audit behavior.
-- Fixed actor environment filtering to preserve required Codex auth, OpenAI, proxy, and certificate variables while still dropping user config surface.
-- Fixed corrective-loop accounting so revision, context rebuild, and validation tightening state survives until evaluator reentry.
-- Fixed event audit handling to reduce false positives on target-local `skills/` paths and detect MCP/hook event usage.
-- Fixed backend policy violations so they are persisted into terminal reporting instead of escaping only as raw execution errors.
-
-### Verification
-- `go test ./internal/runtime -count=1`
-
 ## v0.3.0 - 2026-04-23
 
 ### Added
+
 - Added Codex skill installation support with dedicated installer logic, CLI wiring, shell installer updates, and tests.
 - Added doctor workflow coverage for Codex skill installation checks.
 
 ### Changed
+
 - Updated README and architecture docs in English and Korean for the hardened skill installation and doctor workflow.
 - Updated release packaging configuration, including GoReleaser and Homebrew formula metadata.
 
 ### Fixed
+
 - Fixed release publishing to validate the publish branch against its upstream.
 - Fixed release publishing to publish from the current branch after checking main freshness.
 
 ### Verification
-- `tool/prepare_release.sh v0.3.0`
 
+- `tool/prepare_release.sh v0.3.0`
 
 ## v0.2.8 - 2026-04-22
 
@@ -47,23 +29,26 @@ All notable Rail release changes are summarized here by tag.
 
 - `tool/prepare_release.sh v0.2.8`
 
-
 ## v0.2.7 - 2026-04-21
 
 ### Added
+
 - Added a new `rail version` CLI command (implemented via `internal/cli/app.go` and `internal/cli/version.go`).
 - Added/expanded CLI coverage in `internal/cli/app_test.go` for command wiring and behavior.
 
 ### Changed
+
 - Improved release workflow decision messaging as part of release process hardening (`.github/workflows/release.yml`).
 - Updated GoReleaser configuration to support the release flow changes in this release (`.goreleaser.yaml`).
 
 ### Verification
+
 - `tool/prepare_release.sh v0.2.7`
 
-
 ## v0.2.6 - 2026-04-21
+
 ### Added
+
 - Added Codex actor backend policy support across supervisor and defaults (`.harness/supervisor/actor_backend.yaml`, `assets/defaults/supervisor/actor_backend.yaml`), plus runtime policy execution support via `internal/runtime/actor_backend.go`.
 - Added new release tooling and workflows for gate/publish automation (`tool/prepare_release.sh`, `tool/publish.sh`, `tool/release_gate.sh`, `internal` releasegate updates, and updated workflow files).
 - Added release prep/docs support for agent changelog handling and published release tracing.
@@ -71,24 +56,27 @@ All notable Rail release changes are summarized here by tag.
 - Added/expanded tests for actor backend, runtime, integration, runner, and release gate behavior.
 
 ### Changed
+
 - Consolidated release gating from v1/v2 workflow split into a single `release-gate.yml` flow and removed the separate `v2-release-gate.yml`.
 - Changed release orchestration to drive releases from merged `release/v*` branches.
 - Changed Codex actor execution to be driven by backend policy instead of the legacy run command bridge.
 - Changed release and runtime behavior to better trace and control publish/release steps in `internal/runtime/actor_runtime.go`, `internal/runtime/integration.go`, and `internal/runtime/runner.go`.
 
 ### Fixed
+
 - Fixed full-access handling by rejecting full-access behavior in all backend environments and aligning the full-access backend contract and actor-policy checks.
 - Fixed self-authorized full-access backend policy cases.
 - Fixed release preflight behavior on non-main branches.
 - Fixed publish flow to fail before attempting read-only PR creation and to keep publish releases on synced main branch conditions.
 
 ### Verification
-- `tool/prepare_release.sh v0.2.6`
 
+- `tool/prepare_release.sh v0.2.6`
 
 ## v0.2.5 - 2026-04-21
 
 ### Added
+
 - Added Codex actor backend policy as a first-class routing signal in runtime and supervisor defaults.
   - New policy model in `internal/runtime/actor_backend.go`.
   - New policy files in `.harness/supervisor/actor_backend.yaml` and `assets/defaults/supervisor/actor_backend.yaml`.
@@ -103,11 +91,13 @@ All notable Rail release changes are summarized here by tag.
   - `docs/2026-04-21-codex-boundary-actor-backend-design.md`
 
 ### Changed
+
 - Routed Codex actor command execution through backend policy (instead of the legacy path), including runtime integration updates in `internal/runtime/actor_runtime.go`, `internal/runtime/integration.go`, and `internal/runtime/runner.go`.
 - Aligned runtime and policy contract around full-access backend handling.
 - Updated operator-facing guidance to reflect the Rail/Codex runtime boundary.
 
 ### Fixed
+
 - Removed legacy run command bridge.
 - Prevented insecure full-access backend configurations by rejecting full access where disallowed and rejecting self-authorized full access backends.
 - Fixed release publishing flow behavior:
@@ -117,8 +107,8 @@ All notable Rail release changes are summarized here by tag.
   - fail publish before readonly PR creation
 
 ### Verification
-- `tool/prepare_release.sh v0.2.5`
 
+- `tool/prepare_release.sh v0.2.5`
 
 ## v0.2.4 - 2026-04-21
 

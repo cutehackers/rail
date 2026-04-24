@@ -77,6 +77,9 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		if r.needsPersistedOutputRefresh(artifactDirectory, currentState) {
 			return r.router.RouteEvaluation(artifactDirectory)
 		}
+		if err := writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, currentState)); err != nil {
+			return "", err
+		}
 		return fmt.Sprintf("Harness execution already completed for %s", artifactDirectory), nil
 	}
 
@@ -280,6 +283,15 @@ func (r *Runner) blockForBackendPolicyViolation(
 	if err := updateContinuityAfterEvaluation(artifactDirectory, nextState); err != nil {
 		return "", err
 	}
+	if err := writeJSON(statePath, nextState); err != nil {
+		return "", err
+	}
+	if err := appendSupervisorDecisionTrace(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
+	if err := r.router.writeTerminalSummary(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
 	if err := writeRunStatus(artifactDirectory, RunStatus{
 		Status:              "blocked_environment",
 		Phase:               "backend_policy",
@@ -297,15 +309,6 @@ func (r *Runner) blockForBackendPolicyViolation(
 		},
 		NextStep: "Read terminal_summary.md and fix backend policy isolation before continuing.",
 	}); err != nil {
-		return "", err
-	}
-	if err := writeJSON(statePath, nextState); err != nil {
-		return "", err
-	}
-	if err := appendSupervisorDecisionTrace(artifactDirectory, nextState); err != nil {
-		return "", err
-	}
-	if err := r.router.writeTerminalSummary(artifactDirectory, nextState); err != nil {
 		return "", err
 	}
 	return formatExecutionSummary(artifactDirectory, nextState, "Harness execution blocked by backend policy"), nil

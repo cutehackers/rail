@@ -233,6 +233,61 @@ func TestAppRunPrintsArtifactStatusForStatusCommand(t *testing.T) {
 	}
 }
 
+func TestAppRunStatusResolvesArtifactPathFromProjectSubdirectory(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-status-subdir",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+	if err := os.Remove(filepath.Join(projectRoot, ".harness", "artifacts", "cli-status-subdir", "run_status.yaml")); err != nil {
+		t.Fatalf("failed to remove run_status.yaml fixture: %v", err)
+	}
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(filepath.Join(projectRoot, "smoke")); err != nil {
+		t.Fatalf("failed to change to project subdirectory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{
+		"status",
+		"--artifact", ".harness/artifacts/cli-status-subdir",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for status from subdirectory, got %d", got)
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	for _, fragment := range []string{"status: initialized", "phase: bootstrap", "current actor: planner"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected synthesized status output to contain %q, got:\n%s", fragment, stdout.String())
+		}
+	}
+}
+
 func TestAppRunExecutesArtifactForExecuteCommand(t *testing.T) {
 	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
 

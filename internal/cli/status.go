@@ -27,7 +27,11 @@ func RunStatus(args []string, stdout io.Writer) error {
 		return fmt.Errorf("status requires --artifact")
 	}
 
-	status, err := runtime.ReadRunStatus(artifactPath)
+	workspace, err := discoverWorkspaceFromPath(artifactPath)
+	if err != nil {
+		return err
+	}
+	status, err := runtime.ReadRunStatusForArtifact(workspace.Root, artifactPath)
 	if err != nil {
 		return err
 	}

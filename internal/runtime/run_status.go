@@ -121,6 +121,9 @@ func writeRunStatus(artifactDirectory string, status RunStatus) error {
 func ReadRunStatus(artifactDirectory string) (RunStatus, error) {
 	data, err := os.ReadFile(filepath.Join(artifactDirectory, runStatusFileName))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return synthesizeRunStatusFromState(artifactDirectory)
+		}
 		return RunStatus{}, fmt.Errorf("read %s: %w", runStatusFileName, err)
 	}
 	var status RunStatus
@@ -128,6 +131,60 @@ func ReadRunStatus(artifactDirectory string) (RunStatus, error) {
 		return RunStatus{}, fmt.Errorf("decode %s: %w", runStatusFileName, err)
 	}
 	return status, nil
+}
+
+func ReadRunStatusForArtifact(projectRoot string, artifactPath string) (RunStatus, error) {
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		return RunStatus{}, err
+	}
+	artifactDirectory, err := router.resolveArtifactDirectory(artifactPath)
+	if err != nil {
+		return RunStatus{}, err
+	}
+	return ReadRunStatus(artifactDirectory)
+}
+
+func synthesizeRunStatusFromState(artifactDirectory string) (RunStatus, error) {
+	statePath := filepath.Join(artifactDirectory, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		return RunStatus{}, fmt.Errorf("read %s or synthesize status from state.json: %w", runStatusFileName, err)
+	}
+
+	status := state.Status
+	phase := "actor_execution"
+	nextStep := "Continue with next_action.yaml and the selected actor brief."
+	if state.Status == "initialized" && len(state.CompletedActors) == 0 {
+		phase = "bootstrap"
+		nextStep = "Run rail execute --artifact " + artifactDirectory + " to continue the harness workflow."
+	} else if shouldTerminate(state) {
+		phase = "terminal"
+		nextStep = "Read terminal_summary.md before reporting the result to the user."
+	}
+
+	evidence := []string{"state.json", workLedgerFileName, nextActionFileName}
+	if shouldTerminate(state) || len(state.ActionHistory) > 0 {
+		evidence = append(evidence, "evaluation_result.yaml", "execution_report.yaml", "supervisor_trace.md")
+	}
+	if _, err := os.Stat(filepath.Join(artifactDirectory, "terminal_summary.md")); err == nil {
+		evidence = append(evidence, "terminal_summary.md")
+	}
+
+	updatedAt := ""
+	if info, statErr := os.Stat(statePath); statErr == nil {
+		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
+	}
+	return RunStatus{
+		Status:              status,
+		Phase:               phase,
+		CurrentActor:        actorLabel(state.CurrentActor),
+		LastSuccessfulActor: lastSuccessfulActor(state),
+		ArtifactDir:         artifactDirectory,
+		Evidence:            evidence,
+		NextStep:            nextStep,
+		UpdatedAt:           updatedAt,
+	}, nil
 }
 
 func FormatRunStatusSummary(status RunStatus) string {

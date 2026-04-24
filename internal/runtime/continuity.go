@@ -225,5 +225,5 @@ func updateContinuityAfterEvaluation(artifactDirectory string, state State) erro
 	); err != nil {
 		return err
 	}
-	return writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, state))
+	return nil
 }

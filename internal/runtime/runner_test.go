@@ -148,6 +148,36 @@ func TestExecuteFailsBeforeGeneratorWhenCriticReportMissing(t *testing.T) {
 	}
 }
 
+func TestRouteEvaluationSkippedNonTerminalDoesNotRewriteRunStatus(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-skipped-route-status")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("RouteEvaluation returned error for skipped non-terminal artifact: %v", err)
+	}
+	if !strings.Contains(summary, "routing skipped") {
+		t.Fatalf("expected skipped routing summary, got %q", summary)
+	}
+
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "initialized" || runStatus.Phase != "bootstrap" || runStatus.CurrentActor != "planner" {
+		t.Fatalf("expected skipped route-evaluation to preserve bootstrap run status, got %#v", runStatus)
+	}
+}
+
 func TestExecutePreservesDistinctLogsAcrossRepeatedActorPasses(t *testing.T) {
 	projectRoot, requestPath := prepareSmokeProject(t)
 
@@ -234,6 +264,15 @@ func TestExecuteRefreshesPersistedOutputsForCompletedArtifacts(t *testing.T) {
 			t.Fatalf("failed to remove %s: %v", name, err)
 		}
 	}
+	if err := writeRunStatus(artifactPath, RunStatus{
+		Status:           "interrupted",
+		Phase:            "actor_execution",
+		CurrentActor:     "evaluator",
+		InterruptionKind: "actor_failed",
+		Message:          "stale interruption from a prior attempt",
+	}); err != nil {
+		t.Fatalf("failed to seed stale run status: %v", err)
+	}
 
 	summary, err := runner.Execute(artifactPath)
 	if err != nil {
@@ -250,6 +289,16 @@ func TestExecuteRefreshesPersistedOutputsForCompletedArtifacts(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(artifactPath, name)); err != nil {
 			t.Fatalf("expected %s to be recreated: %v", name, err)
 		}
+	}
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to remain readable after refresh: %v", err)
+	}
+	if runStatus.Status != "passed" || runStatus.Phase != "terminal" || runStatus.InterruptionKind != "" {
+		t.Fatalf("expected refresh to replace stale interrupted run status, got %#v", runStatus)
+	}
+	if !slices.Contains(runStatus.Evidence, "terminal_summary.md") {
+		t.Fatalf("expected refreshed run status to include terminal_summary.md evidence, got %#v", runStatus.Evidence)
 	}
 }
 

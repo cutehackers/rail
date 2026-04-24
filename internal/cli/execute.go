@@ -37,7 +37,7 @@ func RunExecute(args []string, stdout io.Writer) error {
 	}
 	summary, err := runner.Execute(artifactPath)
 	if err != nil {
-		if status, statusErr := runtime.ReadRunStatus(artifactPath); statusErr == nil {
+		if status, statusErr := runtime.ReadRunStatusForArtifact(workspace.Root, artifactPath); statusErr == nil {
 			_, _ = fmt.Fprint(stdout, runtime.FormatRunStatusSummary(status))
 		}
 		return err

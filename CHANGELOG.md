@@ -2,6 +2,29 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.4.0 - 2026-04-24
+
+### Added
+- Added supervised actor loop execution and a new `supervise` CLI path for bounded actor workflow orchestration.
+- Added harness run status reporting, including CLI status support and terminal summary output.
+- Added workflow continuity artifacts and supervisor transition handling for runtime continuity.
+- Added Codex actor event auditing, session isolation, cleaned actor environments, and actor capability policy configuration.
+- Added sealed actor runtime continuity design and implementation documentation.
+
+### Changed
+- Updated the Rail skill and bundled skill text to reflect the current supervised workflow behavior.
+- Updated architecture documentation for sealed actor execution and runtime continuity.
+- Updated release packaging metadata for v0.4.0.
+
+### Fixed
+- Retried missing actor output during actor backend execution.
+- Hardened run status reporting and final reporting contract enforcement.
+- Hardened sealed actor release blockers and routing/reporting behavior around actor execution.
+
+### Verification
+- `tool/prepare_release.sh v0.4.0`
+
+
 ## v0.3.0 - 2026-04-23
 
 ### Added

@@ -25,6 +25,8 @@ func NewApp() *App {
 		"init-hardening-review",
 		"run",
 		"execute",
+		"supervise",
+		"status",
 		"route-evaluation",
 		"integrate",
 		"apply-user-outcome-feedback",
@@ -155,6 +157,22 @@ func (a *App) Run(args []string) int {
 
 	if args[0] == "execute" {
 		if err := RunExecute(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "supervise" {
+		if err := RunSupervise(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "status" {
+		if err := RunStatus(args[1:], os.Stdout); err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			return 1
 		}

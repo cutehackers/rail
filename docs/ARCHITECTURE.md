@@ -41,6 +41,12 @@ Rail configures Codex execution through actor backend policy. The first backend
 is the Codex CLI, and local default execution uses the `workspace-write`
 sandbox.
 
+Rail separates the user-facing Codex session from sealed actor Codex sessions.
+The user-facing session may use the Rail skill, ask clarifying questions, and
+interact with the operator. Actor sessions are launched by Rail through backend
+policy and are isolated from the user's normal skill, rule, plugin, hook, and
+MCP surface by default.
+
 ## Core Runtime Components
 
 ### Rail CLI
@@ -74,6 +80,11 @@ The checked-in policy and the embedded default both use the Codex CLI as the
 first backend. Backend execution evidence is persisted under the artifact
 `runs/` directory so each actor invocation remains reviewable alongside the
 rest of the run state.
+
+By default, actor Codex runs pass isolation flags, use a cleaned environment,
+and audit captured events for unexpected user-surface injection. Rail treats
+actor events and artifacts as governance evidence; it does not treat the
+conversation transcript as workflow memory.
 
 ### Embedded Defaults
 

@@ -26,6 +26,8 @@ func TestAppRegistersCoreCommands(t *testing.T) {
 		"init-hardening-review",
 		"run",
 		"execute",
+		"supervise",
+		"status",
 		"route-evaluation",
 		"integrate",
 		"apply-user-outcome-feedback",
@@ -191,6 +193,102 @@ func TestAppRunBootstrapsArtifactForRunCommand(t *testing.T) {
 	}
 }
 
+func TestAppRunPrintsArtifactStatusForStatusCommand(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-status-smoke",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{
+		"status",
+		"--artifact", filepath.Join(projectRoot, ".harness", "artifacts", "cli-status-smoke"),
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for status, got %d", got)
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	for _, fragment := range []string{"status: initialized", "phase: bootstrap", "artifact:"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected status output to contain %q, got:\n%s", fragment, stdout.String())
+		}
+	}
+}
+
+func TestAppRunStatusResolvesArtifactPathFromProjectSubdirectory(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-status-subdir",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+	if err := os.Remove(filepath.Join(projectRoot, ".harness", "artifacts", "cli-status-subdir", "run_status.yaml")); err != nil {
+		t.Fatalf("failed to remove run_status.yaml fixture: %v", err)
+	}
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(filepath.Join(projectRoot, "smoke")); err != nil {
+		t.Fatalf("failed to change to project subdirectory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{
+		"status",
+		"--artifact", ".harness/artifacts/cli-status-subdir",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for status from subdirectory, got %d", got)
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	for _, fragment := range []string{"status: initialized", "phase: bootstrap", "current actor: planner"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected synthesized status output to contain %q, got:\n%s", fragment, stdout.String())
+		}
+	}
+}
+
 func TestAppRunExecutesArtifactForExecuteCommand(t *testing.T) {
 	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
 
@@ -220,6 +318,190 @@ func TestAppRunExecutesArtifactForExecuteCommand(t *testing.T) {
 	}
 	if !strings.Contains(string(terminalSummary), "critic") {
 		t.Fatalf("expected execute terminal summary to include critic traversal, got:\n%s", string(terminalSummary))
+	}
+}
+
+func TestAppRunSupervisesArtifactForSuperviseCommand(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-supervise-smoke",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{
+		"supervise",
+		"--artifact", filepath.Join(projectRoot, ".harness", "artifacts", "cli-supervise-smoke"),
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for supervise, got %d", got)
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	for _, fragment := range []string{"supervised", "status=passed"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected supervise output to contain %q, got:\n%s", fragment, stdout.String())
+		}
+	}
+}
+
+func TestAppRunSuperviseAcceptsRelativeArtifactPathFromParent(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-supervise-relative-parent",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(filepath.Dir(projectRoot)); err != nil {
+		t.Fatalf("failed to change to project parent: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	relativeArtifactPath := filepath.Join(filepath.Base(projectRoot), ".harness", "artifacts", "cli-supervise-relative-parent")
+	if got := NewApp().Run([]string{
+		"supervise",
+		"--artifact", relativeArtifactPath,
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for supervise with parent-relative artifact path, got %d", got)
+	}
+}
+
+func TestAppRunSupervisePrintsStatusWhenBlocked(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-supervise-blocked",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+
+	artifactPath := filepath.Join(projectRoot, ".harness", "artifacts", "cli-supervise-blocked")
+	statePath := filepath.Join(artifactPath, "state.json")
+	stateData, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state fixture: %v", err)
+	}
+	updatedState := strings.Replace(string(stateData), `"currentActor": "planner"`, `"currentActor": "missing_actor"`, 1)
+	if updatedState == string(stateData) {
+		t.Fatalf("failed to mutate state fixture currentActor")
+	}
+	if err := os.WriteFile(statePath, []byte(updatedState), 0o644); err != nil {
+		t.Fatalf("failed to write mutated state fixture: %v", err)
+	}
+
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{
+		"supervise",
+		"--artifact", artifactPath,
+		"--retry-budget", "2",
+	}); got == 0 {
+		t.Fatalf("expected non-zero exit code for blocked supervise")
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	for _, fragment := range []string{"Harness status", "status: interrupted", "phase: actor_resolution", "current actor: missing_actor"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected blocked supervise output to contain %q, got:\n%s", fragment, stdout.String())
+		}
+	}
+}
+
+func TestAppRunExecutePrintsStatusWhenHarnessIsInterrupted(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-execute-interrupted",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+
+	artifactPath := filepath.Join(projectRoot, ".harness", "artifacts", "cli-execute-interrupted")
+	statePath := filepath.Join(artifactPath, "state.json")
+	stateData, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state fixture: %v", err)
+	}
+	updatedState := strings.Replace(string(stateData), `"currentActor": "planner"`, `"currentActor": "missing_actor"`, 1)
+	if updatedState == string(stateData) {
+		t.Fatalf("failed to mutate state fixture currentActor")
+	}
+	if err := os.WriteFile(statePath, []byte(updatedState), 0o644); err != nil {
+		t.Fatalf("failed to write mutated state fixture: %v", err)
+	}
+
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{
+		"execute",
+		"--artifact", artifactPath,
+	}); got == 0 {
+		t.Fatalf("expected non-zero exit code for interrupted execute")
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	for _, fragment := range []string{"Harness status", "status: interrupted", "phase: actor_resolution", "current actor: missing_actor"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected interrupted execute output to contain %q, got:\n%s", fragment, stdout.String())
+		}
 	}
 }
 

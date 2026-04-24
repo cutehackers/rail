@@ -3,11 +3,12 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"rail/internal/runtime"
 )
 
-func RunRouteEvaluation(args []string, stdout io.Writer) error {
+func RunStatus(args []string, stdout io.Writer) error {
 	var artifactPath string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -18,11 +19,12 @@ func RunRouteEvaluation(args []string, stdout io.Writer) error {
 			artifactPath = args[i+1]
 			i++
 		default:
-			return fmt.Errorf("unknown route-evaluation flag: %s", args[i])
+			return fmt.Errorf("unknown status flag: %s", args[i])
 		}
 	}
-	if artifactPath == "" {
-		return fmt.Errorf("route-evaluation requires --artifact")
+
+	if strings.TrimSpace(artifactPath) == "" {
+		return fmt.Errorf("status requires --artifact")
 	}
 
 	workspace, err := discoverWorkspaceFromPath(artifactPath)
@@ -33,14 +35,10 @@ func RunRouteEvaluation(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	router, err := runtime.NewRouter(workspace.Root)
+	status, err := runtime.ReadRunStatusForArtifact(workspace.Root, resolvedArtifactPath)
 	if err != nil {
 		return err
 	}
-	summary, err := router.RouteEvaluation(resolvedArtifactPath)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(stdout, summary)
+	_, err = fmt.Fprint(stdout, runtime.FormatRunStatusSummary(status))
 	return err
 }

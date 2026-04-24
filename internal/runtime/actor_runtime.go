@@ -43,6 +43,12 @@ func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []stri
 	if backend.SkipGitRepoCheck {
 		args = append(args, "--skip-git-repo-check")
 	}
+	if backend.IgnoreUserConfig {
+		args = append(args, "--ignore-user-config")
+	}
+	if backend.IgnoreRules {
+		args = append(args, "--ignore-rules")
+	}
 	args = append(args,
 		"-c",
 		fmt.Sprintf(`model_reasoning_effort="%s"`, spec.Profile.Reasoning),
@@ -78,6 +84,7 @@ func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]a
 
 	cmd := exec.CommandContext(ctx, backend.Command, buildCodexCLIArgs(backend, spec)...)
 	cmd.Dir = spec.WorkingDirectory
+	cmd.Env = buildActorEnvironment(os.Environ())
 
 	output := &synchronizedBuffer{}
 	watchdog := newActorWatchdog(spec.ActorName, defaultActorWatchdogConfig)
@@ -114,6 +121,38 @@ func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]a
 		return nil, fmt.Errorf("decode %s actor response: %w", spec.ActorName, err)
 	}
 	return response, nil
+}
+
+func buildActorEnvironment(parent []string) []string {
+	allowedPrefixes := []string{
+		"PATH=",
+		"CODEX_HOME=",
+		"OPENAI_API_KEY=",
+		"OPENAI_BASE_URL=",
+		"OPENAI_ORG_ID=",
+		"OPENAI_PROJECT=",
+		"HTTPS_PROXY=",
+		"HTTP_PROXY=",
+		"NO_PROXY=",
+		"ALL_PROXY=",
+		"https_proxy=",
+		"http_proxy=",
+		"no_proxy=",
+		"all_proxy=",
+		"SSL_CERT_FILE=",
+		"SSL_CERT_DIR=",
+		"RAIL_TEST_",
+	}
+	env := make([]string, 0, len(parent))
+	for _, entry := range parent {
+		for _, prefix := range allowedPrefixes {
+			if strings.HasPrefix(entry, prefix) {
+				env = append(env, entry)
+				break
+			}
+		}
+	}
+	return env
 }
 
 type synchronizedBuffer struct {

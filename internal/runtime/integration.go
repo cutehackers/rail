@@ -284,7 +284,7 @@ func runIntegratorActor(
 		"Project root: " + workingDirectory,
 		"Write no files yourself except the schema-valid response via Codex output handling.",
 	}, "\n")
-	return runCommand(backend, ActorCommandSpec{
+	response, err := runCommand(backend, ActorCommandSpec{
 		ActorName:        "integrator",
 		Profile:          profile,
 		WorkingDirectory: workingDirectory,
@@ -293,6 +293,15 @@ func runIntegratorActor(
 		SchemaPath:       schemaPath,
 		EventsPath:       eventsPath,
 	})
+	if err != nil {
+		return nil, err
+	}
+	if backend.CaptureJSONEvents {
+		if err := auditCodexEvents(eventsPath); err != nil {
+			return nil, err
+		}
+	}
+	return response, nil
 }
 
 func normalizeIntegrationResult(

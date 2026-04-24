@@ -39,3 +39,21 @@ func discoverWorkspaceFromPath(path string) (project.Workspace, error) {
 
 	return project.DiscoverProject(start)
 }
+
+func resolveWorkspaceInputPath(workspaceRoot string, path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("path is required")
+	}
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path), nil
+	}
+	cleanPath := filepath.Clean(path)
+	if cleanPath == ".harness" || strings.HasPrefix(cleanPath, ".harness"+string(os.PathSeparator)) {
+		return filepath.Clean(filepath.Join(workspaceRoot, cleanPath)), nil
+	}
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolve working directory: %w", err)
+	}
+	return filepath.Clean(filepath.Join(currentDir, cleanPath)), nil
+}

@@ -113,6 +113,10 @@ validation_profile: standard
 		"implementation_result.yaml",
 		"execution_report.yaml",
 		"evaluation_result.yaml",
+		"work_ledger.md",
+		"next_action.yaml",
+		"evidence.yaml",
+		"final_answer_contract.yaml",
 		filepath.Join("inputs", "architecture_rules.md"),
 		filepath.Join("inputs", "project_rules.md"),
 		filepath.Join("inputs", "forbidden_changes.md"),
@@ -242,6 +246,9 @@ validation_profile: standard
 		"# PLANNER Brief",
 		"inputs/architecture_rules.md",
 		"plan.yaml",
+		"work_ledger.md",
+		"next_action.yaml",
+		"evidence.yaml",
 	} {
 		if !strings.Contains(string(actorBrief), fragment) {
 			t.Fatalf("expected planner brief to contain %q, got:\n%s", fragment, string(actorBrief))
@@ -274,6 +281,9 @@ validation_profile: standard
 		"forbidden_changes",
 		"constraints",
 		"Treat all inputs above as required",
+		"work_ledger.md",
+		"next_action.yaml",
+		"evidence.yaml",
 	} {
 		if !strings.Contains(string(generatorBrief), fragment) {
 			t.Fatalf("expected generator brief to contain %q, got:\n%s", fragment, string(generatorBrief))

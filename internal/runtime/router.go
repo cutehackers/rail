@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"rail/internal/contracts"
+	"rail/internal/reporting"
 
 	"gopkg.in/yaml.v3"
 )
@@ -54,9 +55,17 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 	if refreshed, err := r.refreshPersistedOutputsIfNeeded(artifactDirectory, workflow, state, activeEvaluatorRouting); err != nil {
 		return "", err
 	} else if refreshed && !activeEvaluatorRouting {
+		if err := writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, state)); err != nil {
+			return "", err
+		}
 		return formatExecutionSummary(artifactDirectory, state, "Harness evaluation refreshed persisted outputs"), nil
 	}
 	if state.CurrentActor == nil || *state.CurrentActor != "evaluator" || shouldTerminate(state) {
+		if shouldTerminate(state) {
+			if err := writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, state)); err != nil {
+				return "", err
+			}
+		}
 		return fmt.Sprintf(
 			"Harness evaluation routing skipped for %s (currentActor=%s, status=%s)",
 			artifactDirectory,
@@ -78,6 +87,9 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 	if err := writeJSON(filepath.Join(artifactDirectory, "state.json"), nextState); err != nil {
 		return "", err
 	}
+	if err := updateContinuityAfterEvaluation(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
 	if err := appendSupervisorDecisionTrace(artifactDirectory, nextState); err != nil {
 		return "", err
 	}
@@ -88,6 +100,9 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 		if err := r.writeTerminalSummary(artifactDirectory, nextState); err != nil {
 			return "", err
 		}
+	}
+	if err := writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, nextState)); err != nil {
+		return "", err
 	}
 
 	return formatExecutionSummary(artifactDirectory, nextState, "Harness evaluation routed"), nil
@@ -934,6 +949,11 @@ func (r *Router) writeTerminalSummary(artifactDirectory string, state State) err
 	builder.WriteString(terminalOutcomeSummary(state.Status))
 	builder.WriteString("\n\n## Recommended Next Step\n\n")
 	builder.WriteString("- " + terminalOutcomeNextStep(state.Status) + "\n\n")
+	builder.WriteString(reporting.BuildReportingLimits(reporting.TerminalOutcome{
+		Status:                    state.Status,
+		PolicyViolations:          collectPolicyViolations(state.LastReasonCodes, findings, failureDetails, logs),
+		MissingValidationEvidence: collectMissingValidationEvidence(state.LastReasonCodes, failureDetails),
+	}))
 
 	builder.WriteString("## Guardrail Cost\n\n")
 	builder.WriteString(fmt.Sprintf("- executed_intervention_count: `%d`\n", executedInterventionCount))
@@ -1058,6 +1078,45 @@ func (r *Router) writeTerminalSummary(artifactDirectory string, state State) err
 	}
 
 	return os.WriteFile(summaryPath, []byte(builder.String()), 0o644)
+}
+
+func collectPolicyViolations(groups ...[]string) []string {
+	return collectMatchingStrings("backend_policy_violation", groups...)
+}
+
+func collectMissingValidationEvidence(groups ...[]string) []string {
+	matches := collectMatchingStrings("validation_evidence_", groups...)
+	matches = append(matches, collectMatchingStrings("missing validation evidence", groups...)...)
+	return uniqueStrings(matches)
+}
+
+func collectMatchingStrings(needle string, groups ...[]string) []string {
+	var matches []string
+	for _, group := range groups {
+		for _, value := range group {
+			if strings.Contains(strings.ToLower(value), strings.ToLower(needle)) {
+				matches = append(matches, value)
+			}
+		}
+	}
+	return uniqueStrings(matches)
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	output := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		output = append(output, trimmed)
+	}
+	return output
 }
 
 func (r *Router) writeEnrichedExecutionReport(artifactDirectory string, workflow Workflow, state State, evaluationMap map[string]any) error {

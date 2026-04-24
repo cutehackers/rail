@@ -15,6 +15,51 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestBuildActorEnvironmentDropsUserCodexSurface(t *testing.T) {
+	env := buildActorEnvironment([]string{
+		"PATH=/usr/bin",
+		"CODEX_HOME=/tmp/user-codex",
+		"OPENAI_API_KEY=test-key",
+		"HTTPS_PROXY=https://proxy.example",
+		"SSL_CERT_FILE=/tmp/cert.pem",
+		"RAIL_TEST_INVOCATION_PATH=/tmp/invocation.json",
+		"HOME=/tmp/home",
+		"CODEX_CONFIG_DIR=/tmp/config",
+	})
+	joined := strings.Join(env, "\n")
+	if !strings.Contains(joined, "PATH=/usr/bin") {
+		t.Fatalf("expected PATH to be preserved, got %v", env)
+	}
+	for _, required := range []string{
+		"CODEX_HOME=/tmp/user-codex",
+		"OPENAI_API_KEY=test-key",
+		"HTTPS_PROXY=https://proxy.example",
+		"SSL_CERT_FILE=/tmp/cert.pem",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("expected auth/network env %q to be preserved, got %v", required, env)
+		}
+	}
+	if envContainsExact(env, "HOME=") {
+		t.Fatalf("expected HOME to be removed from actor env, got %v", env)
+	}
+	if envContainsExact(env, "CODEX_CONFIG_DIR=") {
+		t.Fatalf("expected Codex config env to be removed, got %v", env)
+	}
+	if !strings.Contains(joined, "RAIL_TEST_INVOCATION_PATH=/tmp/invocation.json") {
+		t.Fatalf("expected test harness env to be preserved for fake codex tests, got %v", env)
+	}
+}
+
+func envContainsExact(env []string, prefix string) bool {
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRunCommandStopsWhenActorWatchdogSeesNoProgress(t *testing.T) {
 	workingDirectory := t.TempDir()
 	fakeBin := t.TempDir()
@@ -212,6 +257,8 @@ func TestBuildCodexCLIArgsUsesBackendPolicy(t *testing.T) {
 		"--color", "never",
 		"-s", "workspace-write",
 		"--skip-git-repo-check",
+		"--ignore-user-config",
+		"--ignore-rules",
 		"-c", `model_reasoning_effort="high"`,
 		"-c", `approval_policy="never"`,
 		"--output-schema", schemaPath,
@@ -311,6 +358,8 @@ with open(output_path, "w", encoding="utf-8") as handle:
 		"--color", "never",
 		"-s", "workspace-write",
 		"--skip-git-repo-check",
+		"--ignore-user-config",
+		"--ignore-rules",
 		"-c", `model_reasoning_effort="high"`,
 		"-c", `approval_policy="never"`,
 		"--output-schema", schemaPath,
@@ -361,6 +410,8 @@ func defaultTestActorBackend() ActorBackendConfig {
 		Ephemeral:         true,
 		CaptureJSONEvents: false,
 		SkipGitRepoCheck:  true,
+		IgnoreUserConfig:  true,
+		IgnoreRules:       true,
 	}
 }
 

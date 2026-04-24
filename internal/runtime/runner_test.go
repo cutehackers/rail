@@ -35,6 +35,13 @@ func TestRunBootstrapsSmokeArtifact(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(artifactPath, "state.json")); err != nil {
 		t.Fatalf("expected state.json to exist: %v", err)
 	}
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "initialized" {
+		t.Fatalf("unexpected run status: got %q want initialized", runStatus.Status)
+	}
 
 	state, err := readState(filepath.Join(artifactPath, "state.json"))
 	if err != nil {
@@ -141,6 +148,36 @@ func TestExecuteFailsBeforeGeneratorWhenCriticReportMissing(t *testing.T) {
 	}
 }
 
+func TestRouteEvaluationSkippedNonTerminalDoesNotRewriteRunStatus(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-skipped-route-status")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.router.RouteEvaluation(artifactPath)
+	if err != nil {
+		t.Fatalf("RouteEvaluation returned error for skipped non-terminal artifact: %v", err)
+	}
+	if !strings.Contains(summary, "routing skipped") {
+		t.Fatalf("expected skipped routing summary, got %q", summary)
+	}
+
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "initialized" || runStatus.Phase != "bootstrap" || runStatus.CurrentActor != "planner" {
+		t.Fatalf("expected skipped route-evaluation to preserve bootstrap run status, got %#v", runStatus)
+	}
+}
+
 func TestExecutePreservesDistinctLogsAcrossRepeatedActorPasses(t *testing.T) {
 	projectRoot, requestPath := prepareSmokeProject(t)
 
@@ -227,6 +264,15 @@ func TestExecuteRefreshesPersistedOutputsForCompletedArtifacts(t *testing.T) {
 			t.Fatalf("failed to remove %s: %v", name, err)
 		}
 	}
+	if err := writeRunStatus(artifactPath, RunStatus{
+		Status:           "interrupted",
+		Phase:            "actor_execution",
+		CurrentActor:     "evaluator",
+		InterruptionKind: "actor_failed",
+		Message:          "stale interruption from a prior attempt",
+	}); err != nil {
+		t.Fatalf("failed to seed stale run status: %v", err)
+	}
 
 	summary, err := runner.Execute(artifactPath)
 	if err != nil {
@@ -243,6 +289,16 @@ func TestExecuteRefreshesPersistedOutputsForCompletedArtifacts(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(artifactPath, name)); err != nil {
 			t.Fatalf("expected %s to be recreated: %v", name, err)
 		}
+	}
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to remain readable after refresh: %v", err)
+	}
+	if runStatus.Status != "passed" || runStatus.Phase != "terminal" || runStatus.InterruptionKind != "" {
+		t.Fatalf("expected refresh to replace stale interrupted run status, got %#v", runStatus)
+	}
+	if !slices.Contains(runStatus.Evidence, "terminal_summary.md") {
+		t.Fatalf("expected refreshed run status to include terminal_summary.md evidence, got %#v", runStatus.Evidence)
 	}
 }
 
@@ -493,6 +549,208 @@ execution_environments:
 		t.Fatalf("expected unsafe backend policy to fail before invoking fake codex, got actor log:\n%s", string(actorLog))
 	} else if readErr != nil && !os.IsNotExist(readErr) {
 		t.Fatalf("failed to inspect fake codex actor log: %v", readErr)
+	}
+}
+
+func TestExecuteRoutesAuditViolationToTerminalSummary(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_VIOLATION_ACTOR", "evaluator")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-audit-violation")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("expected Execute to route audit violation to terminal summary, got error: %v", err)
+	}
+	if !strings.Contains(summary, "status=blocked_environment") {
+		t.Fatalf("expected blocked_environment summary, got %q", summary)
+	}
+
+	terminalSummary, err := os.ReadFile(filepath.Join(artifactPath, "terminal_summary.md"))
+	if err != nil {
+		t.Fatalf("expected terminal_summary.md to exist: %v", err)
+	}
+	for _, fragment := range []string{
+		"## Reporting Limits",
+		"backend_policy_violation",
+		"Final answer must not claim successful implementation",
+	} {
+		if !strings.Contains(string(terminalSummary), fragment) {
+			t.Fatalf("expected terminal summary to contain %q, got:\n%s", fragment, string(terminalSummary))
+		}
+	}
+}
+
+func TestExecuteRecordsRunStatusForActorFailure(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_FAIL_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-actor-failure")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	_, err = runner.Execute(artifactPath)
+	if err == nil {
+		t.Fatalf("expected Execute to fail when actor process fails")
+	}
+
+	runStatus, statusErr := ReadRunStatus(artifactPath)
+	if statusErr != nil {
+		t.Fatalf("expected run_status.yaml to be readable after interruption: %v", statusErr)
+	}
+	if runStatus.Status != "interrupted" {
+		t.Fatalf("unexpected run status: got %q want interrupted", runStatus.Status)
+	}
+	if runStatus.Phase != "actor_execution" {
+		t.Fatalf("unexpected phase: got %q want actor_execution", runStatus.Phase)
+	}
+	if runStatus.CurrentActor != "planner" {
+		t.Fatalf("unexpected current actor: got %q want planner", runStatus.CurrentActor)
+	}
+	if runStatus.InterruptionKind != "actor_failed" {
+		t.Fatalf("unexpected interruption kind: got %q want actor_failed", runStatus.InterruptionKind)
+	}
+	if !strings.Contains(runStatus.Message, "intentional fake codex failure") {
+		t.Fatalf("expected run status message to include actor failure, got %q", runStatus.Message)
+	}
+
+	summary := FormatRunStatusSummary(runStatus)
+	for _, fragment := range []string{"status: interrupted", "phase: actor_execution", "current actor: planner"} {
+		if !strings.Contains(summary, fragment) {
+			t.Fatalf("expected summary to contain %q, got:\n%s", fragment, summary)
+		}
+	}
+}
+
+func TestSuperviseRetriesTransientActorFailureToTerminal(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_FAIL_ONCE_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-supervise-retry")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Supervise(artifactPath, SuperviseOptions{RetryBudget: 1})
+	if err != nil {
+		t.Fatalf("Supervise returned error for transient actor failure: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") || !strings.Contains(summary, "supervised") {
+		t.Fatalf("expected supervised passing summary, got %q", summary)
+	}
+
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "passed" || runStatus.Phase != "terminal" {
+		t.Fatalf("expected supervised run to finish terminal passed, got %#v", runStatus)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if got := strings.Count(string(actorLog), "planner|"); got != 2 {
+		t.Fatalf("expected planner to run twice after one supervised retry, got %d log:\n%s", got, string(actorLog))
+	}
+}
+
+func TestSuperviseRetriesMissingActorOutputToTerminal(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_SKIP_OUTPUT_ONCE_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-supervise-missing-output")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Supervise(artifactPath, SuperviseOptions{RetryBudget: 1})
+	if err != nil {
+		t.Fatalf("Supervise should retry a missing actor output once and finish, got: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") || !strings.Contains(summary, "supervised") {
+		t.Fatalf("expected supervised passing summary, got %q", summary)
+	}
+
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "passed" || runStatus.Phase != "terminal" {
+		t.Fatalf("expected supervised missing-output retry to finish terminal passed, got %#v", runStatus)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if got := strings.Count(string(actorLog), "planner|"); got != 2 {
+		t.Fatalf("expected planner to run twice after missing-output retry, got %d log:\n%s", got, string(actorLog))
+	}
+}
+
+func TestSuperviseDoesNotRetryNonRetryableStateErrors(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-supervise-non-retryable")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.CurrentActor = stringPtr("missing_actor")
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to persist invalid state: %v", err)
+	}
+
+	_, err = runner.Supervise(artifactPath, SuperviseOptions{RetryBudget: 2})
+	if err == nil {
+		t.Fatalf("expected Supervise to fail without retrying non-retryable state error")
+	}
+
+	runStatus, statusErr := ReadRunStatus(artifactPath)
+	if statusErr != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", statusErr)
+	}
+	if runStatus.Status != "interrupted" || runStatus.InterruptionKind != "execution_error" || runStatus.Phase != "actor_resolution" {
+		t.Fatalf("expected actor resolution interruption without retry, got %#v", runStatus)
 	}
 }
 
@@ -997,6 +1255,34 @@ for index, value in enumerate(sys.argv):
 if project_root:
     with open(os.path.join(project_root, ".actor-log"), "a", encoding="utf-8") as handle:
         handle.write(actor + "|" + model + "|" + reasoning + "|" + sandbox + "|json=" + str(has_json).lower() + "\n")
+
+fail_actor = os.environ.get("RAIL_TEST_CODEX_FAIL_ACTOR", "")
+if actor == fail_actor:
+    print("intentional fake codex failure for " + actor, file=sys.stderr)
+    raise SystemExit(42)
+
+fail_once_actor = os.environ.get("RAIL_TEST_CODEX_FAIL_ONCE_ACTOR", "")
+if actor == fail_once_actor and project_root:
+    marker_path = os.path.join(project_root, ".actor-fail-once-" + actor)
+    if not os.path.exists(marker_path):
+        with open(marker_path, "w", encoding="utf-8") as marker:
+            marker.write("failed\n")
+        print("intentional one-time fake codex failure for " + actor, file=sys.stderr)
+        raise SystemExit(43)
+
+skip_output_once_actor = os.environ.get("RAIL_TEST_CODEX_SKIP_OUTPUT_ONCE_ACTOR", "")
+if actor == skip_output_once_actor and project_root:
+    marker_path = os.path.join(project_root, ".actor-skip-output-once-" + actor)
+    if not os.path.exists(marker_path):
+        with open(marker_path, "w", encoding="utf-8") as marker:
+            marker.write("skipped\n")
+        raise SystemExit(0)
+
+violation_actor = os.environ.get("RAIL_TEST_CODEX_VIOLATION_ACTOR", "")
+if actor == violation_actor:
+    print(json.dumps({"type": "item.started", "item": {"type": "command_execution", "command": "sed -n '1,40p' /tmp/.codex/superpowers/skills/using-superpowers/SKILL.md"}}))
+else:
+    print(json.dumps({"type": "thread.started", "thread_id": actor}))
 
 response = {}
 if actor == "planner":

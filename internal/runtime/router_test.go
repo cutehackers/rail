@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"rail/internal/contracts"
 	"gopkg.in/yaml.v3"
+	"rail/internal/contracts"
 )
 
 func TestRouteEvaluationMapsFixtureToTightenValidation(t *testing.T) {
@@ -120,6 +120,51 @@ func TestRouteEvaluationCreatesTerminalSummaryForTerminalFixtures(t *testing.T) 
 				}
 			}
 		})
+	}
+}
+
+func TestRouteEvaluationTerminalSummaryExposesPolicyViolation(t *testing.T) {
+	projectRoot := t.TempDir()
+	router, err := NewRouter(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRouter returned error: %v", err)
+	}
+
+	artifactPath := copyRouteFixtureIntoProject(t, projectRoot, "blocked_environment")
+	evaluationBody := `decision: reject
+scores:
+  requirements: 0.2
+  architecture: 0.2
+  regression_risk: 0.9
+quality_confidence: high
+findings:
+  - 'backend_policy_violation: unexpected_skill_path in runs/01_planner-events.jsonl'
+reason_codes:
+  - backend_policy_violation_unexpected_skill
+`
+	if err := os.WriteFile(filepath.Join(artifactPath, "evaluation_result.yaml"), []byte(evaluationBody), 0o644); err != nil {
+		t.Fatalf("failed to override evaluation_result.yaml: %v", err)
+	}
+
+	if _, err := router.RouteEvaluation(artifactPath); err != nil {
+		t.Fatalf("RouteEvaluation returned error: %v", err)
+	}
+	terminalSummary, err := os.ReadFile(filepath.Join(artifactPath, "terminal_summary.md"))
+	if err != nil {
+		t.Fatalf("expected terminal_summary.md to exist: %v", err)
+	}
+	summary := string(terminalSummary)
+	if strings.Contains(summary, "- status: `passed`") {
+		t.Fatalf("policy violation summary must not report passed:\n%s", summary)
+	}
+	for _, fragment := range []string{
+		"## Reporting Limits",
+		"backend_policy_violation",
+		"Final answer must not claim successful implementation",
+	} {
+		if !strings.Contains(summary, fragment) {
+			t.Fatalf("expected terminal summary to contain %q, got:\n%s", fragment, summary)
+		}
 	}
 }
 
@@ -698,6 +743,20 @@ reason_codes:
 	}
 	if state.GeneratorRevisionsUsed != 0 {
 		t.Fatalf("unexpected GeneratorRevisionsUsed: got %d want %d", state.GeneratorRevisionsUsed, 0)
+	}
+	nextActionBody, err := os.ReadFile(filepath.Join(artifactPath, "next_action.yaml"))
+	if err != nil {
+		t.Fatalf("expected next_action.yaml to exist: %v", err)
+	}
+	var nextAction map[string]any
+	if err := yaml.Unmarshal(nextActionBody, &nextAction); err != nil {
+		t.Fatalf("failed to decode next_action.yaml: %v", err)
+	}
+	if nextAction["actor"] != "generator" {
+		t.Fatalf("unexpected next_action actor: got %#v want generator", nextAction["actor"])
+	}
+	if nextAction["reason"] != "evaluator_requested_revision" {
+		t.Fatalf("unexpected next_action reason: got %#v want evaluator_requested_revision", nextAction["reason"])
 	}
 
 	trace, err := os.ReadFile(filepath.Join(artifactPath, "supervisor_trace.md"))

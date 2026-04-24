@@ -18,14 +18,27 @@ type ActorBackendPolicy struct {
 }
 
 type ActorBackendConfig struct {
-	Command           string `yaml:"command"`
-	Subcommand        string `yaml:"subcommand"`
-	Sandbox           string `yaml:"sandbox"`
-	ApprovalPolicy    string `yaml:"approval_policy"`
-	SessionMode       string `yaml:"session_mode"`
-	Ephemeral         bool   `yaml:"ephemeral"`
-	CaptureJSONEvents bool   `yaml:"capture_json_events"`
-	SkipGitRepoCheck  bool   `yaml:"skip_git_repo_check"`
+	Command           string                   `yaml:"command"`
+	Subcommand        string                   `yaml:"subcommand"`
+	Sandbox           string                   `yaml:"sandbox"`
+	ApprovalPolicy    string                   `yaml:"approval_policy"`
+	SessionMode       string                   `yaml:"session_mode"`
+	Ephemeral         bool                     `yaml:"ephemeral"`
+	CaptureJSONEvents bool                     `yaml:"capture_json_events"`
+	SkipGitRepoCheck  bool                     `yaml:"skip_git_repo_check"`
+	IgnoreUserConfig  bool                     `yaml:"ignore_user_config"`
+	IgnoreRules       bool                     `yaml:"ignore_rules"`
+	Capabilities      ActorBackendCapabilities `yaml:"capabilities"`
+}
+
+type ActorBackendCapabilities struct {
+	UserSkills  string `yaml:"user_skills"`
+	UserRules   string `yaml:"user_rules"`
+	Plugins     string `yaml:"plugins"`
+	MCP         string `yaml:"mcp"`
+	Hooks       string `yaml:"hooks"`
+	Shell       string `yaml:"shell"`
+	FileEditing string `yaml:"file_editing"`
 }
 
 type ActorBackendEnvironment struct {
@@ -125,6 +138,46 @@ func validateActorBackendConfig(config ActorBackendConfig) error {
 	}
 	if config.SessionMode != "per_actor" {
 		return fmt.Errorf("actor backend session_mode must be per_actor, got %q", config.SessionMode)
+	}
+	if !config.Ephemeral {
+		return fmt.Errorf("actor backend ephemeral must be true for sealed execution")
+	}
+	if !config.CaptureJSONEvents {
+		return fmt.Errorf("actor backend capture_json_events must be true for sealed execution")
+	}
+	if !config.SkipGitRepoCheck {
+		return fmt.Errorf("actor backend skip_git_repo_check must be true for sealed execution")
+	}
+	if !config.IgnoreUserConfig {
+		return fmt.Errorf("actor backend ignore_user_config must be true for sealed execution")
+	}
+	if !config.IgnoreRules {
+		return fmt.Errorf("actor backend ignore_rules must be true for sealed execution")
+	}
+	if err := validateActorBackendCapabilities(config); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateActorBackendCapabilities(config ActorBackendConfig) error {
+	disabledOnly := map[string]string{
+		"user_skills": config.Capabilities.UserSkills,
+		"user_rules":  config.Capabilities.UserRules,
+		"plugins":     config.Capabilities.Plugins,
+		"mcp":         config.Capabilities.MCP,
+		"hooks":       config.Capabilities.Hooks,
+	}
+	for name, value := range disabledOnly {
+		if value != "disabled" {
+			return fmt.Errorf("actor backend capability %s must be disabled, got %q", name, value)
+		}
+	}
+	if config.Capabilities.Shell != "allowed" {
+		return fmt.Errorf("actor backend capability shell must be allowed, got %q", config.Capabilities.Shell)
+	}
+	if config.Capabilities.FileEditing != "allowed" {
+		return fmt.Errorf("actor backend capability file_editing must be allowed, got %q", config.Capabilities.FileEditing)
 	}
 	return nil
 }

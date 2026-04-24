@@ -77,6 +77,9 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		if r.needsPersistedOutputRefresh(artifactDirectory, currentState) {
 			return r.router.RouteEvaluation(artifactDirectory)
 		}
+		if err := writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, currentState)); err != nil {
+			return "", err
+		}
 		return fmt.Sprintf("Harness execution already completed for %s", artifactDirectory), nil
 	}
 
@@ -94,17 +97,29 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 	}
 	backendPolicy, err := loadActorBackendPolicy(workingDirectory)
 	if err != nil {
-		return "", fmt.Errorf("load actor backend policy: %w", err)
+		return r.recordInterruption(
+			artifactDirectory,
+			currentState,
+			"runtime_setup",
+			actorLabel(currentState.CurrentActor),
+			fmt.Errorf("load actor backend policy: %w", err),
+		)
 	}
 	backend, err := backendPolicy.DefaultBackend()
 	if err != nil {
-		return "", err
+		return r.recordInterruption(artifactDirectory, currentState, "runtime_setup", actorLabel(currentState.CurrentActor), err)
 	}
 	var actorProfiles ActorProfiles
 	if len(currentState.ActorProfilesUsed) == 0 {
 		actorProfiles, err = loadActorProfiles(workingDirectory, profiledActorsForWorkflow(workflow))
 		if err != nil {
-			return "", fmt.Errorf("load actor profiles: %w", err)
+			return r.recordInterruption(
+				artifactDirectory,
+				currentState,
+				"runtime_setup",
+				actorLabel(currentState.CurrentActor),
+				fmt.Errorf("load actor profiles: %w", err),
+			)
 		}
 		currentState.ActorProfilesUsed = snapshotActorProfilesUsed(workflow, actorProfiles)
 		if err := writeJSON(statePath, currentState); err != nil {
@@ -112,7 +127,7 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		}
 	} else {
 		if err := validateActorProfilesSnapshot(workflow, currentState.ActorProfilesUsed); err != nil {
-			return "", err
+			return r.recordInterruption(artifactDirectory, currentState, "runtime_setup", actorLabel(currentState.CurrentActor), err)
 		}
 		actorProfiles = actorProfilesFromSnapshot(currentState.ActorProfilesUsed)
 	}
@@ -131,10 +146,16 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		actorName := *currentState.CurrentActor
 		actorIndex := workflowActorIndex(workflow, actorName)
 		if actorIndex == -1 {
-			return "", fmt.Errorf("unknown actor in state: %s", actorName)
+			return r.recordInterruption(
+				artifactDirectory,
+				currentState,
+				"actor_resolution",
+				actorName,
+				fmt.Errorf("unknown actor in state: %s", actorName),
+			)
 		}
 		if err := r.validateActorExecutionPrerequisites(workflow, currentState, artifactDirectory, actorName); err != nil {
-			return "", err
+			return r.recordInterruption(artifactDirectory, currentState, "prerequisite_validation", actorName, err)
 		}
 
 		outputName := canonicalOutputForActor(actorName)
@@ -145,7 +166,10 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 
 		response, err := r.runActor(actorName, actorIndex, artifactDirectory, briefPath, logPath, eventsPath, requestValue, executionPlan, actorProfiles, backend, workingDirectory)
 		if err != nil {
-			return "", err
+			if isBackendPolicyViolation(err) {
+				return r.blockForBackendPolicyViolation(artifactDirectory, statePath, currentState, actorName, err)
+			}
+			return r.recordInterruption(artifactDirectory, currentState, "actor_execution", actorName, err)
 		}
 		if err := writeActorLog(logPath, response); err != nil {
 			return "", err
@@ -153,17 +177,23 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		if response != nil {
 			response = normalizeActorResponse(outputName, response)
 			if err := writeYAML(outputPath, response); err != nil {
-				return "", err
+				return r.recordInterruption(artifactDirectory, currentState, "artifact_write", actorName, err)
 			}
 			if _, err := r.bootstrapper.validator.ValidateArtifactFile(outputPath, outputName); err != nil {
-				return "", fmt.Errorf("validate %s output: %w", actorName, err)
+				return r.recordInterruption(
+					artifactDirectory,
+					currentState,
+					"artifact_validation",
+					actorName,
+					fmt.Errorf("validate %s output: %w", actorName, err),
+				)
 			}
 		}
 
 		if actorName == "evaluator" {
 			lastSummary, err = r.router.RouteEvaluation(artifactDirectory)
 			if err != nil {
-				return "", err
+				return r.recordInterruption(artifactDirectory, currentState, "evaluation_routing", actorName, err)
 			}
 			currentState, err = readState(statePath)
 			if err != nil {
@@ -176,19 +206,154 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		}
 
 		currentState = advanceAfterActor(currentState, workflow, actorName)
+		if err := updateContinuityAfterActor(artifactDirectory, actorName, currentState); err != nil {
+			return "", err
+		}
 		if err := writeJSON(statePath, currentState); err != nil {
 			return "", err
 		}
 	}
 
 	if currentState.CurrentActor != nil {
-		return "", fmt.Errorf("execution loop exceeded step budget for %s", artifactDirectory)
+		return r.recordInterruption(
+			artifactDirectory,
+			currentState,
+			"execution_loop",
+			actorLabel(currentState.CurrentActor),
+			fmt.Errorf("execution loop exceeded step budget for %s", artifactDirectory),
+		)
 	}
 
 	if lastSummary != "" {
 		return lastSummary, nil
 	}
 	return formatExecutionSummary(artifactDirectory, currentState, "Harness execution completed"), nil
+}
+
+func isBackendPolicyViolation(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "backend_policy_violation")
+}
+
+func (r *Runner) recordInterruption(
+	artifactDirectory string,
+	state State,
+	phase string,
+	actorName string,
+	executionErr error,
+) (string, error) {
+	status := interruptedRunStatus(artifactDirectory, phase, actorName, state, executionErr)
+	if err := writeRunStatus(artifactDirectory, status); err != nil {
+		return "", fmt.Errorf("%w; additionally failed to write %s: %v", executionErr, runStatusFileName, err)
+	}
+	if err := appendWorkLedgerEntry(
+		filepath.Join(artifactDirectory, workLedgerFileName),
+		"Execution interrupted",
+		[]string{
+			"phase: " + phase,
+			"actor: " + fallbackString(actorName, "unknown"),
+			"interruption: " + status.InterruptionKind,
+			"message: " + executionErr.Error(),
+		},
+	); err != nil {
+		return "", fmt.Errorf("%w; additionally failed to append %s: %v", executionErr, workLedgerFileName, err)
+	}
+	return "", executionErr
+}
+
+func (r *Runner) blockForBackendPolicyViolation(
+	artifactDirectory string,
+	statePath string,
+	state State,
+	actorName string,
+	violation error,
+) (string, error) {
+	nextState := state
+	nextState.Status = "blocked_environment"
+	nextState.CurrentActor = nil
+	nextState.LastReasonCodes = []string{"backend_policy_violation"}
+	nextState.ActionHistory = append(nextState.ActionHistory, "block_environment")
+	nextState.LastDecision = stringPtr("reject")
+
+	if err := writePolicyViolationExecutionReport(artifactDirectory, violation); err != nil {
+		return "", err
+	}
+	if err := writePolicyViolationCriticReportIfMissing(artifactDirectory); err != nil {
+		return "", err
+	}
+	if err := updateContinuityAfterEvaluation(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
+	if err := writeJSON(statePath, nextState); err != nil {
+		return "", err
+	}
+	if err := appendSupervisorDecisionTrace(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
+	if err := r.router.writeTerminalSummary(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
+	if err := writeRunStatus(artifactDirectory, RunStatus{
+		Status:              "blocked_environment",
+		Phase:               "backend_policy",
+		CurrentActor:        actorName,
+		LastSuccessfulActor: lastSuccessfulActor(state),
+		InterruptionKind:    "backend_policy_violation",
+		Message:             violation.Error(),
+		Evidence: []string{
+			"execution_report.yaml",
+			"critic_report.yaml",
+			"terminal_summary.md",
+			"state.json",
+			workLedgerFileName,
+			nextActionFileName,
+		},
+		NextStep: "Read terminal_summary.md and fix backend policy isolation before continuing.",
+	}); err != nil {
+		return "", err
+	}
+	return formatExecutionSummary(artifactDirectory, nextState, "Harness execution blocked by backend policy"), nil
+}
+
+func writePolicyViolationExecutionReport(artifactDirectory string, violation error) error {
+	executionPath := filepath.Join(artifactDirectory, "execution_report.yaml")
+	executionMap, err := readYAMLMap(executionPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		executionMap = recoveredExecutionReportBase(State{Status: "blocked_environment"})
+	}
+	executionMap["format"] = "fail"
+	executionMap["analyze"] = "fail"
+	executionMap["tests"] = map[string]any{
+		"total":  0,
+		"passed": 0,
+		"failed": 0,
+	}
+	failureDetails, _ := readOptionalStringList(executionMap, "failure_details")
+	failureDetails = append(failureDetails, violation.Error())
+	executionMap["failure_details"] = failureDetails
+	logs, _ := readOptionalStringList(executionMap, "logs")
+	logs = append(logs, violation.Error())
+	executionMap["logs"] = logs
+	return writeYAML(executionPath, executionMap)
+}
+
+func writePolicyViolationCriticReportIfMissing(artifactDirectory string) error {
+	criticPath := filepath.Join(artifactDirectory, "critic_report.yaml")
+	if _, err := os.Stat(criticPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return writeYAML(criticPath, map[string]any{
+		"priority_focus":          []string{"Backend policy violation blocked actor execution before normal evaluation could complete."},
+		"missing_requirements":    []string{},
+		"risk_hypotheses":         []string{"The actor runtime may have inherited a forbidden user surface."},
+		"validation_expectations": []string{"Do not claim implementation success while backend policy violations are present."},
+		"generator_guardrails":    []string{"Stop execution and surface the policy violation to the operator."},
+		"blocked_assumptions":     []string{"Normal critic evidence may be unavailable because execution was blocked by policy."},
+	})
 }
 
 func (r *Runner) runActor(
@@ -243,7 +408,7 @@ func (r *Runner) runActor(
 			"Project root: " + workingDirectory,
 			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the schema-valid actor response.",
 		}, "\n")
-		return runCommand(backend, ActorCommandSpec{
+		response, err := runCommand(backend, ActorCommandSpec{
 			ActorName:        actorName,
 			Profile:          profile,
 			WorkingDirectory: workingDirectory,
@@ -252,6 +417,15 @@ func (r *Runner) runActor(
 			SchemaPath:       schemaPath,
 			EventsPath:       eventsPath,
 		})
+		if err != nil {
+			return nil, err
+		}
+		if backend.CaptureJSONEvents {
+			if err := auditCodexEvents(eventsPath); err != nil {
+				return nil, err
+			}
+		}
+		return response, nil
 	default:
 		return nil, fmt.Errorf("actor execution is not implemented for %s", actorName)
 	}
@@ -471,11 +645,11 @@ func advanceAfterActor(state State, workflow Workflow, actorName string) State {
 	switch {
 	case nextActor == nil:
 		nextState.Status = "completed"
-	case state.Status == "revising" && actorName == "generator":
+	case state.Status == "revising":
 		nextState.Status = "revising"
-	case state.Status == "rebuilding_context" && actorName == "context_builder":
+	case state.Status == "rebuilding_context":
 		nextState.Status = "rebuilding_context"
-	case state.Status == "tightening_validation" && actorName == "executor":
+	case state.Status == "tightening_validation":
 		nextState.Status = "tightening_validation"
 	default:
 		nextState.Status = "in_progress"

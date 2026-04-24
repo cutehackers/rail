@@ -78,6 +78,9 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 	if err := writeJSON(filepath.Join(artifactDirectory, "state.json"), nextState); err != nil {
 		return "", err
 	}
+	if err := updateContinuityAfterEvaluation(artifactDirectory, nextState); err != nil {
+		return "", err
+	}
 	if err := appendSupervisorDecisionTrace(artifactDirectory, nextState); err != nil {
 		return "", err
 	}

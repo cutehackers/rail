@@ -553,7 +553,7 @@ git commit -m "feat: bootstrap workflow continuity artifacts"
 - Modify: `internal/runtime/router.go`
 - Modify: `internal/runtime/router_test.go`
 
-- [ ] **Step 1: Write failing next action update test**
+- [x] **Step 1: Write failing next action update test**
 
 Add a test to `internal/runtime/continuity_test.go`:
 
@@ -576,7 +576,7 @@ Run: `go test ./internal/runtime -run TestBuildNextActionAfterEvaluatorReviseTar
 
 Expected: FAIL because the helper does not exist yet.
 
-- [ ] **Step 2: Implement transition helper**
+- [x] **Step 2: Implement transition helper**
 
 Add helpers to `continuity.go`:
 
@@ -588,7 +588,7 @@ func appendWorkLedgerEntry(path string, heading string, lines []string) error
 
 Keep these helpers deterministic and small.
 
-- [ ] **Step 3: Update runner actor transitions**
+- [x] **Step 3: Update runner actor transitions**
 
 In `Runner.Execute`, after `advanceAfterActor` and before writing state, update `next_action.yaml` and append to `work_ledger.md`.
 
@@ -601,7 +601,7 @@ evidence_to_read:
   - <current actor output artifact>
 ```
 
-- [ ] **Step 4: Update evaluator routing transitions**
+- [x] **Step 4: Update evaluator routing transitions**
 
 In `Router.RouteEvaluation`, after state/action is finalized, write a `next_action.yaml` that reflects:
 
@@ -612,7 +612,7 @@ In `Router.RouteEvaluation`, after state/action is finalized, write a `next_acti
 - rebuild_context: actor `context_builder`, reason `context_rebuild_requested`
 - tighten_validation: actor `executor`, reason `validation_tighten_requested`
 
-- [ ] **Step 5: Add router integration assertion**
+- [x] **Step 5: Add router integration assertion**
 
 Update a relevant `internal/runtime/router_test.go` test to read `next_action.yaml` after a revise route and assert it points to the correct next actor and reason.
 
@@ -624,7 +624,7 @@ go test ./internal/runtime -run 'TestBuildNextAction|TestRouteEvaluation' -count
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit supervisor continuity updates**
+- [x] **Step 6: Commit supervisor continuity updates**
 
 ```bash
 git add internal/runtime/continuity.go internal/runtime/continuity_test.go internal/runtime/runner.go internal/runtime/router.go internal/runtime/router_test.go

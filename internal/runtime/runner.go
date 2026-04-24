@@ -176,6 +176,9 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		}
 
 		currentState = advanceAfterActor(currentState, workflow, actorName)
+		if err := updateContinuityAfterActor(artifactDirectory, actorName, currentState); err != nil {
+			return "", err
+		}
 		if err := writeJSON(statePath, currentState); err != nil {
 			return "", err
 		}

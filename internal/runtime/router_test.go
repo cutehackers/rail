@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"rail/internal/contracts"
 	"gopkg.in/yaml.v3"
+	"rail/internal/contracts"
 )
 
 func TestRouteEvaluationMapsFixtureToTightenValidation(t *testing.T) {
@@ -698,6 +698,20 @@ reason_codes:
 	}
 	if state.GeneratorRevisionsUsed != 0 {
 		t.Fatalf("unexpected GeneratorRevisionsUsed: got %d want %d", state.GeneratorRevisionsUsed, 0)
+	}
+	nextActionBody, err := os.ReadFile(filepath.Join(artifactPath, "next_action.yaml"))
+	if err != nil {
+		t.Fatalf("expected next_action.yaml to exist: %v", err)
+	}
+	var nextAction map[string]any
+	if err := yaml.Unmarshal(nextActionBody, &nextAction); err != nil {
+		t.Fatalf("failed to decode next_action.yaml: %v", err)
+	}
+	if nextAction["actor"] != "generator" {
+		t.Fatalf("unexpected next_action actor: got %#v want generator", nextAction["actor"])
+	}
+	if nextAction["reason"] != "evaluator_requested_revision" {
+		t.Fatalf("unexpected next_action reason: got %#v want evaluator_requested_revision", nextAction["reason"])
 	}
 
 	trace, err := os.ReadFile(filepath.Join(artifactPath, "supervisor_trace.md"))

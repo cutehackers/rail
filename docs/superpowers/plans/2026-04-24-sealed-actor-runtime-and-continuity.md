@@ -748,7 +748,7 @@ git commit -m "docs: explain sealed actor execution"
 **Files:**
 - No planned file edits.
 
-- [ ] **Step 1: Run focused runtime tests**
+- [x] **Step 1: Run focused runtime tests**
 
 Run:
 
@@ -758,7 +758,7 @@ go test ./internal/runtime -count=1
 
 Expected: PASS.
 
-- [ ] **Step 2: Run focused reporting tests**
+- [x] **Step 2: Run focused reporting tests**
 
 Run:
 
@@ -768,7 +768,7 @@ go test ./internal/reporting -count=1
 
 Expected: PASS.
 
-- [ ] **Step 3: Run full test suite**
+- [x] **Step 3: Run full test suite**
 
 Run:
 
@@ -778,7 +778,7 @@ go test ./...
 
 Expected: PASS.
 
-- [ ] **Step 4: Build CLI**
+- [x] **Step 4: Build CLI**
 
 Run:
 
@@ -788,7 +788,7 @@ go build -o build/rail ./cmd/rail
 
 Expected: PASS.
 
-- [ ] **Step 5: Smoke existing request**
+- [x] **Step 5: Smoke existing request**
 
 Run:
 
@@ -798,7 +798,7 @@ Run:
 
 Expected: PASS.
 
-- [ ] **Step 6: Confirm working tree scope**
+- [x] **Step 6: Confirm working tree scope**
 
 Run:
 

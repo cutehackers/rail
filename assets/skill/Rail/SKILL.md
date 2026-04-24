@@ -101,6 +101,7 @@ Use the installed binary:
 ```bash
 rail compose-request --stdin
 rail compose-request --input /absolute/path/to/request-draft.json
+rail supervise --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>
 rail status --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>
 ```
 
@@ -131,7 +132,9 @@ After bootstrapping, report:
 
 Keep `compose-request` as the focus of this skill. `rail validate-request` and `rail run` are available once request materialization is complete, but they belong to the later workflow steps rather than the initial draft-composition step.
 
-If a later `rail execute --artifact ...` run stops unexpectedly, read or print `run_status.yaml` with `rail status --artifact ...` and include that summary in the chat response. The status summary tells the user the latest phase, current actor, interruption kind, evidence files, and next step.
+For later execution steps, prefer `rail supervise --artifact ...` over plain `rail execute --artifact ...` when the user expects Rail to continue the actor loop to a terminal result in one session. `supervise` reruns retryable actor/session interruptions within its retry budget and stops only on terminal status or a non-retryable blocker.
+
+If a later execution run still stops unexpectedly, read or print `run_status.yaml` with `rail status --artifact ...` and include that summary in the chat response. The status summary tells the user the latest phase, current actor, interruption kind, evidence files, and next step.
 
 ## Guardrails
 

@@ -31,7 +31,11 @@ func RunStatus(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	status, err := runtime.ReadRunStatusForArtifact(workspace.Root, artifactPath)
+	resolvedArtifactPath, err := resolveWorkspaceInputPath(workspace.Root, artifactPath)
+	if err != nil {
+		return err
+	}
+	status, err := runtime.ReadRunStatusForArtifact(workspace.Root, resolvedArtifactPath)
 	if err != nil {
 		return err
 	}

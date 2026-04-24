@@ -227,6 +227,8 @@ func classifyInterruption(err error) string {
 		return "actor_watchdog_expired"
 	case strings.Contains(message, "backend_policy_violation"):
 		return "backend_policy_violation"
+	case strings.Contains(message, "unknown actor in state"):
+		return "execution_error"
 	case strings.Contains(message, "validate"):
 		return "artifact_validation_failed"
 	case strings.Contains(message, "codex") || strings.Contains(message, "actor"):

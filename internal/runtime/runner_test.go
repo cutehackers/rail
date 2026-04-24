@@ -638,6 +638,82 @@ func TestExecuteRecordsRunStatusForActorFailure(t *testing.T) {
 	}
 }
 
+func TestSuperviseRetriesTransientActorFailureToTerminal(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_FAIL_ONCE_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-supervise-retry")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Supervise(artifactPath, SuperviseOptions{RetryBudget: 1})
+	if err != nil {
+		t.Fatalf("Supervise returned error for transient actor failure: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") || !strings.Contains(summary, "supervised") {
+		t.Fatalf("expected supervised passing summary, got %q", summary)
+	}
+
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "passed" || runStatus.Phase != "terminal" {
+		t.Fatalf("expected supervised run to finish terminal passed, got %#v", runStatus)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if got := strings.Count(string(actorLog), "planner|"); got != 2 {
+		t.Fatalf("expected planner to run twice after one supervised retry, got %d log:\n%s", got, string(actorLog))
+	}
+}
+
+func TestSuperviseDoesNotRetryNonRetryableStateErrors(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-supervise-non-retryable")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.CurrentActor = stringPtr("missing_actor")
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to persist invalid state: %v", err)
+	}
+
+	_, err = runner.Supervise(artifactPath, SuperviseOptions{RetryBudget: 2})
+	if err == nil {
+		t.Fatalf("expected Supervise to fail without retrying non-retryable state error")
+	}
+
+	runStatus, statusErr := ReadRunStatus(artifactPath)
+	if statusErr != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", statusErr)
+	}
+	if runStatus.Status != "interrupted" || runStatus.InterruptionKind != "execution_error" || runStatus.Phase != "actor_resolution" {
+		t.Fatalf("expected actor resolution interruption without retry, got %#v", runStatus)
+	}
+}
+
 func TestExecuteUsesWorkflowProjectRootActorProfiles(t *testing.T) {
 	targetRoot, requestPath := prepareRealProject(t)
 	actorLogPath := installFakeCodexForRealMode(t, targetRoot)
@@ -1144,6 +1220,15 @@ fail_actor = os.environ.get("RAIL_TEST_CODEX_FAIL_ACTOR", "")
 if actor == fail_actor:
     print("intentional fake codex failure for " + actor, file=sys.stderr)
     raise SystemExit(42)
+
+fail_once_actor = os.environ.get("RAIL_TEST_CODEX_FAIL_ONCE_ACTOR", "")
+if actor == fail_once_actor and project_root:
+    marker_path = os.path.join(project_root, ".actor-fail-once-" + actor)
+    if not os.path.exists(marker_path):
+        with open(marker_path, "w", encoding="utf-8") as marker:
+            marker.write("failed\n")
+        print("intentional one-time fake codex failure for " + actor, file=sys.stderr)
+        raise SystemExit(43)
 
 violation_actor = os.environ.get("RAIL_TEST_CODEX_VIOLATION_ACTOR", "")
 if actor == violation_actor:

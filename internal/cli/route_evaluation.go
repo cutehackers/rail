@@ -29,11 +29,15 @@ func RunRouteEvaluation(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	resolvedArtifactPath, err := resolveWorkspaceInputPath(workspace.Root, artifactPath)
+	if err != nil {
+		return err
+	}
 	router, err := runtime.NewRouter(workspace.Root)
 	if err != nil {
 		return err
 	}
-	summary, err := router.RouteEvaluation(artifactPath)
+	summary, err := router.RouteEvaluation(resolvedArtifactPath)
 	if err != nil {
 		return err
 	}

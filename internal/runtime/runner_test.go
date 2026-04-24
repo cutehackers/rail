@@ -35,6 +35,13 @@ func TestRunBootstrapsSmokeArtifact(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(artifactPath, "state.json")); err != nil {
 		t.Fatalf("expected state.json to exist: %v", err)
 	}
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "initialized" {
+		t.Fatalf("unexpected run status: got %q want initialized", runStatus.Status)
+	}
 
 	state, err := readState(filepath.Join(artifactPath, "state.json"))
 	if err != nil {
@@ -530,6 +537,54 @@ func TestExecuteRoutesAuditViolationToTerminalSummary(t *testing.T) {
 	} {
 		if !strings.Contains(string(terminalSummary), fragment) {
 			t.Fatalf("expected terminal summary to contain %q, got:\n%s", fragment, string(terminalSummary))
+		}
+	}
+}
+
+func TestExecuteRecordsRunStatusForActorFailure(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_FAIL_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-actor-failure")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	_, err = runner.Execute(artifactPath)
+	if err == nil {
+		t.Fatalf("expected Execute to fail when actor process fails")
+	}
+
+	runStatus, statusErr := ReadRunStatus(artifactPath)
+	if statusErr != nil {
+		t.Fatalf("expected run_status.yaml to be readable after interruption: %v", statusErr)
+	}
+	if runStatus.Status != "interrupted" {
+		t.Fatalf("unexpected run status: got %q want interrupted", runStatus.Status)
+	}
+	if runStatus.Phase != "actor_execution" {
+		t.Fatalf("unexpected phase: got %q want actor_execution", runStatus.Phase)
+	}
+	if runStatus.CurrentActor != "planner" {
+		t.Fatalf("unexpected current actor: got %q want planner", runStatus.CurrentActor)
+	}
+	if runStatus.InterruptionKind != "actor_failed" {
+		t.Fatalf("unexpected interruption kind: got %q want actor_failed", runStatus.InterruptionKind)
+	}
+	if !strings.Contains(runStatus.Message, "intentional fake codex failure") {
+		t.Fatalf("expected run status message to include actor failure, got %q", runStatus.Message)
+	}
+
+	summary := FormatRunStatusSummary(runStatus)
+	for _, fragment := range []string{"status: interrupted", "phase: actor_execution", "current actor: planner"} {
+		if !strings.Contains(summary, fragment) {
+			t.Fatalf("expected summary to contain %q, got:\n%s", fragment, summary)
 		}
 	}
 }
@@ -1035,6 +1090,11 @@ for index, value in enumerate(sys.argv):
 if project_root:
     with open(os.path.join(project_root, ".actor-log"), "a", encoding="utf-8") as handle:
         handle.write(actor + "|" + model + "|" + reasoning + "|" + sandbox + "|json=" + str(has_json).lower() + "\n")
+
+fail_actor = os.environ.get("RAIL_TEST_CODEX_FAIL_ACTOR", "")
+if actor == fail_actor:
+    print("intentional fake codex failure for " + actor, file=sys.stderr)
+    raise SystemExit(42)
 
 violation_actor = os.environ.get("RAIL_TEST_CODEX_VIOLATION_ACTOR", "")
 if actor == violation_actor:

@@ -26,6 +26,7 @@ func TestAppRegistersCoreCommands(t *testing.T) {
 		"init-hardening-review",
 		"run",
 		"execute",
+		"status",
 		"route-evaluation",
 		"integrate",
 		"apply-user-outcome-feedback",
@@ -191,6 +192,47 @@ func TestAppRunBootstrapsArtifactForRunCommand(t *testing.T) {
 	}
 }
 
+func TestAppRunPrintsArtifactStatusForStatusCommand(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-status-smoke",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{
+		"status",
+		"--artifact", filepath.Join(projectRoot, ".harness", "artifacts", "cli-status-smoke"),
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for status, got %d", got)
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	for _, fragment := range []string{"status: initialized", "phase: bootstrap", "artifact:"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected status output to contain %q, got:\n%s", fragment, stdout.String())
+		}
+	}
+}
+
 func TestAppRunExecutesArtifactForExecuteCommand(t *testing.T) {
 	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
 
@@ -220,6 +262,61 @@ func TestAppRunExecutesArtifactForExecuteCommand(t *testing.T) {
 	}
 	if !strings.Contains(string(terminalSummary), "critic") {
 		t.Fatalf("expected execute terminal summary to include critic traversal, got:\n%s", string(terminalSummary))
+	}
+}
+
+func TestAppRunExecutePrintsStatusWhenHarnessIsInterrupted(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+
+	if got := NewApp().Run([]string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "cli-execute-interrupted",
+	}); got != 0 {
+		t.Fatalf("expected zero exit code for run, got %d", got)
+	}
+
+	artifactPath := filepath.Join(projectRoot, ".harness", "artifacts", "cli-execute-interrupted")
+	statePath := filepath.Join(artifactPath, "state.json")
+	stateData, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state fixture: %v", err)
+	}
+	updatedState := strings.Replace(string(stateData), `"currentActor": "planner"`, `"currentActor": "missing_actor"`, 1)
+	if updatedState == string(stateData) {
+		t.Fatalf("failed to mutate state fixture currentActor")
+	}
+	if err := os.WriteFile(statePath, []byte(updatedState), 0o644); err != nil {
+		t.Fatalf("failed to write mutated state fixture: %v", err)
+	}
+
+	originalStdout := os.Stdout
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutWrite
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+	})
+
+	if got := NewApp().Run([]string{
+		"execute",
+		"--artifact", artifactPath,
+	}); got == 0 {
+		t.Fatalf("expected non-zero exit code for interrupted execute")
+	}
+	_ = stdoutWrite.Close()
+
+	var stdout bytes.Buffer
+	if _, err := stdout.ReadFrom(stdoutRead); err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+	for _, fragment := range []string{"Harness status", "status: interrupted", "phase: actor_resolution", "current actor: missing_actor"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected interrupted execute output to contain %q, got:\n%s", fragment, stdout.String())
+		}
 	}
 }
 

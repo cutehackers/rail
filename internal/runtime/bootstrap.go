@@ -177,6 +177,9 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 	if err := writeYAML(filepath.Join(artifactDirectory, finalAnswerContractFileName), initialFinalAnswerContract()); err != nil {
 		return "", err
 	}
+	if err := writeRunStatus(artifactDirectory, initialRunStatus(workflow, artifactDirectory)); err != nil {
+		return "", err
+	}
 
 	if err := os.WriteFile(
 		filepath.Join(artifactDirectory, "workflow_steps.md"),
@@ -693,6 +696,7 @@ func buildActorBrief(
 	builder.WriteString(fmt.Sprintf("- `work_ledger`: `%s`\n", filepath.Join(artifactDirectory, workLedgerFileName)))
 	builder.WriteString(fmt.Sprintf("- `next_action`: `%s`\n", filepath.Join(artifactDirectory, nextActionFileName)))
 	builder.WriteString(fmt.Sprintf("- `evidence`: `%s`\n", filepath.Join(artifactDirectory, evidenceFileName)))
+	builder.WriteString(fmt.Sprintf("- `run_status`: `%s`\n", filepath.Join(artifactDirectory, runStatusFileName)))
 	builder.WriteString("\n## Contract Outputs\n")
 	for _, output := range contract.Outputs {
 		builder.WriteString(fmt.Sprintf("- `%s`\n", output))

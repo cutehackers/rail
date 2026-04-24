@@ -191,7 +191,7 @@ func updateContinuityAfterActor(artifactDirectory string, actorName string, stat
 	); err != nil {
 		return err
 	}
-	return appendWorkLedgerEntry(
+	if err := appendWorkLedgerEntry(
 		filepath.Join(artifactDirectory, workLedgerFileName),
 		"Actor completed: "+actorName,
 		[]string{
@@ -199,7 +199,10 @@ func updateContinuityAfterActor(artifactDirectory string, actorName string, stat
 			"next actor: " + actorLabel(state.CurrentActor),
 			"evidence: " + artifactFileName(canonicalOutputForActor(actorName)),
 		},
-	)
+	); err != nil {
+		return err
+	}
+	return writeRunStatus(artifactDirectory, runStatusAfterActor(artifactDirectory, actorName, state))
 }
 
 func updateContinuityAfterEvaluation(artifactDirectory string, state State) error {
@@ -209,7 +212,7 @@ func updateContinuityAfterEvaluation(artifactDirectory string, state State) erro
 	); err != nil {
 		return err
 	}
-	return appendWorkLedgerEntry(
+	if err := appendWorkLedgerEntry(
 		filepath.Join(artifactDirectory, workLedgerFileName),
 		"Evaluator routed",
 		[]string{
@@ -219,5 +222,8 @@ func updateContinuityAfterEvaluation(artifactDirectory string, state State) erro
 			"next actor: " + actorLabel(state.CurrentActor),
 			"reason codes: " + joinOrNone(state.LastReasonCodes),
 		},
-	)
+	); err != nil {
+		return err
+	}
+	return writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, state))
 }

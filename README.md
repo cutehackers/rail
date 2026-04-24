@@ -142,6 +142,9 @@ Advanced users should also know:
 - actor model and reasoning come from checked-in `.harness/supervisor/actor_profiles.yaml`
 - actor Codex runs are isolated from the user's normal Codex skill/rule surface by default
 - Rail treats actor events and artifacts as governance evidence, not as conversational memory
+- each run writes `.harness/artifacts/<task-id>/run_status.yaml` so the latest phase, actor, interruption reason, and next step are visible without reading raw logs
+- `rail status --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>` prints that status for operators and Codex chat sessions
+- when `rail execute --artifact ...` is interrupted after an artifact exists, it prints the same status summary before returning the error
 - environment variables are not the default actor-quality contract
 - actor command runs do not use actor-level timeouts
 - `ActorWatchdog` monitors command progress and reports `actor_watchdog_expired` when an actor stops producing observable progress

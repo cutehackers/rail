@@ -140,6 +140,8 @@ Advanced users should also know:
 - every task family now traverses `planner -> context_builder -> critic -> generator -> executor -> evaluator`
 - `critic` is a mandatory graph stage, not an optional advisory pass
 - actor model and reasoning come from checked-in `.harness/supervisor/actor_profiles.yaml`
+- actor Codex runs are isolated from the user's normal Codex skill/rule surface by default
+- Rail treats actor events and artifacts as governance evidence, not as conversational memory
 - environment variables are not the default actor-quality contract
 - actor command runs do not use actor-level timeouts
 - `ActorWatchdog` monitors command progress and reports `actor_watchdog_expired` when an actor stops producing observable progress

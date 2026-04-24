@@ -707,7 +707,7 @@ git commit -m "feat: enforce final reporting contract"
 - Modify: `docs/ARCHITECTURE-kr.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Update architecture wording**
+- [x] **Step 1: Update architecture wording**
 
 In both architecture docs, distinguish:
 
@@ -716,7 +716,7 @@ In both architecture docs, distinguish:
 
 Keep the explanation short and consistent with `docs/superpowers/specs/2026-04-24-sealed-actor-runtime-and-continuity-design.md`.
 
-- [ ] **Step 2: Update README advanced backend section**
+- [x] **Step 2: Update README advanced backend section**
 
 Add a short note under the actor backend discussion:
 
@@ -726,7 +726,7 @@ Actor Codex runs are isolated from the user's normal Codex skill/rule surface by
 
 Use placeholder paths only. Do not include a home-directory path.
 
-- [ ] **Step 3: Check documentation path hygiene**
+- [x] **Step 3: Check documentation path hygiene**
 
 Run:
 
@@ -736,7 +736,7 @@ rg -n '(/'Users'/|~[/])' README.md docs/ARCHITECTURE.md docs/ARCHITECTURE-kr.md 
 
 Expected: no output.
 
-- [ ] **Step 4: Commit docs**
+- [x] **Step 4: Commit docs**
 
 ```bash
 git add README.md docs/ARCHITECTURE.md docs/ARCHITECTURE-kr.md

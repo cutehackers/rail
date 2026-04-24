@@ -56,6 +56,14 @@ backends:
     ephemeral: false
     capture_json_events: false
     skip_git_repo_check: false
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   local:
@@ -99,6 +107,14 @@ backends:
     ephemeral: false
     capture_json_events: false
     skip_git_repo_check: false
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   isolated_ci:
@@ -132,6 +148,14 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   local:
@@ -164,6 +188,14 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   local:
@@ -197,6 +229,14 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   local:
@@ -230,6 +270,14 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   local:
@@ -265,6 +313,14 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   local:
@@ -300,6 +356,14 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   local:
@@ -331,6 +395,14 @@ backends:
     ephemeral: true
     capture_json_events: true
     skip_git_repo_check: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   local:
@@ -346,6 +418,71 @@ execution_environments:
 			t.Fatalf("expected default backend validation error, got %v", err)
 		}
 	})
+}
+
+func TestLoadActorBackendPolicyDefaultsToRestrictedCapabilities(t *testing.T) {
+	policy, err := loadActorBackendPolicy(t.TempDir())
+	if err != nil {
+		t.Fatalf("loadActorBackendPolicy returned error: %v", err)
+	}
+	backend, err := policy.DefaultBackend()
+	if err != nil {
+		t.Fatalf("DefaultBackend returned error: %v", err)
+	}
+	want := ActorBackendCapabilities{
+		UserSkills:  "disabled",
+		UserRules:   "disabled",
+		Plugins:     "disabled",
+		MCP:         "disabled",
+		Hooks:       "disabled",
+		Shell:       "allowed",
+		FileEditing: "allowed",
+	}
+	if backend.Capabilities != want {
+		t.Fatalf("unexpected capabilities: got %#v want %#v", backend.Capabilities, want)
+	}
+}
+
+func TestLoadActorBackendPolicyRejectsUnsafeCapabilities(t *testing.T) {
+	projectRoot := writeActorBackendFixture(t, `
+version: 1
+execution_environment: local
+default_backend: codex_cli
+
+backends:
+  codex_cli:
+    command: codex
+    subcommand: exec
+    sandbox: workspace-write
+    approval_policy: never
+    session_mode: per_actor
+    ephemeral: true
+    capture_json_events: true
+    skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: allowed
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
+
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - workspace-write
+`)
+
+	_, err := loadActorBackendPolicy(projectRoot)
+	if err == nil {
+		t.Fatalf("expected loadActorBackendPolicy to reject unsafe capabilities")
+	}
+	if !strings.Contains(err.Error(), "capability plugins must be disabled") {
+		t.Fatalf("expected capability validation error, got %v", err)
+	}
 }
 
 func TestLoadActorBackendPolicyParity(t *testing.T) {

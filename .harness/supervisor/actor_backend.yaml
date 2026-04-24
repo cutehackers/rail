@@ -14,6 +14,14 @@ backends:
     skip_git_repo_check: true
     ignore_user_config: true
     ignore_rules: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
 
 execution_environments:
   local:

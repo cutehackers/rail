@@ -144,7 +144,7 @@ git commit -m "feat: isolate codex actor sessions"
 - Modify: `internal/runtime/actor_backend.go`
 - Modify: `internal/runtime/actor_backend_test.go`
 
-- [ ] **Step 1: Write failing capability default test**
+- [x] **Step 1: Write failing capability default test**
 
 Add this test to `internal/runtime/actor_backend_test.go`:
 
@@ -177,7 +177,7 @@ Run: `go test ./internal/runtime -run TestLoadActorBackendPolicyDefaultsToRestri
 
 Expected: FAIL because `ActorBackendCapabilities` does not exist yet.
 
-- [ ] **Step 2: Add capability struct**
+- [x] **Step 2: Add capability struct**
 
 Add to `internal/runtime/actor_backend.go`:
 
@@ -199,7 +199,7 @@ Add to `ActorBackendConfig`:
 Capabilities ActorBackendCapabilities `yaml:"capabilities"`
 ```
 
-- [ ] **Step 3: Update policy YAML**
+- [x] **Step 3: Update policy YAML**
 
 Add to both backend policy files:
 
@@ -214,7 +214,7 @@ Add to both backend policy files:
       file_editing: allowed
 ```
 
-- [ ] **Step 4: Validate capability values**
+- [x] **Step 4: Validate capability values**
 
 Add validation in `validateActorBackendConfig`:
 
@@ -244,7 +244,7 @@ func validateActorBackendCapabilities(config ActorBackendConfig) error {
 
 Call it from `validateActorBackendConfig`.
 
-- [ ] **Step 5: Add invalid override test**
+- [x] **Step 5: Add invalid override test**
 
 Add a local policy fixture that sets `plugins: allowed` and assert load failure includes `capability plugins must be disabled`.
 
@@ -256,7 +256,7 @@ go test ./internal/runtime -run 'TestLoadActorBackendPolicy.*Capabilities' -coun
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit capability policy**
+- [x] **Step 6: Commit capability policy**
 
 ```bash
 git add .harness/supervisor/actor_backend.yaml assets/defaults/supervisor/actor_backend.yaml internal/runtime/actor_backend.go internal/runtime/actor_backend_test.go

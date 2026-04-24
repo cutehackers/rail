@@ -243,7 +243,7 @@ func (r *Runner) runActor(
 			"Project root: " + workingDirectory,
 			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the schema-valid actor response.",
 		}, "\n")
-		return runCommand(backend, ActorCommandSpec{
+		response, err := runCommand(backend, ActorCommandSpec{
 			ActorName:        actorName,
 			Profile:          profile,
 			WorkingDirectory: workingDirectory,
@@ -252,6 +252,15 @@ func (r *Runner) runActor(
 			SchemaPath:       schemaPath,
 			EventsPath:       eventsPath,
 		})
+		if err != nil {
+			return nil, err
+		}
+		if backend.CaptureJSONEvents {
+			if err := auditCodexEvents(eventsPath); err != nil {
+				return nil, err
+			}
+		}
+		return response, nil
 	default:
 		return nil, fmt.Errorf("actor execution is not implemented for %s", actorName)
 	}

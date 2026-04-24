@@ -363,7 +363,7 @@ git commit -m "feat: clean codex actor environment"
 - Modify: `internal/runtime/runner.go`
 - Modify: `internal/runtime/integration.go`
 
-- [ ] **Step 1: Write failing audit tests**
+- [x] **Step 1: Write failing audit tests**
 
 Create `internal/runtime/event_audit_test.go`:
 
@@ -397,7 +397,7 @@ Run: `go test ./internal/runtime -run TestAuditCodexEvents -count=1`
 
 Expected: FAIL because `auditCodexEvents` does not exist yet.
 
-- [ ] **Step 2: Implement audit function**
+- [x] **Step 2: Implement audit function**
 
 Create `internal/runtime/event_audit.go`.
 
@@ -422,7 +422,7 @@ fmt.Errorf("backend_policy_violation: %s in %s", match.Code, path)
 
 Do not overfit to a user-specific home path.
 
-- [ ] **Step 3: Audit after actor command**
+- [x] **Step 3: Audit after actor command**
 
 In `Runner.runActor`, after `runCommand` succeeds for Codex-backed actors and before returning the response, call:
 
@@ -436,11 +436,11 @@ if backend.CaptureJSONEvents {
 
 Keep smoke actors unchanged.
 
-- [ ] **Step 4: Audit integrator events**
+- [x] **Step 4: Audit integrator events**
 
 In `internal/runtime/integration.go`, run the same audit after the integrator actor command when JSON events are captured.
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run:
 
@@ -450,7 +450,7 @@ go test ./internal/runtime -run 'TestAuditCodexEvents|TestRunCommandUsesBackendP
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit event audit**
+- [x] **Step 6: Commit event audit**
 
 ```bash
 git add internal/runtime/event_audit.go internal/runtime/event_audit_test.go internal/runtime/runner.go internal/runtime/integration.go

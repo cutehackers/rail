@@ -18,6 +18,10 @@ go test ./...
 
 mkdir -p build
 go build -o build/rail ./cmd/rail
+go build \
+  -ldflags "-X rail/internal/runtime.internalTestCodexOverrideEnabled=rail-internal-tests-only" \
+  -o build/rail-release-test \
+  ./cmd/rail
 
 FAKE_BIN="$(mktemp -d)"
 trap 'rm -rf "$FAKE_BIN"' EXIT
@@ -78,6 +82,8 @@ with open(output_path, "w", encoding="utf-8") as handle:
     }, handle)
 PY
 chmod +x "$FAKE_BIN/codex"
+FAKE_CODEX="$(cd "$FAKE_BIN" && pwd -P)/codex"
+printf '%s\n' "$FAKE_CODEX" > "$FAKE_BIN/.rail-internal-test-codex"
 
 rm -rf "$ARTIFACT_PATH"
 ./build/rail run \
@@ -85,7 +91,11 @@ rm -rf "$ARTIFACT_PATH"
   --project-root "$TARGET_ROOT" \
   --task-id "$SMOKE_TASK_ID"
 ./build/rail execute --artifact "$ARTIFACT_PATH"
-PATH="$FAKE_BIN:$PATH" ./build/rail integrate --artifact "$ARTIFACT_PATH"
+OPENAI_API_KEY="rail-release-gate-dummy" \
+  RAIL_INTERNAL_TEST_ALLOW_UNTRUSTED_CODEX_PATH="rail-internal-tests-only" \
+  RAIL_INTERNAL_TEST_CODEX_PATH="$FAKE_CODEX" \
+  PATH="$FAKE_BIN:$PATH" \
+  ./build/rail-release-test integrate --artifact "$ARTIFACT_PATH"
 ./build/rail validate-artifact \
   --file "$ARTIFACT_PATH/integration_result.yaml" \
   --schema integration_result

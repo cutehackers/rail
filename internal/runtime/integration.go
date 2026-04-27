@@ -285,21 +285,18 @@ func runIntegratorActor(
 		"Write no files yourself except the schema-valid response via Codex output handling.",
 	}, "\n")
 	response, err := runCommand(backend, ActorCommandSpec{
-		ActorName:        "integrator",
-		Profile:          profile,
-		WorkingDirectory: workingDirectory,
-		Prompt:           prompt,
-		LastMessagePath:  logPath,
-		SchemaPath:       schemaPath,
-		EventsPath:       eventsPath,
+		ActorName:         "integrator",
+		Profile:           profile,
+		WorkingDirectory:  workingDirectory,
+		Prompt:            prompt,
+		LastMessagePath:   logPath,
+		SchemaPath:        schemaPath,
+		EventsPath:        eventsPath,
+		ArtifactDirectory: artifactDirectory,
+		ActorRunID:        actorRunIDFromLogPath(logPath),
 	})
 	if err != nil {
 		return nil, err
-	}
-	if backend.CaptureJSONEvents {
-		if err := auditCodexEvents(eventsPath); err != nil {
-			return nil, err
-		}
 	}
 	return response, nil
 }

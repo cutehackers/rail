@@ -112,6 +112,26 @@ Rail keeps project-specific state there:
 
 This state is always local to the target repository. Rail does not expect users to keep a separate shared checkout just to use the product.
 
+## Actor Auth
+
+Standard actor execution needs authentication, but it should not inherit the
+user's normal Codex home. For local use, configure Rail actor auth once:
+
+```bash
+rail auth login
+rail auth status
+```
+
+To remove the local Rail actor auth file:
+
+```bash
+rail auth logout
+```
+
+CI and release gates may continue to provide `OPENAI_API_KEY` directly. Rail
+never prints stored secret values, and actor provenance records only the auth
+source, not the key.
+
 ## Advanced Overrides
 
 Most users should stay on the bundled defaults and work through the Rail skill.
@@ -141,6 +161,8 @@ Advanced users should also know:
 - `critic` is a mandatory graph stage, not an optional advisory pass
 - actor model and reasoning come from checked-in `.harness/supervisor/actor_profiles.yaml`
 - actor Codex runs are isolated from the user's normal Codex skill/rule surface by default
+- local users can run `rail auth login` once to configure Rail actor auth; CI can still set `OPENAI_API_KEY`
+- standard actor Codex runs use artifact-local `CODEX_HOME`, `HOME`, `XDG_*`, and temp directories; they use explicit Rail actor auth rather than the user's normal Codex login state
 - Rail treats actor events and artifacts as governance evidence, not as conversational memory
 - each run writes `.harness/artifacts/<task-id>/run_status.yaml` so the latest phase, actor, interruption reason, and next step are visible without reading raw logs
 - `rail status --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>` prints that status for operators and Codex chat sessions

@@ -1213,6 +1213,7 @@ validation_profile: standard
 
 func installFakeCodexForRealMode(t *testing.T, projectRoot string) string {
 	t.Helper()
+	t.Setenv("OPENAI_API_KEY", "test-key")
 
 	fakeBin := t.TempDir()
 	actorLogPath := filepath.Join(projectRoot, ".actor-log")
@@ -1343,11 +1344,20 @@ with open(output_path, "w", encoding="utf-8") as handle:
 	if err := os.WriteFile(fakeCodex, []byte(script), 0o755); err != nil {
 		t.Fatalf("failed to write fake codex: %v", err)
 	}
+	resolvedFakeCodex, err := filepath.EvalSymlinks(fakeCodex)
+	if err != nil {
+		t.Fatalf("failed to resolve fake codex: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fakeBin, internalTestCodexMarker), []byte(filepath.Clean(resolvedFakeCodex)+"\n"), 0o600); err != nil {
+		t.Fatalf("failed to write fake codex marker: %v", err)
+	}
 
 	originalPath := os.Getenv("PATH")
 	if err := os.Setenv("PATH", fakeBin+string(os.PathListSeparator)+originalPath); err != nil {
 		t.Fatalf("failed to set PATH: %v", err)
 	}
+	t.Setenv("RAIL_INTERNAL_TEST_ALLOW_UNTRUSTED_CODEX_PATH", internalTestCodexOverrideValue)
+	t.Setenv("RAIL_INTERNAL_TEST_CODEX_PATH", resolvedFakeCodex)
 	t.Cleanup(func() {
 		_ = os.Setenv("PATH", originalPath)
 	})

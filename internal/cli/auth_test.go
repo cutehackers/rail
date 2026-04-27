@@ -8,67 +8,106 @@ import (
 	"testing"
 )
 
-func TestRunAuthLoginStatusAndLogout(t *testing.T) {
-	authFile := filepath.Join(t.TempDir(), "actor_auth.yaml")
+func writeFakeCodex(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "codex")
+	script := `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"${RAIL_FAKE_CODEX_LOG}"
+printf '%s\n' "${CODEX_HOME:-}" >>"${RAIL_FAKE_CODEX_HOME_LOG}"
+if [[ "$1" == "login" && "${2:-}" == "status" ]]; then
+  if [[ -f "${CODEX_HOME}/auth.json" ]]; then
+    printf 'Logged in\n'
+    exit 0
+  fi
+  printf 'Not logged in\n' >&2
+  exit 1
+fi
+if [[ "$1" == "login" ]]; then
+  mkdir -p "${CODEX_HOME}"
+  printf '{"fake":"auth"}\n' >"${CODEX_HOME}/auth.json"
+  chmod 600 "${CODEX_HOME}/auth.json"
+  printf 'Successfully logged in\n'
+  exit 0
+fi
+if [[ "$1" == "logout" ]]; then
+  rm -f "${CODEX_HOME}/auth.json"
+  printf 'Logged out\n'
+  exit 0
+fi
+printf 'unexpected args: %s\n' "$*" >&2
+exit 64
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake codex: %v", err)
+	}
+	return path
+}
+
+func TestRunAuthLoginStatusDoctorAndLogoutUseRailCodexHome(t *testing.T) {
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	argsLog := filepath.Join(t.TempDir(), "args.log")
+	homeLog := filepath.Join(t.TempDir(), "home.log")
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", homeLog)
 
 	var loginOut bytes.Buffer
-	if err := RunAuth([]string{"login", "--auth-file", authFile, "--api-key", "test-api-key"}, strings.NewReader(""), &loginOut); err != nil {
+	if err := RunAuth([]string{"login"}, strings.NewReader(""), &loginOut); err != nil {
 		t.Fatalf("RunAuth login returned error: %v", err)
 	}
-	if strings.Contains(loginOut.String(), "test-api-key") {
-		t.Fatalf("login output leaked secret: %q", loginOut.String())
+	if strings.Contains(loginOut.String(), authHome) {
+		t.Fatalf("login output exposed concrete auth home: %q", loginOut.String())
 	}
-	if _, err := os.Stat(authFile); err != nil {
-		t.Fatalf("expected auth file to exist after login: %v", err)
+
+	var doctorOut bytes.Buffer
+	if err := RunAuth([]string{"doctor"}, strings.NewReader(""), &doctorOut); err != nil {
+		t.Fatalf("RunAuth doctor returned error: %v", err)
+	}
+	if !strings.Contains(doctorOut.String(), "ready") {
+		t.Fatalf("expected ready doctor output, got %q", doctorOut.String())
 	}
 
 	var statusOut bytes.Buffer
-	if err := RunAuth([]string{"status", "--auth-file", authFile}, strings.NewReader(""), &statusOut); err != nil {
+	if err := RunAuth([]string{"status"}, strings.NewReader(""), &statusOut); err != nil {
 		t.Fatalf("RunAuth status returned error: %v", err)
 	}
 	if !strings.Contains(statusOut.String(), "configured") {
 		t.Fatalf("expected configured status, got %q", statusOut.String())
 	}
-	if strings.Contains(statusOut.String(), "test-api-key") {
-		t.Fatalf("status output leaked secret: %q", statusOut.String())
-	}
 
 	var logoutOut bytes.Buffer
-	if err := RunAuth([]string{"logout", "--auth-file", authFile}, strings.NewReader(""), &logoutOut); err != nil {
+	if err := RunAuth([]string{"logout"}, strings.NewReader(""), &logoutOut); err != nil {
 		t.Fatalf("RunAuth logout returned error: %v", err)
 	}
-	if _, err := os.Stat(authFile); !os.IsNotExist(err) {
-		t.Fatalf("expected auth file to be removed after logout, stat error: %v", err)
-	}
-}
-
-func TestRunAuthLoginReadsAPIKeyFromStdin(t *testing.T) {
-	authFile := filepath.Join(t.TempDir(), "actor_auth.yaml")
-
-	var stdout bytes.Buffer
-	if err := RunAuth([]string{"login", "--auth-file", authFile}, strings.NewReader("stdin-api-key\n"), &stdout); err != nil {
-		t.Fatalf("RunAuth login returned error: %v", err)
-	}
-	if strings.Contains(stdout.String(), "stdin-api-key") {
-		t.Fatalf("login output leaked secret: %q", stdout.String())
+	if _, err := os.Stat(authHome); !os.IsNotExist(err) {
+		t.Fatalf("expected auth home to be removed after logout, stat error: %v", err)
 	}
 
-	var statusOut bytes.Buffer
-	if err := RunAuth([]string{"doctor", "--auth-file", authFile}, strings.NewReader(""), &statusOut); err != nil {
-		t.Fatalf("RunAuth doctor returned error: %v", err)
+	homeData, err := os.ReadFile(homeLog)
+	if err != nil {
+		t.Fatalf("read fake codex home log: %v", err)
 	}
-	if !strings.Contains(statusOut.String(), "ready") {
-		t.Fatalf("expected doctor to report ready auth, got %q", statusOut.String())
+	for _, line := range strings.Split(strings.TrimSpace(string(homeData)), "\n") {
+		if line != authHome {
+			t.Fatalf("expected fake codex to use Rail auth home %q, got log %q", authHome, string(homeData))
+		}
 	}
 }
 
 func TestRunAuthDoctorFailsClosedWhenAuthMissing(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("OPENAI_API_KEY", "")
-	missingAuthFile := filepath.Join(t.TempDir(), "missing.yaml")
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", filepath.Join(t.TempDir(), "missing-auth-home"))
+	t.Setenv("RAIL_FAKE_CODEX_LOG", filepath.Join(t.TempDir(), "args.log"))
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
 
 	var stdout bytes.Buffer
-	err := RunAuth([]string{"doctor", "--auth-file", missingAuthFile}, strings.NewReader(""), &stdout)
+	err := RunAuth([]string{"doctor"}, strings.NewReader(""), &stdout)
 	if err == nil {
 		t.Fatalf("expected RunAuth doctor to fail when auth is missing")
 	}
@@ -80,41 +119,13 @@ func TestRunAuthDoctorFailsClosedWhenAuthMissing(t *testing.T) {
 	}
 }
 
-func TestRunAuthDoctorUsesSameAuthFileEnvAsActors(t *testing.T) {
-	configHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
-	t.Setenv("OPENAI_API_KEY", "")
-	defaultAuthFile := filepath.Join(configHome, "rail", "actor_auth.yaml")
-	if err := os.MkdirAll(filepath.Dir(defaultAuthFile), 0o700); err != nil {
-		t.Fatalf("failed to create default auth dir: %v", err)
-	}
-	if err := os.WriteFile(defaultAuthFile, []byte("version: 1\nprovider: openai_api_key\nopenai_api_key: default-key\ncreated_at: test\n"), 0o600); err != nil {
-		t.Fatalf("failed to write default auth file: %v", err)
-	}
-	t.Setenv("RAIL_ACTOR_AUTH_FILE", filepath.Join(t.TempDir(), "missing.yaml"))
-
+func TestRunAuthRejectsUnknownSecretLookingArgumentWithoutEchoingIt(t *testing.T) {
 	var stdout bytes.Buffer
-	err := RunAuth([]string{"doctor"}, strings.NewReader(""), &stdout)
+	err := RunAuth([]string{"login", "sk-secret-value"}, strings.NewReader(""), &stdout)
 	if err == nil {
-		t.Fatalf("expected doctor to fail when RAIL_ACTOR_AUTH_FILE points at missing auth")
+		t.Fatalf("expected RunAuth to fail")
 	}
-	if strings.Contains(stdout.String(), "ready") {
-		t.Fatalf("expected doctor not to use default auth file when RAIL_ACTOR_AUTH_FILE is set, got %q", stdout.String())
-	}
-}
-
-func TestRunAuthErrorsDoNotEchoSecretLookingArguments(t *testing.T) {
-	for _, args := range [][]string{
-		{"sk-secret-value"},
-		{"login", "sk-secret-value"},
-	} {
-		var stdout bytes.Buffer
-		err := RunAuth(args, strings.NewReader(""), &stdout)
-		if err == nil {
-			t.Fatalf("expected RunAuth(%v) to fail", args)
-		}
-		if strings.Contains(err.Error(), "sk-secret-value") {
-			t.Fatalf("auth error leaked secret-looking argument: %v", err)
-		}
+	if strings.Contains(err.Error(), "sk-secret-value") {
+		t.Fatalf("auth error leaked secret-looking argument: %v", err)
 	}
 }

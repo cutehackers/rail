@@ -2,7 +2,9 @@ package auth
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -148,6 +150,62 @@ func ValidateCodexAuthHome(path string) error {
 		return err
 	}
 	return validatePrivateDirectory(resolved)
+}
+
+func RunCodexLogin(command string, authHome string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	if err := EnsureCodexAuthHome(authHome); err != nil {
+		return err
+	}
+	return runCodexAuthCommand(command, authHome, stdin, stdout, stderr, "login")
+}
+
+func RunCodexLoginStatus(command string, authHome string, stdout io.Writer, stderr io.Writer) error {
+	if err := ValidateCodexAuthHome(authHome); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("rail actor auth not configured")
+		}
+		return err
+	}
+	if err := runCodexAuthCommand(command, authHome, nil, stdout, stderr, "login", "status"); err != nil {
+		return fmt.Errorf("rail actor auth not configured")
+	}
+	return nil
+}
+
+func RunCodexLogout(command string, authHome string, stdout io.Writer, stderr io.Writer) error {
+	if err := runCodexAuthCommand(command, authHome, nil, stdout, stderr, "logout"); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return RemoveCodexAuthHome(authHome)
+}
+
+func runCodexAuthCommand(command string, authHome string, stdin io.Reader, stdout io.Writer, stderr io.Writer, args ...string) error {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		command = "codex"
+	}
+	cmd := exec.Command(command, args...)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	cmd.Env = codexAuthCommandEnv(os.Environ(), authHome)
+	return cmd.Run()
+}
+
+func codexAuthCommandEnv(parent []string, authHome string) []string {
+	env := make([]string, 0, len(parent)+2)
+	for _, entry := range parent {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		if key == "CODEX_HOME" || key == RailCodexAuthHomeEnv {
+			continue
+		}
+		env = append(env, entry)
+	}
+	env = append(env, "CODEX_HOME="+authHome)
+	return env
 }
 
 func MaterializeCodexAuthForActor(sourceHome string, destinationHome string) (MaterializedCodexAuth, error) {

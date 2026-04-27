@@ -21,19 +21,20 @@ const internalTestCodexMarker = ".rail-internal-test-codex"
 var internalTestCodexOverrideEnabled string
 
 type sealedActorRuntime struct {
-	Root           string
-	CodexHome      string
-	Home           string
-	XDGConfigHome  string
-	XDGDataHome    string
-	XDGCacheHome   string
-	Temp           string
-	ProvenancePath string
-	CommandPath    string
-	Env            []string
-	SanitizedPath  string
-	AuthSource     string
-	AuthSecret     string
+	Root              string
+	CodexHome         string
+	Home              string
+	XDGConfigHome     string
+	XDGDataHome       string
+	XDGCacheHome      string
+	Temp              string
+	ProvenancePath    string
+	CommandPath       string
+	Env               []string
+	SanitizedPath     string
+	AuthSource        string
+	AuthMaterialized  bool
+	AuthMaterialFiles []string
 }
 
 func prepareSealedActorRuntime(backend ActorBackendConfig, spec ActorCommandSpec, parent []string) (sealedActorRuntime, error) {
@@ -83,16 +84,6 @@ func prepareSealedActorRuntime(backend ActorBackendConfig, spec ActorCommandSpec
 	sealed.CommandPath = commandPath
 	sealed.SanitizedPath = strings.Join(pathEntries, string(os.PathListSeparator))
 
-	apiKey, authSource, err := auth.ResolveOpenAIAPIKey(parentMap)
-	if err != nil {
-		return sealedActorRuntime{}, backendPolicyViolation("actor_auth_resolution_failed: " + err.Error())
-	}
-	if strings.TrimSpace(apiKey) == "" {
-		return sealedActorRuntime{}, backendPolicyViolation("missing_env_auth_for_sealed_actor: run `rail auth login` or set OPENAI_API_KEY before running sealed actors")
-	}
-	parentMap["OPENAI_API_KEY"] = apiKey
-	sealed.AuthSource = authSource
-	sealed.AuthSecret = apiKey
 	for _, path := range []string{
 		sealed.Root,
 		sealed.CodexHome,
@@ -106,6 +97,17 @@ func prepareSealedActorRuntime(backend ActorBackendConfig, spec ActorCommandSpec
 			return sealedActorRuntime{}, err
 		}
 	}
+	authHome, err := auth.CodexAuthHomePathFromEnv(parentMap)
+	if err != nil {
+		return sealedActorRuntime{}, backendPolicyViolation("rail_actor_auth_resolution_failed: " + err.Error())
+	}
+	materialized, err := auth.MaterializeCodexAuthForActor(authHome, sealed.CodexHome)
+	if err != nil {
+		return sealedActorRuntime{}, backendPolicyViolation(err.Error())
+	}
+	sealed.AuthSource = materialized.Source
+	sealed.AuthMaterialized = true
+	sealed.AuthMaterialFiles = append([]string(nil), materialized.CopiedFiles...)
 	sealed.Env = buildSealedActorEnvironment(sealed, parentMap)
 	if err := writeSealedActorProvenance(sealed, spec, backend); err != nil {
 		return sealedActorRuntime{}, err
@@ -451,7 +453,6 @@ func sealedActorRedactionSecrets(sealed sealedActorRuntime) []string {
 		seen[value] = struct{}{}
 		secrets = append(secrets, value)
 	}
-	add(sealed.AuthSecret)
 	for _, entry := range sealed.Env {
 		key, value, ok := strings.Cut(entry, "=")
 		if !ok || !isSecretBearingActorEnvKey(key) {
@@ -480,10 +481,7 @@ func isSecretBearingActorEnvKey(key string) bool {
 
 func allowedSealedActorEnvKeys() []string {
 	return []string{
-		"OPENAI_API_KEY",
 		"OPENAI_BASE_URL",
-		"OPENAI_ORG_ID",
-		"OPENAI_PROJECT",
 		"HTTPS_PROXY",
 		"HTTP_PROXY",
 		"NO_PROXY",
@@ -523,12 +521,14 @@ func writeSealedActorProvenance(sealed sealedActorRuntime, spec ActorCommandSpec
 	}
 	sort.Strings(envKeys)
 	value := map[string]any{
-		"version":      sealedActorRuntimeVersion,
-		"actor":        spec.ActorName,
-		"actor_run_id": spec.ActorRunID,
-		"auth_source":  sealed.AuthSource,
-		"command_path": sealed.CommandPath,
-		"sealed_root":  sealed.Root,
+		"version":             sealedActorRuntimeVersion,
+		"actor":               spec.ActorName,
+		"actor_run_id":        spec.ActorRunID,
+		"auth_source":         sealed.AuthSource,
+		"auth_materialized":   sealed.AuthMaterialized,
+		"auth_material_files": sealed.AuthMaterialFiles,
+		"command_path":        sealed.CommandPath,
+		"sealed_root":         sealed.Root,
 		"directories": map[string]string{
 			"codex_home":      sealed.CodexHome,
 			"home":            sealed.Home,

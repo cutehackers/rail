@@ -29,6 +29,7 @@ func TestPrepareSealedActorRuntimeDropsUserCodexSurface(t *testing.T) {
 	if err := os.MkdirAll(parentCodexHome, 0o700); err != nil {
 		t.Fatalf("failed to create parent codex home: %v", err)
 	}
+	authHome := testRailCodexAuthHome(t, "test-token")
 
 	sealed, err := prepareSealedActorRuntime(defaultTestActorBackend(), testActorCommandSpec(t, artifactDirectory, workingDirectory, "planner"), fakeCodexParentEnv(t, fakeBin, fakeCodexPath,
 		"CODEX_HOME="+parentCodexHome,
@@ -36,7 +37,10 @@ func TestPrepareSealedActorRuntimeDropsUserCodexSurface(t *testing.T) {
 		"XDG_CONFIG_HOME=/tmp/xdg-config",
 		"XDG_DATA_HOME=/tmp/xdg-data",
 		"XDG_CACHE_HOME=/tmp/xdg-cache",
+		"RAIL_CODEX_AUTH_HOME="+authHome,
 		"OPENAI_API_KEY=test-key",
+		"OPENAI_ORG_ID=org-id",
+		"OPENAI_PROJECT=project-id",
 		"HTTPS_PROXY=https://proxy.example",
 		"SSL_CERT_FILE=/tmp/cert.pem",
 		"RAIL_TEST_INVOCATION_PATH=/tmp/invocation.json",
@@ -66,7 +70,6 @@ func TestPrepareSealedActorRuntimeDropsUserCodexSurface(t *testing.T) {
 		}
 	}
 	for key, want := range map[string]string{
-		"OPENAI_API_KEY":            "test-key",
 		"HTTPS_PROXY":               "https://proxy.example",
 		"SSL_CERT_FILE":             "/tmp/cert.pem",
 		"RAIL_TEST_INVOCATION_PATH": "/tmp/invocation.json",
@@ -75,10 +78,17 @@ func TestPrepareSealedActorRuntimeDropsUserCodexSurface(t *testing.T) {
 			t.Fatalf("expected %s=%q, got %q", key, want, got)
 		}
 	}
-	for _, forbiddenKey := range []string{"SSH_AUTH_SOCK", "GIT_CONFIG_GLOBAL"} {
+	for _, forbiddenKey := range []string{"OPENAI_API_KEY", "OPENAI_ORG_ID", "OPENAI_PROJECT", "RAIL_CODEX_AUTH_HOME", "SSH_AUTH_SOCK", "GIT_CONFIG_GLOBAL"} {
 		if _, ok := envMap[forbiddenKey]; ok {
 			t.Fatalf("expected %s to be removed from sealed env, got %v", forbiddenKey, sealed.Env)
 		}
+	}
+	copiedAuth, err := os.ReadFile(filepath.Join(sealed.CodexHome, auth.CodexAuthFileName))
+	if err != nil {
+		t.Fatalf("expected Rail Codex auth to be materialized: %v", err)
+	}
+	if string(copiedAuth) != `{"tokens":"test-token"}` {
+		t.Fatalf("unexpected materialized auth content: %q", copiedAuth)
 	}
 	expectedCommandPath, err := filepath.EvalSymlinks(fakeCodexPath)
 	if err != nil {
@@ -109,6 +119,19 @@ func fakeCodexParentEnv(t *testing.T, fakeBin string, fakeCodexPath string, extr
 		"RAIL_INTERNAL_TEST_CODEX_PATH=" + fakeCodexPath,
 	}
 	return append(env, extra...)
+}
+
+func testRailCodexAuthHome(t *testing.T, token string) string {
+	t.Helper()
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	if err := auth.EnsureCodexAuthHome(authHome); err != nil {
+		t.Fatalf("EnsureCodexAuthHome returned error: %v", err)
+	}
+	authJSON := []byte(`{"tokens":"` + token + `"}`)
+	if err := os.WriteFile(filepath.Join(authHome, auth.CodexAuthFileName), authJSON, 0o600); err != nil {
+		t.Fatalf("failed to write auth.json: %v", err)
+	}
+	return authHome
 }
 
 func allowFakeCodexForTest(t *testing.T, fakeCodexPath string) {
@@ -144,7 +167,7 @@ func testActorCommandSpec(t *testing.T, artifactDirectory string, workingDirecto
 	}
 }
 
-func TestPrepareSealedActorRuntimeRequiresEnvAuth(t *testing.T) {
+func TestPrepareSealedActorRuntimeRequiresRailCodexAuth(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	artifactDirectory := t.TempDir()
 	workingDirectory := t.TempDir()
@@ -152,24 +175,25 @@ func TestPrepareSealedActorRuntimeRequiresEnvAuth(t *testing.T) {
 	fakeCodexPath := filepath.Join(fakeBin, "codex")
 	if err := os.WriteFile(fakeCodexPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("failed to write fake codex: %v", err)
+	}
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	if err := auth.EnsureCodexAuthHome(authHome); err != nil {
+		t.Fatalf("EnsureCodexAuthHome returned error: %v", err)
 	}
 
 	_, err := prepareSealedActorRuntime(defaultTestActorBackend(), testActorCommandSpec(t, artifactDirectory, workingDirectory, "planner"), fakeCodexParentEnv(t, fakeBin, fakeCodexPath,
 		"CODEX_HOME="+filepath.Join(t.TempDir(), ".codex"),
-		"RAIL_ACTOR_AUTH_FILE="+filepath.Join(t.TempDir(), "missing-auth.yaml"),
+		"RAIL_CODEX_AUTH_HOME="+authHome,
 	))
 	if err == nil {
-		t.Fatalf("expected sealed runtime setup to reject missing env auth")
+		t.Fatalf("expected sealed runtime setup to reject missing Rail Codex auth")
 	}
-	if !strings.Contains(err.Error(), "missing_env_auth_for_sealed_actor") {
-		t.Fatalf("expected missing env auth violation, got %v", err)
-	}
-	if _, statErr := os.Stat(filepath.Join(artifactDirectory, "runtime")); !os.IsNotExist(statErr) {
-		t.Fatalf("expected missing auth preflight to avoid creating sealed runtime directory, stat error: %v", statErr)
+	if !strings.Contains(err.Error(), "rail_actor_auth_not_configured") {
+		t.Fatalf("expected missing Rail Codex auth violation, got %v", err)
 	}
 }
 
-func TestPrepareSealedActorRuntimeUsesRailActorAuthFile(t *testing.T) {
+func TestPrepareSealedActorRuntimeMaterializesRailCodexAuth(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	artifactDirectory := t.TempDir()
 	workingDirectory := t.TempDir()
@@ -178,34 +202,43 @@ func TestPrepareSealedActorRuntimeUsesRailActorAuthFile(t *testing.T) {
 	if err := os.WriteFile(fakeCodexPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("failed to write fake codex: %v", err)
 	}
-	authFile := filepath.Join(t.TempDir(), "actor_auth.yaml")
-	if err := auth.WriteActorAuthFile(authFile, "file-api-key"); err != nil {
-		t.Fatalf("failed to write auth file: %v", err)
-	}
+	authHome := testRailCodexAuthHome(t, "file-token")
 
 	sealed, err := prepareSealedActorRuntime(defaultTestActorBackend(), testActorCommandSpec(t, artifactDirectory, workingDirectory, "planner"), fakeCodexParentEnv(t, fakeBin, fakeCodexPath,
-		"RAIL_ACTOR_AUTH_FILE="+authFile,
+		"RAIL_CODEX_AUTH_HOME="+authHome,
+		"OPENAI_API_KEY=ignored-api-key",
 	))
 	if err != nil {
 		t.Fatalf("prepareSealedActorRuntime returned error: %v", err)
 	}
 	envMap := envMap(sealed.Env)
-	if got := envMap["OPENAI_API_KEY"]; got != "file-api-key" {
-		t.Fatalf("expected API key from Rail auth file, got %q", got)
+	if _, ok := envMap["OPENAI_API_KEY"]; ok {
+		t.Fatalf("expected sealed actor env to omit OPENAI_API_KEY, got %v", sealed.Env)
 	}
-	if _, ok := envMap["RAIL_ACTOR_AUTH_FILE"]; ok {
-		t.Fatalf("expected sealed actor env to omit RAIL_ACTOR_AUTH_FILE path, got %v", sealed.Env)
+	if _, ok := envMap["RAIL_CODEX_AUTH_HOME"]; ok {
+		t.Fatalf("expected sealed actor env to omit RAIL_CODEX_AUTH_HOME path, got %v", sealed.Env)
+	}
+	copiedAuth, err := os.ReadFile(filepath.Join(sealed.CodexHome, auth.CodexAuthFileName))
+	if err != nil {
+		t.Fatalf("expected Rail Codex auth to be materialized: %v", err)
+	}
+	if string(copiedAuth) != `{"tokens":"file-token"}` {
+		t.Fatalf("unexpected materialized auth content: %q", copiedAuth)
 	}
 	data, err := os.ReadFile(sealed.ProvenancePath)
 	if err != nil {
 		t.Fatalf("failed to read provenance: %v", err)
 	}
 	provenance := string(data)
-	if strings.Contains(provenance, "file-api-key") {
-		t.Fatalf("expected provenance to omit API key value, got:\n%s", provenance)
+	for _, forbidden := range []string{"file-token", authHome} {
+		if strings.Contains(provenance, forbidden) {
+			t.Fatalf("expected provenance to omit auth secret/path %q, got:\n%s", forbidden, provenance)
+		}
 	}
-	if !strings.Contains(provenance, "auth_source: auth_file") {
-		t.Fatalf("expected provenance to record auth source, got:\n%s", provenance)
+	for _, expected := range []string{"auth_source: rail_codex_login", "auth_materialized: true", "auth.json"} {
+		if !strings.Contains(provenance, expected) {
+			t.Fatalf("expected provenance to contain %q, got:\n%s", expected, provenance)
+		}
 	}
 }
 

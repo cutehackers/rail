@@ -152,6 +152,26 @@ func ValidateCodexAuthHome(path string) error {
 	return validatePrivateDirectory(resolved)
 }
 
+func validateMarkedCodexAuthHome(path string) (string, error) {
+	if err := ensurePlatformSupported(); err != nil {
+		return "", err
+	}
+	resolved, err := resolveCodexAuthHomePath(path)
+	if err != nil {
+		return "", err
+	}
+	if err := validatePrivateDirectory(resolved); err != nil {
+		return "", err
+	}
+	if err := validateRailAuthHomeMarker(resolved); err != nil {
+		return "", err
+	}
+	if err := validateRailAuthHomeOwnership(resolved); err != nil {
+		return "", err
+	}
+	return resolved, nil
+}
+
 func RunCodexLogin(command string, authHome string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 	if err := EnsureCodexAuthHome(authHome); err != nil {
 		return err
@@ -160,23 +180,38 @@ func RunCodexLogin(command string, authHome string, stdin io.Reader, stdout io.W
 }
 
 func RunCodexLoginStatus(command string, authHome string, stdout io.Writer, stderr io.Writer) error {
-	if err := ValidateCodexAuthHome(authHome); err != nil {
+	resolved, err := validateMarkedCodexAuthHome(authHome)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("rail actor auth not configured")
 		}
 		return err
 	}
-	if err := runCodexAuthCommand(command, authHome, nil, stdout, stderr, "login", "status"); err != nil {
+	if err := runCodexAuthCommand(command, resolved, nil, stdout, stderr, "login", "status"); err != nil {
 		return fmt.Errorf("rail actor auth not configured")
 	}
 	return nil
 }
 
 func RunCodexLogout(command string, authHome string, stdout io.Writer, stderr io.Writer) error {
-	if err := runCodexAuthCommand(command, authHome, nil, stdout, stderr, "logout"); err != nil && !os.IsNotExist(err) {
+	resolved, err := resolveCodexAuthHomePath(authHome)
+	if err != nil {
 		return err
 	}
-	return RemoveCodexAuthHome(authHome)
+	if _, err := os.Lstat(resolved); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect codex auth home: %w", err)
+	}
+	resolved, err = validateMarkedCodexAuthHome(resolved)
+	if err != nil {
+		return err
+	}
+	if err := runCodexAuthCommand(command, resolved, nil, stdout, stderr, "logout"); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return RemoveCodexAuthHome(resolved)
 }
 
 func runCodexAuthCommand(command string, authHome string, stdin io.Reader, stdout io.Writer, stderr io.Writer, args ...string) error {

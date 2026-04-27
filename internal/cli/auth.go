@@ -77,6 +77,9 @@ func runAuthStatus(options authOptions, stdout io.Writer, doctor bool) error {
 	}
 	err = auth.RunCodexLoginStatus(authCommand(options), authHome, io.Discard, io.Discard)
 	if err != nil {
+		if err.Error() != "rail actor auth not configured" {
+			return err
+		}
 		if doctor {
 			_, _ = fmt.Fprintln(stdout, "Rail actor auth not configured.")
 			_, _ = fmt.Fprintln(stdout, "Run `rail auth login` before standard actor execution.")

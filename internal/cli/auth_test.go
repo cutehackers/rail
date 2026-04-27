@@ -102,8 +102,9 @@ func TestRunAuthDoctorFailsClosedWhenAuthMissing(t *testing.T) {
 	fakeBin := t.TempDir()
 	writeFakeCodex(t, fakeBin)
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	argsLog := filepath.Join(t.TempDir(), "args.log")
 	t.Setenv("RAIL_CODEX_AUTH_HOME", filepath.Join(t.TempDir(), "missing-auth-home"))
-	t.Setenv("RAIL_FAKE_CODEX_LOG", filepath.Join(t.TempDir(), "args.log"))
+	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
 	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
 
 	var stdout bytes.Buffer
@@ -116,6 +117,128 @@ func TestRunAuthDoctorFailsClosedWhenAuthMissing(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "rail auth login") {
 		t.Fatalf("expected doctor output to explain login next step, got %q", stdout.String())
+	}
+	if data, err := os.ReadFile(argsLog); err == nil && len(data) != 0 {
+		t.Fatalf("expected missing auth home not to invoke fake codex, got log %q", data)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read fake codex args log: %v", err)
+	}
+}
+
+func TestRunAuthStatusRejectsUnmarkedPrivateAuthHomeWithoutInvokingCodex(t *testing.T) {
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	argsLog := filepath.Join(t.TempDir(), "args.log")
+	if err := os.Mkdir(authHome, 0o700); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(authHome, "auth.json"), []byte(`{"fake":"auth"}`), 0o600); err != nil {
+		t.Fatalf("write auth.json: %v", err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+
+	var stdout bytes.Buffer
+	err := RunAuth([]string{"status"}, strings.NewReader(""), &stdout)
+	if err == nil {
+		t.Fatalf("expected RunAuth status to reject unmarked auth home")
+	}
+	if !strings.Contains(err.Error(), "missing rail auth marker") {
+		t.Fatalf("expected missing marker error, got %v", err)
+	}
+	if data, err := os.ReadFile(argsLog); err == nil && len(data) != 0 {
+		t.Fatalf("expected unmarked auth home not to invoke fake codex, got log %q", data)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read fake codex args log: %v", err)
+	}
+}
+
+func TestRunAuthDoctorRejectsUnmarkedPrivateAuthHomeWithoutInvokingCodex(t *testing.T) {
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	argsLog := filepath.Join(t.TempDir(), "args.log")
+	if err := os.Mkdir(authHome, 0o700); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(authHome, "auth.json"), []byte(`{"fake":"auth"}`), 0o600); err != nil {
+		t.Fatalf("write auth.json: %v", err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+
+	var stdout bytes.Buffer
+	err := RunAuth([]string{"doctor"}, strings.NewReader(""), &stdout)
+	if err == nil {
+		t.Fatalf("expected RunAuth doctor to reject unmarked auth home")
+	}
+	if !strings.Contains(err.Error(), "missing rail auth marker") {
+		t.Fatalf("expected missing marker error, got %v", err)
+	}
+	if data, err := os.ReadFile(argsLog); err == nil && len(data) != 0 {
+		t.Fatalf("expected unmarked auth home not to invoke fake codex, got log %q", data)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read fake codex args log: %v", err)
+	}
+}
+
+func TestRunAuthLogoutSkipsCodexForUnmarkedAuthHome(t *testing.T) {
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	argsLog := filepath.Join(t.TempDir(), "args.log")
+	if err := os.Mkdir(authHome, 0o700); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(authHome, "auth.json"), []byte(`{"fake":"auth"}`), 0o600); err != nil {
+		t.Fatalf("write auth.json: %v", err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+
+	var stdout bytes.Buffer
+	err := RunAuth([]string{"logout"}, strings.NewReader(""), &stdout)
+	if err == nil {
+		t.Fatalf("expected RunAuth logout to reject unmarked auth home")
+	}
+	if !strings.Contains(err.Error(), "missing rail auth marker") {
+		t.Fatalf("expected missing marker error, got %v", err)
+	}
+	if data, err := os.ReadFile(argsLog); err == nil && len(data) != 0 {
+		t.Fatalf("expected unmarked auth home not to invoke fake codex, got log %q", data)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read fake codex args log: %v", err)
+	}
+	if _, err := os.Stat(authHome); err != nil {
+		t.Fatalf("expected unmarked auth home to remain: %v", err)
+	}
+}
+
+func TestRunAuthLogoutSkipsCodexForMissingAuthHome(t *testing.T) {
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	authHome := filepath.Join(t.TempDir(), "missing-auth-home")
+	argsLog := filepath.Join(t.TempDir(), "args.log")
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+
+	var stdout bytes.Buffer
+	if err := RunAuth([]string{"logout"}, strings.NewReader(""), &stdout); err != nil {
+		t.Fatalf("RunAuth logout returned error: %v", err)
+	}
+	if data, err := os.ReadFile(argsLog); err == nil && len(data) != 0 {
+		t.Fatalf("expected missing auth home not to invoke fake codex, got log %q", data)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read fake codex args log: %v", err)
 	}
 }
 

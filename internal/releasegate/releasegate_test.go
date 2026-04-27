@@ -528,6 +528,8 @@ func TestV2ReleaseGateRunsFullGoFirstChecks(t *testing.T) {
 		"RAIL_RELEASE_AUTH_HOME=\"$(mktemp -d)\"",
 		"trap 'rm -rf \"$FAKE_BIN\" \"$RAIL_RELEASE_AUTH_HOME\"' EXIT",
 		"chmod 700 \"$RAIL_RELEASE_AUTH_HOME\"",
+		"printf '%s\\n' 'version: 1' > \"$RAIL_RELEASE_AUTH_HOME/.rail-auth-home\"",
+		"chmod 600 \"$RAIL_RELEASE_AUTH_HOME/.rail-auth-home\"",
 		"printf '%s\\n' '{\"tokens\":\"rail-release-gate-token\"}' > \"$RAIL_RELEASE_AUTH_HOME/auth.json\"",
 		"chmod 600 \"$RAIL_RELEASE_AUTH_HOME/auth.json\"",
 		"RAIL_CODEX_AUTH_HOME=\"$RAIL_RELEASE_AUTH_HOME\"",

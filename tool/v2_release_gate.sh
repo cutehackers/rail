@@ -86,6 +86,8 @@ chmod +x "$FAKE_BIN/codex"
 FAKE_CODEX="$(cd "$FAKE_BIN" && pwd -P)/codex"
 printf '%s\n' "$FAKE_CODEX" > "$FAKE_BIN/.rail-internal-test-codex"
 chmod 700 "$RAIL_RELEASE_AUTH_HOME"
+printf '%s\n' 'version: 1' > "$RAIL_RELEASE_AUTH_HOME/.rail-auth-home"
+chmod 600 "$RAIL_RELEASE_AUTH_HOME/.rail-auth-home"
 printf '%s\n' '{"tokens":"rail-release-gate-token"}' > "$RAIL_RELEASE_AUTH_HOME/auth.json"
 chmod 600 "$RAIL_RELEASE_AUTH_HOME/auth.json"
 

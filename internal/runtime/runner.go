@@ -409,21 +409,18 @@ func (r *Runner) runActor(
 			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the schema-valid actor response.",
 		}, "\n")
 		response, err := runCommand(backend, ActorCommandSpec{
-			ActorName:        actorName,
-			Profile:          profile,
-			WorkingDirectory: workingDirectory,
-			Prompt:           prompt,
-			LastMessagePath:  logPath,
-			SchemaPath:       schemaPath,
-			EventsPath:       eventsPath,
+			ActorName:         actorName,
+			Profile:           profile,
+			WorkingDirectory:  workingDirectory,
+			Prompt:            prompt,
+			LastMessagePath:   logPath,
+			SchemaPath:        schemaPath,
+			EventsPath:        eventsPath,
+			ArtifactDirectory: artifactDirectory,
+			ActorRunID:        actorRunIDFromLogPath(logPath),
 		})
 		if err != nil {
 			return nil, err
-		}
-		if backend.CaptureJSONEvents {
-			if err := auditCodexEvents(eventsPath); err != nil {
-				return nil, err
-			}
 		}
 		return response, nil
 	default:

@@ -75,14 +75,24 @@ with open(output_path, "w", encoding="utf-8") as handle:
 `), 0o755); err != nil {
 		t.Fatalf("failed to write fake codex: %v", err)
 	}
+	resolvedFakeCodex, err := filepath.EvalSymlinks(fakeCodex)
+	if err != nil {
+		t.Fatalf("failed to resolve fake codex: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fakeBin, ".rail-internal-test-codex"), []byte(filepath.Clean(resolvedFakeCodex)+"\n"), 0o600); err != nil {
+		t.Fatalf("failed to write fake codex marker: %v", err)
+	}
 
 	originalPath := os.Getenv("PATH")
 	if err := os.Setenv("PATH", fakeBin+string(os.PathListSeparator)+originalPath); err != nil {
 		t.Fatalf("failed to set PATH: %v", err)
 	}
+	t.Setenv("RAIL_INTERNAL_TEST_ALLOW_UNTRUSTED_CODEX_PATH", "rail-internal-tests-only")
+	t.Setenv("RAIL_INTERNAL_TEST_CODEX_PATH", resolvedFakeCodex)
 	t.Cleanup(func() {
 		_ = os.Setenv("PATH", originalPath)
 	})
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 
 	if _, err := runner.Integrate(artifactPath, projectRoot); err != nil {
 		t.Fatalf("Integrate returned error: %v", err)

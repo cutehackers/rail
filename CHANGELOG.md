@@ -2,6 +2,29 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.5.0 - 2026-04-27
+
+### Added
+- Rail-managed Codex auth home support for actor authentication.
+- `rail auth` CLI flow wrapping Codex browser login.
+- Auth materialization for sealed actor runtimes.
+- Actor auth implementation, platform handling, and test coverage.
+
+### Changed
+- Sealed actor runtime now isolates actors from user Codex configuration.
+- Removed the API key actor auth surface.
+- Updated Rail skill, README, and architecture docs for browser-based Codex actor auth and auth provenance metadata.
+
+### Fixed
+- Hardened Codex auth home validation, ownership checks, file handling, and materialization handles.
+- Gated unsupported Codex auth platforms.
+- Sanitized Rail auth CLI errors while preserving Codex login execution failures.
+- Strengthened release gate auth assertions.
+
+### Verification
+- `tool/prepare_release.sh v0.5.0`
+
+
 ## v0.4.0 - 2026-04-24
 
 ### Added

@@ -14,13 +14,15 @@ import (
 )
 
 type ActorCommandSpec struct {
-	ActorName        string
-	Profile          ActorProfile
-	WorkingDirectory string
-	Prompt           string
-	LastMessagePath  string
-	SchemaPath       string
-	EventsPath       string
+	ActorName         string
+	Profile           ActorProfile
+	WorkingDirectory  string
+	Prompt            string
+	LastMessagePath   string
+	SchemaPath        string
+	EventsPath        string
+	ArtifactDirectory string
+	ActorRunID        string
 }
 
 func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []string {
@@ -54,6 +56,10 @@ func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []stri
 		fmt.Sprintf(`model_reasoning_effort="%s"`, spec.Profile.Reasoning),
 		"-c",
 		fmt.Sprintf(`approval_policy="%s"`, backend.ApprovalPolicy),
+		"-c",
+		`shell_environment_policy.inherit="none"`,
+		"-c",
+		`shell_environment_policy.include_only=["PATH","HOME","TMPDIR","TMP","TEMP","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_CACHE_HOME"]`,
 		"--output-schema",
 		spec.SchemaPath,
 		"--output-last-message",
@@ -82,9 +88,14 @@ func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]a
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, backend.Command, buildCodexCLIArgs(backend, spec)...)
+	sealed, err := prepareSealedActorRuntime(backend, spec, os.Environ())
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.CommandContext(ctx, sealed.CommandPath, buildCodexCLIArgs(backend, spec)...)
 	cmd.Dir = spec.WorkingDirectory
-	cmd.Env = buildActorEnvironment(os.Environ())
+	cmd.Env = sealed.Env
 
 	output := &synchronizedBuffer{}
 	watchdog := newActorWatchdog(spec.ActorName, defaultActorWatchdogConfig)
@@ -96,7 +107,11 @@ func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]a
 		if err != nil {
 			return nil, fmt.Errorf("create JSON events log for %s: %w", spec.ActorName, err)
 		}
-		defer eventsFile.Close()
+		defer func() {
+			if eventsFile != nil {
+				_ = eventsFile.Close()
+			}
+		}()
 		stdoutWriters = append(stdoutWriters, eventsFile)
 	}
 	cmd.Stdout = io.MultiWriter(stdoutWriters...)
@@ -105,11 +120,25 @@ func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]a
 	watchdog.Start(cancel)
 	err = cmd.Run()
 	watchdog.Stop()
+	if eventsFile != nil {
+		if closeErr := eventsFile.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close JSON events log for %s: %w", spec.ActorName, closeErr)
+		}
+		eventsFile = nil
+	}
+	if policyErr := postflightSealedActorRuntime(sealed); policyErr != nil {
+		return nil, policyErr
+	}
+	if backend.CaptureJSONEvents {
+		if auditErr := auditCodexEvents(spec.EventsPath); auditErr != nil {
+			return nil, auditErr
+		}
+	}
 	if expiration, expired := watchdog.Expiration(); expired {
 		return nil, fmt.Errorf("actor `%s` failed: actor_watchdog_expired: no command progress observed for %s", expiration.ActorName, expiration.QuietWindow)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("actor `%s` failed: %s", spec.ActorName, strings.TrimSpace(output.String()))
+		return nil, fmt.Errorf("actor `%s` failed: %s", spec.ActorName, strings.TrimSpace(redactActorOutput(output.String(), sealedActorRedactionSecrets(sealed)...)))
 	}
 
 	data, err := os.ReadFile(spec.LastMessagePath)
@@ -123,36 +152,16 @@ func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]a
 	return response, nil
 }
 
-func buildActorEnvironment(parent []string) []string {
-	allowedPrefixes := []string{
-		"PATH=",
-		"CODEX_HOME=",
-		"OPENAI_API_KEY=",
-		"OPENAI_BASE_URL=",
-		"OPENAI_ORG_ID=",
-		"OPENAI_PROJECT=",
-		"HTTPS_PROXY=",
-		"HTTP_PROXY=",
-		"NO_PROXY=",
-		"ALL_PROXY=",
-		"https_proxy=",
-		"http_proxy=",
-		"no_proxy=",
-		"all_proxy=",
-		"SSL_CERT_FILE=",
-		"SSL_CERT_DIR=",
-		"RAIL_TEST_",
-	}
-	env := make([]string, 0, len(parent))
-	for _, entry := range parent {
-		for _, prefix := range allowedPrefixes {
-			if strings.HasPrefix(entry, prefix) {
-				env = append(env, entry)
-				break
-			}
+func redactActorOutput(value string, secrets ...string) string {
+	redacted := value
+	for _, secret := range secrets {
+		secret = strings.TrimSpace(secret)
+		if secret == "" {
+			continue
 		}
+		redacted = strings.ReplaceAll(redacted, secret, "[REDACTED]")
 	}
-	return env
+	return redacted
 }
 
 type synchronizedBuffer struct {

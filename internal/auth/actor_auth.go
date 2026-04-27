@@ -38,6 +38,9 @@ func CodexAuthHomePathFromEnv(env map[string]string) (string, error) {
 }
 
 func EnsureCodexAuthHome(path string) error {
+	if err := ensurePlatformSupported(); err != nil {
+		return err
+	}
 	resolved, err := resolveCodexAuthHomePath(path)
 	if err != nil {
 		return err
@@ -137,6 +140,9 @@ func userConfigDirWithoutAmbientXDG() (string, error) {
 }
 
 func ValidateCodexAuthHome(path string) error {
+	if err := ensurePlatformSupported(); err != nil {
+		return err
+	}
 	resolved, err := resolveCodexAuthHomePath(path)
 	if err != nil {
 		return err
@@ -145,6 +151,9 @@ func ValidateCodexAuthHome(path string) error {
 }
 
 func MaterializeCodexAuthForActor(sourceHome string, destinationHome string) (MaterializedCodexAuth, error) {
+	if err := ensurePlatformSupported(); err != nil {
+		return MaterializedCodexAuth{}, err
+	}
 	sourceHome, err := resolveCodexAuthHomePath(sourceHome)
 	if err != nil {
 		return MaterializedCodexAuth{}, err
@@ -179,6 +188,9 @@ func MaterializeCodexAuthForActor(sourceHome string, destinationHome string) (Ma
 }
 
 func RemoveCodexAuthHome(path string) error {
+	if err := ensurePlatformSupported(); err != nil {
+		return err
+	}
 	resolved, err := resolveCodexAuthHomePath(path)
 	if err != nil {
 		return err

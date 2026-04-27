@@ -26,6 +26,10 @@ func platformCurrentUID() (uint32, error) {
 	return uint32(uid), nil
 }
 
+func ensurePlatformSupported() error {
+	return nil
+}
+
 func ownerUID(info os.FileInfo) (uint32, bool) {
 	value, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {

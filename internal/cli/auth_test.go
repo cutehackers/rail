@@ -15,6 +15,7 @@ func writeFakeCodex(t *testing.T, dir string) string {
 set -euo pipefail
 printf '%s\n' "$*" >>"${RAIL_FAKE_CODEX_LOG}"
 printf '%s\n' "${CODEX_HOME:-}" >>"${RAIL_FAKE_CODEX_HOME_LOG}"
+printf '%s\n' "${RAIL_CODEX_AUTH_HOME:-}" >>"${RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG}"
 if [[ "$1" == "login" && "${2:-}" == "status" ]]; then
   if [[ -f "${CODEX_HOME}/auth.json" ]]; then
     printf 'Logged in\n'
@@ -50,10 +51,12 @@ func TestRunAuthLoginStatusDoctorAndLogoutUseRailCodexHome(t *testing.T) {
 	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
 	argsLog := filepath.Join(t.TempDir(), "args.log")
 	homeLog := filepath.Join(t.TempDir(), "home.log")
+	railAuthHomeLog := filepath.Join(t.TempDir(), "rail-auth-home.log")
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
 	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
 	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", homeLog)
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", railAuthHomeLog)
 
 	var loginOut bytes.Buffer
 	if err := RunAuth([]string{"login"}, strings.NewReader(""), &loginOut); err != nil {
@@ -96,6 +99,15 @@ func TestRunAuthLoginStatusDoctorAndLogoutUseRailCodexHome(t *testing.T) {
 			t.Fatalf("expected fake codex to use Rail auth home %q, got log %q", authHome, string(homeData))
 		}
 	}
+	railAuthHomeData, err := os.ReadFile(railAuthHomeLog)
+	if err != nil {
+		t.Fatalf("read fake codex Rail auth home log: %v", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(railAuthHomeData)), "\n") {
+		if line != "" {
+			t.Fatalf("expected fake codex not to inherit RAIL_CODEX_AUTH_HOME, got log %q", string(railAuthHomeData))
+		}
+	}
 }
 
 func TestRunAuthDoctorFailsClosedWhenAuthMissing(t *testing.T) {
@@ -106,6 +118,7 @@ func TestRunAuthDoctorFailsClosedWhenAuthMissing(t *testing.T) {
 	t.Setenv("RAIL_CODEX_AUTH_HOME", filepath.Join(t.TempDir(), "missing-auth-home"))
 	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
 	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", filepath.Join(t.TempDir(), "rail-auth-home.log"))
 
 	var stdout bytes.Buffer
 	err := RunAuth([]string{"doctor"}, strings.NewReader(""), &stdout)
@@ -140,14 +153,18 @@ func TestRunAuthStatusRejectsUnmarkedPrivateAuthHomeWithoutInvokingCodex(t *test
 	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
 	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
 	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", filepath.Join(t.TempDir(), "rail-auth-home.log"))
 
 	var stdout bytes.Buffer
 	err := RunAuth([]string{"status"}, strings.NewReader(""), &stdout)
 	if err == nil {
 		t.Fatalf("expected RunAuth status to reject unmarked auth home")
 	}
-	if !strings.Contains(err.Error(), "missing rail auth marker") {
-		t.Fatalf("expected missing marker error, got %v", err)
+	if got, want := err.Error(), "rail actor auth cannot be checked because it is not a Rail-owned auth home"; got != want {
+		t.Fatalf("unexpected sanitized status error: got %q want %q", got, want)
+	}
+	if strings.Contains(err.Error(), authHome) {
+		t.Fatalf("status error exposed concrete auth home: %v", err)
 	}
 	if data, err := os.ReadFile(argsLog); err == nil && len(data) != 0 {
 		t.Fatalf("expected unmarked auth home not to invoke fake codex, got log %q", data)
@@ -171,14 +188,21 @@ func TestRunAuthDoctorRejectsUnmarkedPrivateAuthHomeWithoutInvokingCodex(t *test
 	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
 	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
 	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", filepath.Join(t.TempDir(), "rail-auth-home.log"))
 
 	var stdout bytes.Buffer
 	err := RunAuth([]string{"doctor"}, strings.NewReader(""), &stdout)
 	if err == nil {
 		t.Fatalf("expected RunAuth doctor to reject unmarked auth home")
 	}
-	if !strings.Contains(err.Error(), "missing rail auth marker") {
-		t.Fatalf("expected missing marker error, got %v", err)
+	if got, want := err.Error(), "rail actor auth not configured"; got != want {
+		t.Fatalf("unexpected sanitized doctor error: got %q want %q", got, want)
+	}
+	if strings.Contains(err.Error(), authHome) || strings.Contains(stdout.String(), authHome) {
+		t.Fatalf("doctor exposed concrete auth home: err=%v stdout=%q", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "rail auth login") {
+		t.Fatalf("expected doctor output to explain login next step, got %q", stdout.String())
 	}
 	if data, err := os.ReadFile(argsLog); err == nil && len(data) != 0 {
 		t.Fatalf("expected unmarked auth home not to invoke fake codex, got log %q", data)
@@ -202,14 +226,18 @@ func TestRunAuthLogoutSkipsCodexForUnmarkedAuthHome(t *testing.T) {
 	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
 	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
 	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", filepath.Join(t.TempDir(), "rail-auth-home.log"))
 
 	var stdout bytes.Buffer
 	err := RunAuth([]string{"logout"}, strings.NewReader(""), &stdout)
 	if err == nil {
 		t.Fatalf("expected RunAuth logout to reject unmarked auth home")
 	}
-	if !strings.Contains(err.Error(), "missing rail auth marker") {
-		t.Fatalf("expected missing marker error, got %v", err)
+	if got, want := err.Error(), "rail actor auth cannot be removed because it is not a Rail-owned auth home"; got != want {
+		t.Fatalf("unexpected sanitized logout error: got %q want %q", got, want)
+	}
+	if strings.Contains(err.Error(), authHome) {
+		t.Fatalf("logout error exposed concrete auth home: %v", err)
 	}
 	if data, err := os.ReadFile(argsLog); err == nil && len(data) != 0 {
 		t.Fatalf("expected unmarked auth home not to invoke fake codex, got log %q", data)
@@ -230,6 +258,7 @@ func TestRunAuthLogoutSkipsCodexForMissingAuthHome(t *testing.T) {
 	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
 	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
 	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", filepath.Join(t.TempDir(), "rail-auth-home.log"))
 
 	var stdout bytes.Buffer
 	if err := RunAuth([]string{"logout"}, strings.NewReader(""), &stdout); err != nil {

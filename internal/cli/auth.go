@@ -9,6 +9,12 @@ import (
 	"rail/internal/auth"
 )
 
+const (
+	actorAuthNotConfiguredError = "rail actor auth not configured"
+	actorAuthCheckUnsafeError   = "rail actor auth cannot be checked because it is not a Rail-owned auth home"
+	actorAuthRemoveUnsafeError  = "rail actor auth cannot be removed because it is not a Rail-owned auth home"
+)
+
 func RunAuth(args []string, stdin io.Reader, stdout io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("auth subcommand is required: login, status, logout, or doctor")
@@ -77,13 +83,13 @@ func runAuthStatus(options authOptions, stdout io.Writer, doctor bool) error {
 	}
 	err = auth.RunCodexLoginStatus(authCommand(options), authHome, io.Discard, io.Discard)
 	if err != nil {
-		if err.Error() != "rail actor auth not configured" {
-			return err
-		}
 		if doctor {
 			_, _ = fmt.Fprintln(stdout, "Rail actor auth not configured.")
 			_, _ = fmt.Fprintln(stdout, "Run `rail auth login` before standard actor execution.")
-			return fmt.Errorf("rail actor auth not configured")
+			return fmt.Errorf(actorAuthNotConfiguredError)
+		}
+		if !isActorAuthNotConfigured(err) {
+			return fmt.Errorf(actorAuthCheckUnsafeError)
 		}
 		_, _ = fmt.Fprintln(stdout, "Rail actor auth not configured")
 		return nil
@@ -103,7 +109,7 @@ func runAuthLogout(options authOptions, stdout io.Writer) error {
 		return err
 	}
 	if err := auth.RunCodexLogout(authCommand(options), authHome, stdout, os.Stderr); err != nil {
-		return err
+		return fmt.Errorf(actorAuthRemoveUnsafeError)
 	}
 	_, _ = fmt.Fprintln(stdout, "Rail actor auth removed.")
 	return nil
@@ -125,4 +131,8 @@ func authCommand(options authOptions) string {
 		return options.codexCommand
 	}
 	return "codex"
+}
+
+func isActorAuthNotConfigured(err error) bool {
+	return err != nil && err.Error() == actorAuthNotConfiguredError
 }

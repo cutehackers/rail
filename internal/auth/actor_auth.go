@@ -2,10 +2,15 @@ package auth
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"os/user"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -21,6 +26,18 @@ type MaterializedCodexAuth struct {
 	SourceHome  string
 	AuthFile    string
 	CopiedFiles []string
+}
+
+var currentUID = func() (uint32, error) {
+	value, err := user.Current()
+	if err != nil {
+		return 0, fmt.Errorf("resolve current user: %w", err)
+	}
+	uid, err := strconv.ParseUint(value.Uid, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("parse current user UID: %w", err)
+	}
+	return uint32(uid), nil
 }
 
 func DefaultCodexAuthHomePath() (string, error) {
@@ -59,6 +76,9 @@ func EnsureCodexAuthHome(path string) error {
 			}
 			if !markerInfo.Mode().IsRegular() {
 				return fmt.Errorf("rail auth marker must be a regular file: %s", marker)
+			}
+			if err := validateRailAuthHomeOwnership(resolved); err != nil {
+				return err
 			}
 		} else if os.IsNotExist(err) {
 			empty, err := isDirectoryEmpty(resolved)
@@ -192,6 +212,9 @@ func RemoveCodexAuthHome(path string) error {
 	if err := validateRailAuthHomeMarker(resolved); err != nil {
 		return err
 	}
+	if err := validateRailAuthHomeOwnership(resolved); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(resolved); err != nil {
 		return fmt.Errorf("remove codex auth home: %w", err)
 	}
@@ -252,22 +275,20 @@ func validatePrivateDirectory(path string) error {
 }
 
 func copyPrivateRegularFile(source string, destination string) error {
-	info, err := os.Lstat(source)
+	sourceFile, err := openNoFollow(source, os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("auth material must not be a symlink: %s", source)
+	defer sourceFile.Close()
+	info, err := sourceFile.Stat()
+	if err != nil {
+		return fmt.Errorf("inspect auth material: %w", err)
 	}
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("auth material must be a regular file: %s", source)
 	}
 	if info.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("auth material permissions must be 0600 or stricter: %s", source)
-	}
-	data, err := os.ReadFile(source)
-	if err != nil {
-		return fmt.Errorf("read auth material: %w", err)
 	}
 	if info, err := os.Lstat(destination); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -276,16 +297,21 @@ func copyPrivateRegularFile(source string, destination string) error {
 		if info.IsDir() {
 			return fmt.Errorf("destination auth material must not be a directory: %s", destination)
 		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("destination auth material must be a regular file: %s", destination)
+		return fmt.Errorf("destination auth material already exists: %s", destination)
+	} else if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect destination auth material: %w", err)
 		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("inspect destination auth material: %w", err)
 	}
-	if err := os.WriteFile(destination, data, 0o600); err != nil {
+	destinationFile, err := openNoFollow(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer destinationFile.Close()
+	if _, err := io.Copy(destinationFile, sourceFile); err != nil {
 		return fmt.Errorf("write actor auth material: %w", err)
 	}
-	if err := os.Chmod(destination, 0o600); err != nil {
+	if err := destinationFile.Chmod(0o600); err != nil {
 		return fmt.Errorf("chmod actor auth material: %w", err)
 	}
 	return nil
@@ -307,6 +333,87 @@ func validateRailAuthHomeMarker(path string) error {
 		return fmt.Errorf("rail auth marker must be a regular file: %s", marker)
 	}
 	return nil
+}
+
+func validateRailAuthHomeOwnership(path string) error {
+	uid, err := currentUID()
+	if err != nil {
+		return err
+	}
+	if err := validatePathOwner(path, uid, "codex auth home"); err != nil {
+		return err
+	}
+	return validatePathOwner(filepath.Join(path, authHomeMarkerName), uid, "rail auth marker")
+}
+
+func validatePathOwner(path string, uid uint32, label string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	owner, ok := ownerUID(info)
+	if !ok {
+		// Conservative fallback: without UID metadata, Rail cannot prove ownership of
+		// a marked auth home, so destructive operations and marker trust are denied.
+		return fmt.Errorf("%s ownership validation is unsupported on this platform: %s", label, path)
+	}
+	if owner != uid {
+		return fmt.Errorf("%s must be owned by the current user: %s", label, path)
+	}
+	return nil
+}
+
+func ownerUID(info os.FileInfo) (uint32, bool) {
+	value := reflect.ValueOf(info.Sys())
+	if !value.IsValid() {
+		return 0, false
+	}
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return 0, false
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return 0, false
+	}
+	field := value.FieldByName("Uid")
+	if !field.IsValid() || !field.CanUint() {
+		return 0, false
+	}
+	return uint32(field.Uint()), true
+}
+
+func openNoFollow(path string, flag int, perm os.FileMode) (*os.File, error) {
+	noFollow := noFollowOpenFlag()
+	if noFollow == 0 {
+		return nil, fmt.Errorf("no-follow file open is unsupported on this platform: %s", path)
+	}
+	fd, err := syscall.Open(path, flag|noFollow, uint32(perm))
+	if err != nil {
+		if err == syscall.ELOOP {
+			if flag&os.O_CREATE != 0 {
+				return nil, fmt.Errorf("destination auth material must not be a symlink: %s", path)
+			}
+			return nil, fmt.Errorf("auth material must not be a symlink: %s", path)
+		}
+		if flag&os.O_CREATE != 0 {
+			return nil, fmt.Errorf("write actor auth material: %w", err)
+		}
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), path), nil
+}
+
+func noFollowOpenFlag() int {
+	switch runtime.GOOS {
+	case "darwin", "freebsd", "netbsd", "openbsd":
+		return 0x100
+	case "linux":
+		return 0x20000
+	default:
+		return 0
+	}
 }
 
 func isDirectoryEmpty(path string) (bool, error) {

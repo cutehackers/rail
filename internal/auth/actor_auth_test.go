@@ -163,6 +163,38 @@ func TestEnsureCodexAuthHomeAcceptsExistingMarkedDirectory(t *testing.T) {
 	}
 }
 
+func TestEnsureCodexAuthHomeRejectsExistingMarkedDirectoryWithWrongOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rail-auth")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(path, ".rail-auth-home"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	originalCurrentUID := currentUID
+	currentUID = func() (uint32, error) { return ownerUIDForTest(t, path) + 1, nil }
+	t.Cleanup(func() { currentUID = originalCurrentUID })
+
+	err := EnsureCodexAuthHome(path)
+	if err == nil {
+		t.Fatalf("expected marked auth home with wrong owner to be rejected")
+	}
+	if !strings.Contains(err.Error(), "must be owned by the current user") {
+		t.Fatalf("expected ownership error, got %v", err)
+	}
+}
+
+func TestValidateRailAuthHomeOwnershipAcceptsOwnedDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rail-auth")
+	if err := EnsureCodexAuthHome(path); err != nil {
+		t.Fatalf("EnsureCodexAuthHome returned error: %v", err)
+	}
+
+	if err := validateRailAuthHomeOwnership(path); err != nil {
+		t.Fatalf("validateRailAuthHomeOwnership returned error: %v", err)
+	}
+}
+
 func TestEnsureCodexAuthHomeRejectsMarkerSymlink(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "rail-auth")
@@ -308,6 +340,31 @@ func TestMaterializeCodexAuthForActorRejectsDestinationAuthSymlink(t *testing.T)
 	}
 }
 
+func TestMaterializeCodexAuthForActorRejectsExistingDestinationAuthFile(t *testing.T) {
+	source := t.TempDir()
+	destination := filepath.Join(t.TempDir(), "destination")
+	if err := os.Chmod(source, 0o700); err != nil {
+		t.Fatalf("chmod source: %v", err)
+	}
+	if err := os.Mkdir(destination, 0o700); err != nil {
+		t.Fatalf("mkdir destination: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
+		t.Fatalf("write source auth.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(destination, "auth.json"), []byte(`{"tokens":"old"}`), 0o600); err != nil {
+		t.Fatalf("write destination auth.json: %v", err)
+	}
+
+	_, err := MaterializeCodexAuthForActor(source, destination)
+	if err == nil {
+		t.Fatalf("expected existing destination auth file to be rejected")
+	}
+	if !strings.Contains(err.Error(), "destination auth material already exists") {
+		t.Fatalf("expected existing destination error, got %v", err)
+	}
+}
+
 func TestMaterializeCodexAuthForActorRejectsSourceAuthSymlink(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "source")
@@ -396,4 +453,38 @@ func TestRemoveCodexAuthHomeRemovesMarkedDirectory(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected auth home to be removed, stat error: %v", err)
 	}
+}
+
+func TestRemoveCodexAuthHomeRejectsMarkedDirectoryWithWrongOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rail-auth")
+	if err := EnsureCodexAuthHome(path); err != nil {
+		t.Fatalf("EnsureCodexAuthHome returned error: %v", err)
+	}
+	originalCurrentUID := currentUID
+	currentUID = func() (uint32, error) { return ownerUIDForTest(t, path) + 1, nil }
+	t.Cleanup(func() { currentUID = originalCurrentUID })
+
+	err := RemoveCodexAuthHome(path)
+	if err == nil {
+		t.Fatalf("expected marked auth home with wrong owner to be rejected")
+	}
+	if !strings.Contains(err.Error(), "must be owned by the current user") {
+		t.Fatalf("expected ownership error, got %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected auth home not to be removed: %v", err)
+	}
+}
+
+func ownerUIDForTest(t *testing.T, path string) uint32 {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat %s: %v", path, err)
+	}
+	uid, ok := ownerUID(info)
+	if !ok {
+		t.Skip("file ownership metadata unavailable on this platform")
+	}
+	return uid
 }

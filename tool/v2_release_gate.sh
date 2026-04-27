@@ -24,7 +24,8 @@ go build \
   ./cmd/rail
 
 FAKE_BIN="$(mktemp -d)"
-trap 'rm -rf "$FAKE_BIN"' EXIT
+RAIL_RELEASE_AUTH_HOME="$(mktemp -d)"
+trap 'rm -rf "$FAKE_BIN" "$RAIL_RELEASE_AUTH_HOME"' EXIT
 cat > "$FAKE_BIN/codex" <<'PY'
 #!/usr/bin/env python3
 import json
@@ -84,6 +85,9 @@ PY
 chmod +x "$FAKE_BIN/codex"
 FAKE_CODEX="$(cd "$FAKE_BIN" && pwd -P)/codex"
 printf '%s\n' "$FAKE_CODEX" > "$FAKE_BIN/.rail-internal-test-codex"
+chmod 700 "$RAIL_RELEASE_AUTH_HOME"
+printf '%s\n' '{"tokens":"rail-release-gate-token"}' > "$RAIL_RELEASE_AUTH_HOME/auth.json"
+chmod 600 "$RAIL_RELEASE_AUTH_HOME/auth.json"
 
 rm -rf "$ARTIFACT_PATH"
 ./build/rail run \
@@ -91,7 +95,7 @@ rm -rf "$ARTIFACT_PATH"
   --project-root "$TARGET_ROOT" \
   --task-id "$SMOKE_TASK_ID"
 ./build/rail execute --artifact "$ARTIFACT_PATH"
-OPENAI_API_KEY="rail-release-gate-dummy" \
+RAIL_CODEX_AUTH_HOME="$RAIL_RELEASE_AUTH_HOME" \
   RAIL_INTERNAL_TEST_ALLOW_UNTRUSTED_CODEX_PATH="rail-internal-tests-only" \
   RAIL_INTERNAL_TEST_CODEX_PATH="$FAKE_CODEX" \
   PATH="$FAKE_BIN:$PATH" \

@@ -259,7 +259,8 @@ func MaterializeCodexAuthForActor(sourceHome string, destinationHome string) (Ma
 	if err != nil {
 		return MaterializedCodexAuth{}, fmt.Errorf("resolve actor codex home: %w", err)
 	}
-	if err := validatePrivateDirectory(sourceHome); err != nil {
+	sourceHome, err = validateMarkedCodexAuthHome(sourceHome)
+	if err != nil {
 		return MaterializedCodexAuth{}, fmt.Errorf("rail_actor_auth_home_unsafe: %w", err)
 	}
 	if err := ensurePrivateDirectory(destinationHome); err != nil {

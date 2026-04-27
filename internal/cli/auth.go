@@ -11,6 +11,7 @@ import (
 
 const (
 	actorAuthNotConfiguredError = "rail actor auth not configured"
+	actorAuthConfigureError     = "rail actor auth cannot be configured because the auth home is unsafe"
 	actorAuthCheckUnsafeError   = "rail actor auth cannot be checked because it is not a Rail-owned auth home"
 	actorAuthRemoveUnsafeError  = "rail actor auth cannot be removed because it is not a Rail-owned auth home"
 )
@@ -66,10 +67,10 @@ func runAuthLogin(options authOptions, stdin io.Reader, stdout io.Writer) error 
 	}
 	_, _ = fmt.Fprintln(stdout, "Opening Codex browser login for Rail actor auth...")
 	if err := auth.RunCodexLogin(authCommand(options), authHome, stdin, stdout, os.Stderr); err != nil {
-		return err
+		return fmt.Errorf(actorAuthConfigureError)
 	}
 	if err := auth.RunCodexLoginStatus(authCommand(options), authHome, io.Discard, io.Discard); err != nil {
-		return err
+		return fmt.Errorf(actorAuthConfigureError)
 	}
 	_, _ = fmt.Fprintln(stdout, "Rail actor auth configured.")
 	_, _ = fmt.Fprintln(stdout, "Secret values are not printed.")

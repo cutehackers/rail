@@ -239,15 +239,21 @@ func TestEnsureCodexAuthHomeRejectsSymlink(t *testing.T) {
 	}
 }
 
-func TestMaterializeCodexAuthForActorCopiesOnlyAuthJSON(t *testing.T) {
-	source := t.TempDir()
-	destination := filepath.Join(t.TempDir(), "actor-codex-home")
-	if err := os.Chmod(source, 0o700); err != nil {
-		t.Fatalf("chmod source: %v", err)
+func testMarkedCodexAuthHome(t *testing.T) string {
+	t.Helper()
+	source := filepath.Join(t.TempDir(), "rail-auth")
+	if err := EnsureCodexAuthHome(source); err != nil {
+		t.Fatalf("EnsureCodexAuthHome returned error: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
 		t.Fatalf("write auth.json: %v", err)
 	}
+	return source
+}
+
+func TestMaterializeCodexAuthForActorCopiesOnlyAuthJSON(t *testing.T) {
+	source := testMarkedCodexAuthHome(t)
+	destination := filepath.Join(t.TempDir(), "actor-codex-home")
 	if err := os.Mkdir(filepath.Join(source, "skills"), 0o700); err != nil {
 		t.Fatalf("mkdir skills: %v", err)
 	}
@@ -292,13 +298,7 @@ func TestMaterializeCodexAuthForActorCopiesOnlyAuthJSON(t *testing.T) {
 }
 
 func TestMaterializeCodexAuthForActorRejectsEmptyDestinationHome(t *testing.T) {
-	source := t.TempDir()
-	if err := os.Chmod(source, 0o700); err != nil {
-		t.Fatalf("chmod source: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
-		t.Fatalf("write auth.json: %v", err)
-	}
+	source := testMarkedCodexAuthHome(t)
 
 	_, err := MaterializeCodexAuthForActor(source, "   ")
 	if err == nil {
@@ -315,14 +315,9 @@ func TestMaterializeCodexAuthForActorRejectsDestinationAuthSymlink(t *testing.T)
 	destination := filepath.Join(dir, "destination")
 	target := filepath.Join(dir, "target-auth.json")
 	link := filepath.Join(destination, "auth.json")
-	if err := os.Mkdir(source, 0o700); err != nil {
-		t.Fatalf("mkdir source: %v", err)
-	}
+	source = testMarkedCodexAuthHome(t)
 	if err := os.Mkdir(destination, 0o700); err != nil {
 		t.Fatalf("mkdir destination: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
-		t.Fatalf("write source auth.json: %v", err)
 	}
 	if err := os.WriteFile(target, []byte(`{"tokens":"old"}`), 0o600); err != nil {
 		t.Fatalf("write target auth.json: %v", err)
@@ -341,16 +336,10 @@ func TestMaterializeCodexAuthForActorRejectsDestinationAuthSymlink(t *testing.T)
 }
 
 func TestMaterializeCodexAuthForActorRejectsExistingDestinationAuthFile(t *testing.T) {
-	source := t.TempDir()
+	source := testMarkedCodexAuthHome(t)
 	destination := filepath.Join(t.TempDir(), "destination")
-	if err := os.Chmod(source, 0o700); err != nil {
-		t.Fatalf("chmod source: %v", err)
-	}
 	if err := os.Mkdir(destination, 0o700); err != nil {
 		t.Fatalf("mkdir destination: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
-		t.Fatalf("write source auth.json: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(destination, "auth.json"), []byte(`{"tokens":"old"}`), 0o600); err != nil {
 		t.Fatalf("write destination auth.json: %v", err)
@@ -367,12 +356,12 @@ func TestMaterializeCodexAuthForActorRejectsExistingDestinationAuthFile(t *testi
 
 func TestMaterializeCodexAuthForActorRejectsSourceAuthSymlink(t *testing.T) {
 	dir := t.TempDir()
-	source := filepath.Join(dir, "source")
+	source := testMarkedCodexAuthHome(t)
 	destination := filepath.Join(dir, "destination")
 	target := filepath.Join(dir, "target-auth.json")
 	link := filepath.Join(source, "auth.json")
-	if err := os.Mkdir(source, 0o700); err != nil {
-		t.Fatalf("mkdir source: %v", err)
+	if err := os.Remove(filepath.Join(source, "auth.json")); err != nil {
+		t.Fatalf("remove source auth.json: %v", err)
 	}
 	if err := os.WriteFile(target, []byte(`{"tokens":"secret"}`), 0o600); err != nil {
 		t.Fatalf("write target auth.json: %v", err)
@@ -391,13 +380,13 @@ func TestMaterializeCodexAuthForActorRejectsSourceAuthSymlink(t *testing.T) {
 }
 
 func TestMaterializeCodexAuthForActorRejectsLooseSourceAuthPermissions(t *testing.T) {
-	source := t.TempDir()
+	source := testMarkedCodexAuthHome(t)
 	destination := filepath.Join(t.TempDir(), "destination")
-	if err := os.Chmod(source, 0o700); err != nil {
-		t.Fatalf("chmod source: %v", err)
-	}
 	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o644); err != nil {
 		t.Fatalf("write source auth.json: %v", err)
+	}
+	if err := os.Chmod(filepath.Join(source, "auth.json"), 0o644); err != nil {
+		t.Fatalf("chmod source auth.json: %v", err)
 	}
 
 	_, err := MaterializeCodexAuthForActor(source, destination)
@@ -406,6 +395,25 @@ func TestMaterializeCodexAuthForActorRejectsLooseSourceAuthPermissions(t *testin
 	}
 	if !strings.Contains(err.Error(), "auth material permissions must be 0600 or stricter") {
 		t.Fatalf("expected source permission error, got %v", err)
+	}
+}
+
+func TestMaterializeCodexAuthForActorRejectsUnmarkedSourceHome(t *testing.T) {
+	source := t.TempDir()
+	destination := filepath.Join(t.TempDir(), "destination")
+	if err := os.Chmod(source, 0o700); err != nil {
+		t.Fatalf("chmod source: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
+		t.Fatalf("write auth.json: %v", err)
+	}
+
+	_, err := MaterializeCodexAuthForActor(source, destination)
+	if err == nil {
+		t.Fatalf("expected unmarked source auth home to be rejected")
+	}
+	if !strings.Contains(err.Error(), "rail_actor_auth_home_unsafe") {
+		t.Fatalf("expected unsafe auth home error, got %v", err)
 	}
 }
 

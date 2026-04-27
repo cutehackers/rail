@@ -138,6 +138,41 @@ func TestRunAuthDoctorFailsClosedWhenAuthMissing(t *testing.T) {
 	}
 }
 
+func TestRunAuthLoginRejectsUnsafeAuthHomeWithoutExposingPath(t *testing.T) {
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	argsLog := filepath.Join(t.TempDir(), "args.log")
+	if err := os.Mkdir(authHome, 0o700); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(authHome, "unrelated.txt"), []byte("keep"), 0o600); err != nil {
+		t.Fatalf("write unrelated file: %v", err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+	t.Setenv("RAIL_FAKE_CODEX_LOG", argsLog)
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", filepath.Join(t.TempDir(), "rail-auth-home.log"))
+
+	var stdout bytes.Buffer
+	err := RunAuth([]string{"login"}, strings.NewReader(""), &stdout)
+	if err == nil {
+		t.Fatalf("expected RunAuth login to reject unsafe auth home")
+	}
+	if got, want := err.Error(), "rail actor auth cannot be configured because the auth home is unsafe"; got != want {
+		t.Fatalf("unexpected sanitized login error: got %q want %q", got, want)
+	}
+	if strings.Contains(err.Error(), authHome) || strings.Contains(stdout.String(), authHome) {
+		t.Fatalf("login exposed concrete auth home: err=%v stdout=%q", err, stdout.String())
+	}
+	if data, err := os.ReadFile(argsLog); err == nil && len(data) != 0 {
+		t.Fatalf("expected unsafe auth home not to invoke fake codex, got log %q", data)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read fake codex args log: %v", err)
+	}
+}
+
 func TestRunAuthStatusRejectsUnmarkedPrivateAuthHomeWithoutInvokingCodex(t *testing.T) {
 	fakeBin := t.TempDir()
 	writeFakeCodex(t, fakeBin)

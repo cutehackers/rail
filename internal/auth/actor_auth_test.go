@@ -50,6 +50,25 @@ func TestCodexAuthHomePathFromEnvPrefersOverride(t *testing.T) {
 	}
 }
 
+func TestCodexAuthHomePathFromEnvUsesEnvMapXDGConfigHome(t *testing.T) {
+	base := t.TempDir()
+	processConfigHome := filepath.Join(base, "process-config")
+	mapConfigHome := "map-config"
+	t.Chdir(base)
+	t.Setenv("XDG_CONFIG_HOME", processConfigHome)
+
+	path, err := CodexAuthHomePathFromEnv(map[string]string{
+		"XDG_CONFIG_HOME": mapConfigHome,
+	})
+	if err != nil {
+		t.Fatalf("CodexAuthHomePathFromEnv returned error: %v", err)
+	}
+	want := filepath.Join(base, mapConfigHome, "rail", "codex-auth-home")
+	if path != want {
+		t.Fatalf("unexpected auth home: got %q want %q", path, want)
+	}
+}
+
 func TestEnsureCodexAuthHomeCreatesPrivateDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rail-auth")
 
@@ -65,6 +84,47 @@ func TestEnsureCodexAuthHomeCreatesPrivateDirectory(t *testing.T) {
 	}
 	if got, want := info.Mode().Perm(), os.FileMode(0o700); got != want {
 		t.Fatalf("unexpected auth home permission: got %v want %v", got, want)
+	}
+}
+
+func TestEnsureCodexAuthHomeRejectsExistingNonEmptyUnmarkedDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rail-auth")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "unrelated.txt"), []byte("keep"), 0o600); err != nil {
+		t.Fatalf("write unrelated file: %v", err)
+	}
+
+	err := EnsureCodexAuthHome(path)
+	if err == nil {
+		t.Fatalf("expected non-empty unmarked auth home to be rejected")
+	}
+	if !strings.Contains(err.Error(), "existing unmarked codex auth home must be empty") {
+		t.Fatalf("expected non-empty unmarked error, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(path, ".rail-auth-home")); !os.IsNotExist(err) {
+		t.Fatalf("expected marker not to be created, stat error: %v", err)
+	}
+}
+
+func TestEnsureCodexAuthHomeAcceptsExistingMarkedDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rail-auth")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(path, ".rail-auth-home"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
+		t.Fatalf("write auth.json: %v", err)
+	}
+
+	if err := EnsureCodexAuthHome(path); err != nil {
+		t.Fatalf("EnsureCodexAuthHome returned error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(path, "auth.json")); err != nil {
+		t.Fatalf("expected existing auth.json to remain: %v", err)
 	}
 }
 
@@ -135,8 +195,26 @@ func TestMaterializeCodexAuthForActorCopiesOnlyAuthJSON(t *testing.T) {
 	if result.Source != "rail_codex_login" {
 		t.Fatalf("unexpected source: %q", result.Source)
 	}
-	if _, err := os.Stat(filepath.Join(destination, "auth.json")); err != nil {
+	destinationFile := filepath.Join(destination, "auth.json")
+	if result.AuthFile != destinationFile {
+		t.Fatalf("unexpected auth file: got %q want %q", result.AuthFile, destinationFile)
+	}
+	if len(result.CopiedFiles) != 1 || result.CopiedFiles[0] != "auth.json" {
+		t.Fatalf("unexpected copied files: %#v", result.CopiedFiles)
+	}
+	info, err := os.Stat(destinationFile)
+	if err != nil {
 		t.Fatalf("expected auth.json to be copied: %v", err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o600); got != want {
+		t.Fatalf("unexpected auth.json permission: got %v want %v", got, want)
+	}
+	content, err := os.ReadFile(destinationFile)
+	if err != nil {
+		t.Fatalf("read copied auth.json: %v", err)
+	}
+	if string(content) != `{"tokens":"secret"}` {
+		t.Fatalf("unexpected copied auth.json content: %q", content)
 	}
 	if _, err := os.Stat(filepath.Join(destination, "skills")); !os.IsNotExist(err) {
 		t.Fatalf("expected skills directory not to be copied, stat error: %v", err)

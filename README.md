@@ -133,8 +133,9 @@ To remove the local Rail actor auth state:
 rail auth logout
 ```
 
-Rail never prints stored secret values, and actor provenance records only the
-auth source and materialization status, not tokens.
+Rail never prints stored secret values, and actor provenance records non-secret
+auth metadata such as source, materialization status, and materialized file
+names, not tokens.
 
 ## Advanced Overrides
 

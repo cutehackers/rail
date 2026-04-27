@@ -526,7 +526,10 @@ func TestV2ReleaseGateRunsFullGoFirstChecks(t *testing.T) {
 		"FAKE_CODEX=\"$(cd \"$FAKE_BIN\" && pwd -P)/codex\"",
 		"printf '%s\\n' \"$FAKE_CODEX\" > \"$FAKE_BIN/.rail-internal-test-codex\"",
 		"RAIL_RELEASE_AUTH_HOME=\"$(mktemp -d)\"",
+		"trap 'rm -rf \"$FAKE_BIN\" \"$RAIL_RELEASE_AUTH_HOME\"' EXIT",
+		"chmod 700 \"$RAIL_RELEASE_AUTH_HOME\"",
 		"printf '%s\\n' '{\"tokens\":\"rail-release-gate-token\"}' > \"$RAIL_RELEASE_AUTH_HOME/auth.json\"",
+		"chmod 600 \"$RAIL_RELEASE_AUTH_HOME/auth.json\"",
 		"RAIL_CODEX_AUTH_HOME=\"$RAIL_RELEASE_AUTH_HOME\"",
 		"RAIL_INTERNAL_TEST_ALLOW_UNTRUSTED_CODEX_PATH=\"rail-internal-tests-only\"",
 		"RAIL_INTERNAL_TEST_CODEX_PATH=\"$FAKE_CODEX\"",
@@ -543,6 +546,7 @@ func TestV2ReleaseGateRunsFullGoFirstChecks(t *testing.T) {
 	}
 	for _, rejected := range []string{
 		"Go CLI parity is incomplete for v2 release gate",
+		"OPENAI_API_KEY",
 		legacy + " compile exe",
 		legacy + " run " + legacyRuntime + " run",
 		legacy + " run " + legacyRuntime + " execute",

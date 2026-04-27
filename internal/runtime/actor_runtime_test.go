@@ -358,9 +358,10 @@ func TestPrepareSealedActorRuntimeProvenanceDoesNotExposeSecretValues(t *testing
 	if err := os.WriteFile(fakeCodexPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("failed to write fake codex: %v", err)
 	}
+	authHome := testRailCodexAuthHome(t, "super-secret-token")
 
 	sealed, err := prepareSealedActorRuntime(defaultTestActorBackend(), testActorCommandSpec(t, artifactDirectory, workingDirectory, "planner"), fakeCodexParentEnv(t, fakeBin, fakeCodexPath,
-		"OPENAI_API_KEY=super-secret",
+		"RAIL_CODEX_AUTH_HOME="+authHome,
 		"HTTPS_PROXY=https://user:password@proxy.example",
 	))
 	if err != nil {
@@ -371,12 +372,17 @@ func TestPrepareSealedActorRuntimeProvenanceDoesNotExposeSecretValues(t *testing
 		t.Fatalf("failed to read provenance: %v", err)
 	}
 	provenance := string(data)
-	for _, forbidden := range []string{"super-secret", "user:password"} {
+	for _, forbidden := range []string{"super-secret-token", authHome, "user:password"} {
 		if strings.Contains(provenance, forbidden) {
 			t.Fatalf("expected provenance to redact secret value %q, got:\n%s", forbidden, provenance)
 		}
 	}
-	for _, expected := range []string{"OPENAI_API_KEY", "HTTPS_PROXY", "command_path:"} {
+	for _, forbidden := range []string{"OPENAI_API_KEY"} {
+		if strings.Contains(provenance, forbidden) {
+			t.Fatalf("expected provenance to omit %q, got:\n%s", forbidden, provenance)
+		}
+	}
+	for _, expected := range []string{"HTTPS_PROXY", "command_path:", "auth_source: rail_codex_login", "auth_materialized: true", "auth.json"} {
 		if !strings.Contains(provenance, expected) {
 			t.Fatalf("expected provenance to contain %q, got:\n%s", expected, provenance)
 		}

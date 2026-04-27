@@ -21,6 +21,21 @@ func TestDefaultCodexAuthHomePathUsesUserConfigRailDirectory(t *testing.T) {
 	}
 }
 
+func TestDefaultCodexAuthHomePathNormalizesRelativeXDGConfigHome(t *testing.T) {
+	base := t.TempDir()
+	t.Chdir(base)
+	t.Setenv("XDG_CONFIG_HOME", "relative-config")
+
+	path, err := DefaultCodexAuthHomePath()
+	if err != nil {
+		t.Fatalf("DefaultCodexAuthHomePath returned error: %v", err)
+	}
+	want := filepath.Join(base, "relative-config", "rail", "codex-auth-home")
+	if path != want {
+		t.Fatalf("unexpected auth home: got %q want %q", path, want)
+	}
+}
+
 func TestCodexAuthHomePathFromEnvPrefersOverride(t *testing.T) {
 	override := filepath.Join(t.TempDir(), "rail-auth")
 
@@ -53,6 +68,30 @@ func TestEnsureCodexAuthHomeCreatesPrivateDirectory(t *testing.T) {
 	}
 }
 
+func TestEnsureCodexAuthHomeRejectsMarkerSymlink(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rail-auth")
+	target := filepath.Join(dir, "marker-target")
+	marker := filepath.Join(path, ".rail-auth-home")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+	if err := os.WriteFile(target, []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	if err := os.Symlink(target, marker); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	err := EnsureCodexAuthHome(path)
+	if err == nil {
+		t.Fatalf("expected marker symlink to be rejected")
+	}
+	if !strings.Contains(err.Error(), "marker must not be a symlink") {
+		t.Fatalf("expected marker symlink error, got %v", err)
+	}
+}
+
 func TestEnsureCodexAuthHomeRejectsSymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")
@@ -76,6 +115,9 @@ func TestEnsureCodexAuthHomeRejectsSymlink(t *testing.T) {
 func TestMaterializeCodexAuthForActorCopiesOnlyAuthJSON(t *testing.T) {
 	source := t.TempDir()
 	destination := filepath.Join(t.TempDir(), "actor-codex-home")
+	if err := os.Chmod(source, 0o700); err != nil {
+		t.Fatalf("chmod source: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
 		t.Fatalf("write auth.json: %v", err)
 	}
@@ -101,5 +143,100 @@ func TestMaterializeCodexAuthForActorCopiesOnlyAuthJSON(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(destination, "config.toml")); !os.IsNotExist(err) {
 		t.Fatalf("expected config.toml not to be copied, stat error: %v", err)
+	}
+}
+
+func TestMaterializeCodexAuthForActorRejectsEmptyDestinationHome(t *testing.T) {
+	source := t.TempDir()
+	if err := os.Chmod(source, 0o700); err != nil {
+		t.Fatalf("chmod source: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
+		t.Fatalf("write auth.json: %v", err)
+	}
+
+	_, err := MaterializeCodexAuthForActor(source, "   ")
+	if err == nil {
+		t.Fatalf("expected empty destination home to be rejected")
+	}
+	if !strings.Contains(err.Error(), "actor codex home is required") {
+		t.Fatalf("expected required destination error, got %v", err)
+	}
+}
+
+func TestMaterializeCodexAuthForActorRejectsDestinationAuthSymlink(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source")
+	destination := filepath.Join(dir, "destination")
+	target := filepath.Join(dir, "target-auth.json")
+	link := filepath.Join(destination, "auth.json")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	if err := os.Mkdir(destination, 0o700); err != nil {
+		t.Fatalf("mkdir destination: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o600); err != nil {
+		t.Fatalf("write source auth.json: %v", err)
+	}
+	if err := os.WriteFile(target, []byte(`{"tokens":"old"}`), 0o600); err != nil {
+		t.Fatalf("write target auth.json: %v", err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	_, err := MaterializeCodexAuthForActor(source, destination)
+	if err == nil {
+		t.Fatalf("expected destination auth symlink to be rejected")
+	}
+	if !strings.Contains(err.Error(), "destination auth material must not be a symlink") {
+		t.Fatalf("expected destination symlink error, got %v", err)
+	}
+}
+
+func TestMaterializeCodexAuthForActorDoesNotCreateMissingSourceHome(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "missing-source")
+	destination := filepath.Join(dir, "destination")
+
+	_, err := MaterializeCodexAuthForActor(source, destination)
+	if err == nil {
+		t.Fatalf("expected missing source home to be rejected")
+	}
+	if _, statErr := os.Stat(source); !os.IsNotExist(statErr) {
+		t.Fatalf("expected missing source not to be created, stat error: %v", statErr)
+	}
+}
+
+func TestRemoveCodexAuthHomeRejectsDirectoryWithoutMarker(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rail-auth")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+
+	err := RemoveCodexAuthHome(path)
+	if err == nil {
+		t.Fatalf("expected auth home without marker to be rejected")
+	}
+	if !strings.Contains(err.Error(), "missing rail auth marker") {
+		t.Fatalf("expected missing marker error, got %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected auth home not to be removed: %v", err)
+	}
+}
+
+func TestRemoveCodexAuthHomeRemovesMarkedDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rail-auth")
+	if err := EnsureCodexAuthHome(path); err != nil {
+		t.Fatalf("EnsureCodexAuthHome returned error: %v", err)
+	}
+
+	if err := RemoveCodexAuthHome(path); err != nil {
+		t.Fatalf("RemoveCodexAuthHome returned error: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected auth home to be removed, stat error: %v", err)
 	}
 }

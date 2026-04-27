@@ -12,6 +12,7 @@ const (
 	RailCodexAuthHomeEnv = "RAIL_CODEX_AUTH_HOME"
 	AuthSourceRailCodex  = "rail_codex_login"
 	CodexAuthFileName    = "auth.json"
+	authHomeMarkerName   = ".rail-auth-home"
 )
 
 type MaterializedCodexAuth struct {
@@ -23,7 +24,11 @@ type MaterializedCodexAuth struct {
 
 func DefaultCodexAuthHomePath() (string, error) {
 	if value := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); value != "" {
-		return filepath.Join(value, "rail", "codex-auth-home"), nil
+		configDir, err := filepath.Abs(value)
+		if err != nil {
+			return "", fmt.Errorf("resolve XDG config directory: %w", err)
+		}
+		return filepath.Join(configDir, "rail", "codex-auth-home"), nil
 	}
 	configDir, err := os.UserConfigDir()
 	if err != nil {
@@ -47,12 +52,21 @@ func EnsureCodexAuthHome(path string) error {
 	if err := ensurePrivateDirectory(resolved); err != nil {
 		return err
 	}
-	marker := filepath.Join(resolved, ".rail-auth-home")
-	if _, err := os.Stat(marker); os.IsNotExist(err) {
+	marker := filepath.Join(resolved, authHomeMarkerName)
+	if info, err := os.Lstat(marker); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("rail auth marker must not be a symlink: %s", marker)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("rail auth marker must be a regular file: %s", marker)
+		}
+	} else if os.IsNotExist(err) {
 		content := fmt.Sprintf("version: 1\ncreated_at: %s\n", time.Now().UTC().Format(time.RFC3339))
 		if err := os.WriteFile(marker, []byte(content), 0o600); err != nil {
 			return fmt.Errorf("write rail auth marker: %w", err)
 		}
+	} else {
+		return fmt.Errorf("inspect rail auth marker: %w", err)
 	}
 	return nil
 }
@@ -70,11 +84,15 @@ func MaterializeCodexAuthForActor(sourceHome string, destinationHome string) (Ma
 	if err != nil {
 		return MaterializedCodexAuth{}, err
 	}
-	destinationHome, err = filepath.Abs(strings.TrimSpace(destinationHome))
+	destinationHome = strings.TrimSpace(destinationHome)
+	if destinationHome == "" {
+		return MaterializedCodexAuth{}, fmt.Errorf("actor codex home is required")
+	}
+	destinationHome, err = filepath.Abs(destinationHome)
 	if err != nil {
 		return MaterializedCodexAuth{}, fmt.Errorf("resolve actor codex home: %w", err)
 	}
-	if err := ensurePrivateDirectory(sourceHome); err != nil {
+	if err := validatePrivateDirectory(sourceHome); err != nil {
 		return MaterializedCodexAuth{}, fmt.Errorf("rail_actor_auth_home_unsafe: %w", err)
 	}
 	if err := ensurePrivateDirectory(destinationHome); err != nil {
@@ -107,6 +125,12 @@ func RemoveCodexAuthHome(path string) error {
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("inspect codex auth home: %w", err)
+	}
+	if err := validatePrivateDirectory(resolved); err != nil {
+		return err
+	}
+	if err := validateRailAuthHomeMarker(resolved); err != nil {
+		return err
 	}
 	if err := os.RemoveAll(resolved); err != nil {
 		return fmt.Errorf("remove codex auth home: %w", err)
@@ -185,11 +209,42 @@ func copyPrivateRegularFile(source string, destination string) error {
 	if err != nil {
 		return fmt.Errorf("read auth material: %w", err)
 	}
+	if info, err := os.Lstat(destination); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("destination auth material must not be a symlink: %s", destination)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("destination auth material must not be a directory: %s", destination)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("destination auth material must be a regular file: %s", destination)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect destination auth material: %w", err)
+	}
 	if err := os.WriteFile(destination, data, 0o600); err != nil {
 		return fmt.Errorf("write actor auth material: %w", err)
 	}
 	if err := os.Chmod(destination, 0o600); err != nil {
 		return fmt.Errorf("chmod actor auth material: %w", err)
+	}
+	return nil
+}
+
+func validateRailAuthHomeMarker(path string) error {
+	marker := filepath.Join(path, authHomeMarkerName)
+	info, err := os.Lstat(marker)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("missing rail auth marker: %s", marker)
+		}
+		return fmt.Errorf("inspect rail auth marker: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("rail auth marker must not be a symlink: %s", marker)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("rail auth marker must be a regular file: %s", marker)
 	}
 	return nil
 }

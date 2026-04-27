@@ -1213,7 +1213,7 @@ validation_profile: standard
 
 func installFakeCodexForRealMode(t *testing.T, projectRoot string) string {
 	t.Helper()
-	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 
 	fakeBin := t.TempDir()
 	actorLogPath := filepath.Join(projectRoot, ".actor-log")
@@ -1257,6 +1257,12 @@ if project_root:
     with open(os.path.join(project_root, ".actor-log"), "a", encoding="utf-8") as handle:
         handle.write(actor + "|" + model + "|" + reasoning + "|" + sandbox + "|json=" + str(has_json).lower() + "\n")
 
+def remove_test_actor_auth_copy():
+    codex_home = os.environ.get("CODEX_HOME", "")
+    auth_path = os.path.join(codex_home, "auth.json") if codex_home else ""
+    if auth_path and os.path.exists(auth_path):
+        os.remove(auth_path)
+
 fail_actor = os.environ.get("RAIL_TEST_CODEX_FAIL_ACTOR", "")
 if actor == fail_actor:
     print("intentional fake codex failure for " + actor, file=sys.stderr)
@@ -1268,6 +1274,7 @@ if actor == fail_once_actor and project_root:
     if not os.path.exists(marker_path):
         with open(marker_path, "w", encoding="utf-8") as marker:
             marker.write("failed\n")
+        remove_test_actor_auth_copy()
         print("intentional one-time fake codex failure for " + actor, file=sys.stderr)
         raise SystemExit(43)
 
@@ -1277,6 +1284,7 @@ if actor == skip_output_once_actor and project_root:
     if not os.path.exists(marker_path):
         with open(marker_path, "w", encoding="utf-8") as marker:
             marker.write("skipped\n")
+        remove_test_actor_auth_copy()
         raise SystemExit(0)
 
 violation_actor = os.environ.get("RAIL_TEST_CODEX_VIOLATION_ACTOR", "")

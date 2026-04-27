@@ -623,7 +623,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 	t.Cleanup(func() {
 		_ = os.Setenv("PATH", originalPath)
 	})
-	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 
 	originalStdout := os.Stdout
 	stdoutRead, stdoutWrite, err := os.Pipe()
@@ -654,6 +654,21 @@ with open(output_path, "w", encoding="utf-8") as handle:
 	if !strings.Contains(stdout.String(), "integration completed") {
 		t.Fatalf("unexpected integrate output: %q", stdout.String())
 	}
+}
+
+func testRailCodexAuthHome(t *testing.T) string {
+	t.Helper()
+	authHome := t.TempDir()
+	if err := os.Chmod(authHome, 0o700); err != nil {
+		t.Fatalf("chmod fake auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(authHome, ".rail-auth-home"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatalf("write fake rail auth marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(authHome, "auth.json"), []byte(`{"fake":"auth"}`), 0o600); err != nil {
+		t.Fatalf("write fake auth.json: %v", err)
+	}
+	return authHome
 }
 
 func TestAppRunVerifiesLearningStateWithoutMutatingSnapshots(t *testing.T) {

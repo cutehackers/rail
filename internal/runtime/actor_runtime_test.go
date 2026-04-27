@@ -29,7 +29,7 @@ func TestPrepareSealedActorRuntimeDropsUserCodexSurface(t *testing.T) {
 	if err := os.MkdirAll(parentCodexHome, 0o700); err != nil {
 		t.Fatalf("failed to create parent codex home: %v", err)
 	}
-	authHome := testRailCodexAuthHome(t, "test-token")
+	authHome := testRailCodexAuthHomeWithToken(t, "test-token")
 
 	sealed, err := prepareSealedActorRuntime(defaultTestActorBackend(), testActorCommandSpec(t, artifactDirectory, workingDirectory, "planner"), fakeCodexParentEnv(t, fakeBin, fakeCodexPath,
 		"CODEX_HOME="+parentCodexHome,
@@ -38,7 +38,6 @@ func TestPrepareSealedActorRuntimeDropsUserCodexSurface(t *testing.T) {
 		"XDG_DATA_HOME=/tmp/xdg-data",
 		"XDG_CACHE_HOME=/tmp/xdg-cache",
 		"RAIL_CODEX_AUTH_HOME="+authHome,
-		"OPENAI_API_KEY=test-key",
 		"OPENAI_ORG_ID=org-id",
 		"OPENAI_PROJECT=project-id",
 		"HTTPS_PROXY=https://proxy.example",
@@ -121,7 +120,22 @@ func fakeCodexParentEnv(t *testing.T, fakeBin string, fakeCodexPath string, extr
 	return append(env, extra...)
 }
 
-func testRailCodexAuthHome(t *testing.T, token string) string {
+func testRailCodexAuthHome(t *testing.T) string {
+	t.Helper()
+	authHome := t.TempDir()
+	if err := os.Chmod(authHome, 0o700); err != nil {
+		t.Fatalf("chmod fake auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(authHome, ".rail-auth-home"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatalf("write fake rail auth marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(authHome, "auth.json"), []byte(`{"fake":"auth"}`), 0o600); err != nil {
+		t.Fatalf("write fake auth.json: %v", err)
+	}
+	return authHome
+}
+
+func testRailCodexAuthHomeWithToken(t *testing.T, token string) string {
 	t.Helper()
 	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
 	if err := auth.EnsureCodexAuthHome(authHome); err != nil {
@@ -202,11 +216,10 @@ func TestPrepareSealedActorRuntimeMaterializesRailCodexAuth(t *testing.T) {
 	if err := os.WriteFile(fakeCodexPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("failed to write fake codex: %v", err)
 	}
-	authHome := testRailCodexAuthHome(t, "file-token")
+	authHome := testRailCodexAuthHomeWithToken(t, "file-token")
 
 	sealed, err := prepareSealedActorRuntime(defaultTestActorBackend(), testActorCommandSpec(t, artifactDirectory, workingDirectory, "planner"), fakeCodexParentEnv(t, fakeBin, fakeCodexPath,
 		"RAIL_CODEX_AUTH_HOME="+authHome,
-		"OPENAI_API_KEY=ignored-api-key",
 	))
 	if err != nil {
 		t.Fatalf("prepareSealedActorRuntime returned error: %v", err)
@@ -279,7 +292,7 @@ func TestPrepareSealedActorRuntimeRejectsUnsafeCodexPath(t *testing.T) {
 
 	_, err := prepareSealedActorRuntime(defaultTestActorBackend(), testActorCommandSpec(t, artifactDirectory, workingDirectory, "planner"), []string{
 		"PATH=" + unsafeBin,
-		"OPENAI_API_KEY=test-key",
+		"RAIL_CODEX_AUTH_HOME=" + testRailCodexAuthHome(t),
 	})
 	if err == nil {
 		t.Fatalf("expected sealed runtime setup to reject codex under .codex")
@@ -304,7 +317,7 @@ func TestPrepareSealedActorRuntimeRejectsCodexUnderParentHome(t *testing.T) {
 	_, err := prepareSealedActorRuntime(defaultTestActorBackend(), testActorCommandSpec(t, artifactDirectory, workingDirectory, "planner"), []string{
 		"PATH=" + userBin,
 		"HOME=" + parentHome,
-		"OPENAI_API_KEY=test-key",
+		"RAIL_CODEX_AUTH_HOME=" + testRailCodexAuthHome(t),
 	})
 	if err == nil {
 		t.Fatalf("expected sealed runtime setup to reject codex under parent HOME")
@@ -358,7 +371,7 @@ func TestPrepareSealedActorRuntimeProvenanceDoesNotExposeSecretValues(t *testing
 	if err := os.WriteFile(fakeCodexPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("failed to write fake codex: %v", err)
 	}
-	authHome := testRailCodexAuthHome(t, "super-secret-token")
+	authHome := testRailCodexAuthHomeWithToken(t, "super-secret-token")
 
 	sealed, err := prepareSealedActorRuntime(defaultTestActorBackend(), testActorCommandSpec(t, artifactDirectory, workingDirectory, "planner"), fakeCodexParentEnv(t, fakeBin, fakeCodexPath,
 		"RAIL_CODEX_AUTH_HOME="+authHome,
@@ -375,11 +388,6 @@ func TestPrepareSealedActorRuntimeProvenanceDoesNotExposeSecretValues(t *testing
 	for _, forbidden := range []string{"super-secret-token", authHome, "user:password"} {
 		if strings.Contains(provenance, forbidden) {
 			t.Fatalf("expected provenance to redact secret value %q, got:\n%s", forbidden, provenance)
-		}
-	}
-	for _, forbidden := range []string{"OPENAI_API_KEY"} {
-		if strings.Contains(provenance, forbidden) {
-			t.Fatalf("expected provenance to omit %q, got:\n%s", forbidden, provenance)
 		}
 	}
 	for _, expected := range []string{"HTTPS_PROXY", "command_path:", "auth_source: rail_codex_login", "auth_materialized: true", "auth.json"} {
@@ -414,7 +422,7 @@ time.sleep(0.5)
 	})
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	allowFakeCodexForTest(t, fakeCodexPath)
-	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 
 	_, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
 		ActorName:         "planner",
@@ -473,7 +481,7 @@ printf '{"summary":"ok"}' >"$output_path"
 	})
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	allowFakeCodexForTest(t, fakeCodexPath)
-	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 
 	response, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
 		ActorName:         "planner",
@@ -534,7 +542,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	allowFakeCodexForTest(t, fakeCodexPath)
-	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 	t.Setenv("RAIL_ACTOR_MODEL", "wrong-model")
 	t.Setenv("RAIL_ACTOR_REASONING_EFFORT", "low")
 	t.Setenv("RAIL_TEST_INVOCATION_PATH", invocationPath)
@@ -627,8 +635,10 @@ func TestBuildCodexCLIArgsBlocksSecretEnvFromActorShell(t *testing.T) {
 	if !strings.Contains(joined, `shell_environment_policy.inherit="none"`) {
 		t.Fatalf("expected shell env inheritance to be disabled, got %#v", args)
 	}
-	if strings.Contains(joined, "OPENAI_API_KEY") || strings.Contains(joined, "RAIL_ACTOR_AUTH_FILE") {
-		t.Fatalf("expected shell env include list to omit auth variables, got %#v", args)
+	for _, forbidden := range []string{"OPENAI_API_KEY", "RAIL_CODEX_AUTH_HOME", "RAIL_ACTOR_AUTH_FILE"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("expected shell env include list to omit auth variable %s, got %#v", forbidden, args)
+		}
 	}
 }
 
@@ -683,7 +693,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	allowFakeCodexForTest(t, fakeCodexPath)
-	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 	t.Setenv("RAIL_TEST_INVOCATION_PATH", invocationPath)
 
 	backend := defaultTestActorBackend()
@@ -777,7 +787,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	allowFakeCodexForTest(t, fakeCodexPath)
-	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 
 	backend := defaultTestActorBackend()
 	backend.CaptureJSONEvents = true
@@ -832,7 +842,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	allowFakeCodexForTest(t, fakeCodexPath)
-	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 
 	_, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
 		ActorName:         "planner",
@@ -861,7 +871,6 @@ func TestRunCommandRedactsAuthSecretFromActorFailure(t *testing.T) {
 
 	script := `#!/usr/bin/env bash
 set -euo pipefail
-printf 'leaked secret: %s\n' "${OPENAI_API_KEY}" >&2
 printf 'leaked proxy: %s\n' "${HTTPS_PROXY}" >&2
 printf 'leaked base: %s\n' "${OPENAI_BASE_URL}" >&2
 exit 42
@@ -872,7 +881,7 @@ exit 42
 
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	allowFakeCodexForTest(t, fakeCodexPath)
-	t.Setenv("OPENAI_API_KEY", "secret-for-redaction")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 	t.Setenv("HTTPS_PROXY", "https://user:pass@proxy.example")
 	t.Setenv("OPENAI_BASE_URL", "https://token@example.test/v1")
 
@@ -889,7 +898,7 @@ exit 42
 	if err == nil {
 		t.Fatalf("expected runCommand to fail")
 	}
-	for _, leaked := range []string{"secret-for-redaction", "https://user:pass@proxy.example", "https://token@example.test/v1"} {
+	for _, leaked := range []string{"https://user:pass@proxy.example", "https://token@example.test/v1"} {
 		if strings.Contains(err.Error(), leaked) {
 			t.Fatalf("expected actor failure output to redact secret-bearing value %q, got %v", leaked, err)
 		}

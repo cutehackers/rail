@@ -92,7 +92,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 	t.Cleanup(func() {
 		_ = os.Setenv("PATH", originalPath)
 	})
-	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
 
 	if _, err := runner.Integrate(artifactPath, projectRoot); err != nil {
 		t.Fatalf("Integrate returned error: %v", err)

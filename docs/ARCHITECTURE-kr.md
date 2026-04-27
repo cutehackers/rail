@@ -51,10 +51,11 @@ Sealed actor 세션은 운영자의 `CODEX_HOME`, `HOME`, `XDG_*`, temp director
 shell identity, SSH agent, tool-specific config environment를 상속하지
 않습니다. Rail은 run artifact 아래 actor-local runtime directory를 만들고,
 비밀값을 제외한 provenance를 `runtime/<actor-run-id>/actor_environment.yaml`에
-기록합니다. 사용자 Codex login state는 의도적으로 읽지 않기 때문에 standard
-actor 실행은 명시적인 Rail actor auth를 사용합니다. 로컬 사용자는
-`rail auth login`을 한 번 실행해 설정할 수 있고, CI는 `OPENAI_API_KEY`를
-직접 사용할 수 있습니다.
+기록합니다. 사용자의 일반 Codex login state는 의도적으로 읽지 않기 때문에 standard actor
+실행은 명시적인 Rail actor auth를 사용합니다. 로컬 사용자는 `rail auth login`을
+한 번 실행해 Rail 전용 auth home에서 Codex 브라우저 로그인을 완료합니다.
+각 actor 실행은 여전히 artifact-local sealed `CODEX_HOME`을 사용하며, Rail은
+허용된 인증 material만 그 home에 전달합니다.
 
 ## 핵심 Runtime 구성 요소
 

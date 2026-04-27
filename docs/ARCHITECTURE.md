@@ -51,9 +51,11 @@ Sealed actor sessions do not inherit the operator's `CODEX_HOME`, `HOME`,
 `XDG_*`, temp directories, shell identity, SSH agent, or tool-specific config
 environment. Rail creates actor-local runtime directories under the run artifact
 and records non-secret provenance in `runtime/<actor-run-id>/actor_environment.yaml`.
-Because user Codex login state is intentionally not read, standard actor runs use
-explicit Rail actor auth. Local users can configure that once with
-`rail auth login`; CI can still use `OPENAI_API_KEY` directly.
+Because user Codex login state is intentionally not read from the normal
+Codex home, standard actor runs use explicit Rail actor auth. Local users
+configure that once with `rail auth login`, which runs Codex browser login in a
+Rail-owned auth home. Each actor run still receives an artifact-local sealed
+`CODEX_HOME`; Rail materializes only allowlisted auth material into that home.
 
 ## Core Runtime Components
 

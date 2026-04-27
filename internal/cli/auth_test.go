@@ -173,6 +173,23 @@ func TestRunAuthLoginRejectsUnsafeAuthHomeWithoutExposingPath(t *testing.T) {
 	}
 }
 
+func TestRunAuthLoginPreservesCodexExecutionFailure(t *testing.T) {
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+
+	var stdout bytes.Buffer
+	err := RunAuth([]string{"login", "--codex-command", filepath.Join(t.TempDir(), "missing-codex")}, strings.NewReader(""), &stdout)
+	if err == nil {
+		t.Fatalf("expected RunAuth login to return codex execution failure")
+	}
+	if err.Error() == "rail actor auth cannot be configured because the auth home is unsafe" {
+		t.Fatalf("expected codex execution failure not to be reported as unsafe auth home")
+	}
+	if strings.Contains(err.Error(), authHome) || strings.Contains(stdout.String(), authHome) {
+		t.Fatalf("login exposed concrete auth home: err=%v stdout=%q", err, stdout.String())
+	}
+}
+
 func TestRunAuthStatusRejectsUnmarkedPrivateAuthHomeWithoutInvokingCodex(t *testing.T) {
 	fakeBin := t.TempDir()
 	writeFakeCodex(t, fakeBin)

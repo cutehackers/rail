@@ -66,10 +66,16 @@ func runAuthLogin(options authOptions, stdin io.Reader, stdout io.Writer) error 
 		return err
 	}
 	_, _ = fmt.Fprintln(stdout, "Opening Codex browser login for Rail actor auth...")
-	if err := auth.RunCodexLogin(authCommand(options), authHome, stdin, stdout, os.Stderr); err != nil {
+	if err := auth.EnsureCodexAuthHome(authHome); err != nil {
 		return fmt.Errorf(actorAuthConfigureError)
 	}
+	if err := auth.RunCodexLogin(authCommand(options), authHome, stdin, stdout, os.Stderr); err != nil {
+		return err
+	}
 	if err := auth.RunCodexLoginStatus(authCommand(options), authHome, io.Discard, io.Discard); err != nil {
+		if isActorAuthNotConfigured(err) {
+			return err
+		}
 		return fmt.Errorf(actorAuthConfigureError)
 	}
 	_, _ = fmt.Fprintln(stdout, "Rail actor auth configured.")

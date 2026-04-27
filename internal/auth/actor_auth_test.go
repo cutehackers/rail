@@ -69,6 +69,19 @@ func TestCodexAuthHomePathFromEnvUsesEnvMapXDGConfigHome(t *testing.T) {
 	}
 }
 
+func TestCodexAuthHomePathFromEnvDoesNotReadProcessXDGConfigHome(t *testing.T) {
+	processConfigHome := filepath.Join(t.TempDir(), "process-config")
+	t.Setenv("XDG_CONFIG_HOME", processConfigHome)
+
+	path, err := CodexAuthHomePathFromEnv(map[string]string{})
+	if err != nil {
+		t.Fatalf("CodexAuthHomePathFromEnv returned error: %v", err)
+	}
+	if strings.HasPrefix(path, processConfigHome+string(os.PathSeparator)) || path == processConfigHome {
+		t.Fatalf("expected env-map helper not to use process XDG_CONFIG_HOME, got %q", path)
+	}
+}
+
 func TestEnsureCodexAuthHomeCreatesPrivateDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rail-auth")
 
@@ -84,6 +97,28 @@ func TestEnsureCodexAuthHomeCreatesPrivateDirectory(t *testing.T) {
 	}
 	if got, want := info.Mode().Perm(), os.FileMode(0o700); got != want {
 		t.Fatalf("unexpected auth home permission: got %v want %v", got, want)
+	}
+}
+
+func TestEnsureCodexAuthHomeRejectsExistingNonEmptyUnmarkedDirectoryWithoutChmod(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rail-auth")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("mkdir auth home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "unrelated.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("write unrelated file: %v", err)
+	}
+
+	err := EnsureCodexAuthHome(path)
+	if err == nil {
+		t.Fatalf("expected non-empty unmarked auth home to be rejected")
+	}
+	info, statErr := os.Stat(path)
+	if statErr != nil {
+		t.Fatalf("stat auth home: %v", statErr)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o755); got != want {
+		t.Fatalf("expected rejected auth home mode to remain unchanged: got %v want %v", got, want)
 	}
 }
 
@@ -270,6 +305,50 @@ func TestMaterializeCodexAuthForActorRejectsDestinationAuthSymlink(t *testing.T)
 	}
 	if !strings.Contains(err.Error(), "destination auth material must not be a symlink") {
 		t.Fatalf("expected destination symlink error, got %v", err)
+	}
+}
+
+func TestMaterializeCodexAuthForActorRejectsSourceAuthSymlink(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source")
+	destination := filepath.Join(dir, "destination")
+	target := filepath.Join(dir, "target-auth.json")
+	link := filepath.Join(source, "auth.json")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	if err := os.WriteFile(target, []byte(`{"tokens":"secret"}`), 0o600); err != nil {
+		t.Fatalf("write target auth.json: %v", err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	_, err := MaterializeCodexAuthForActor(source, destination)
+	if err == nil {
+		t.Fatalf("expected source auth symlink to be rejected")
+	}
+	if !strings.Contains(err.Error(), "auth material must not be a symlink") {
+		t.Fatalf("expected source symlink error, got %v", err)
+	}
+}
+
+func TestMaterializeCodexAuthForActorRejectsLooseSourceAuthPermissions(t *testing.T) {
+	source := t.TempDir()
+	destination := filepath.Join(t.TempDir(), "destination")
+	if err := os.Chmod(source, 0o700); err != nil {
+		t.Fatalf("chmod source: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "auth.json"), []byte(`{"tokens":"secret"}`), 0o644); err != nil {
+		t.Fatalf("write source auth.json: %v", err)
+	}
+
+	_, err := MaterializeCodexAuthForActor(source, destination)
+	if err == nil {
+		t.Fatalf("expected loose source auth permissions to be rejected")
+	}
+	if !strings.Contains(err.Error(), "auth material permissions must be 0600 or stricter") {
+		t.Fatalf("expected source permission error, got %v", err)
 	}
 }
 

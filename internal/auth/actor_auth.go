@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -23,14 +24,15 @@ type MaterializedCodexAuth struct {
 }
 
 func DefaultCodexAuthHomePath() (string, error) {
-	return defaultCodexAuthHomePath(os.Getenv("XDG_CONFIG_HOME"))
+	return defaultCodexAuthHomePath(os.Getenv("XDG_CONFIG_HOME"), true)
 }
 
 func CodexAuthHomePathFromEnv(env map[string]string) (string, error) {
 	if value := strings.TrimSpace(env[RailCodexAuthHomeEnv]); value != "" {
 		return filepath.Abs(value)
 	}
-	return defaultCodexAuthHomePath(env["XDG_CONFIG_HOME"])
+	xdgConfigHome, ok := env["XDG_CONFIG_HOME"]
+	return defaultCodexAuthHomePath(xdgConfigHome, ok)
 }
 
 func EnsureCodexAuthHome(path string) error {
@@ -38,25 +40,27 @@ func EnsureCodexAuthHome(path string) error {
 	if err != nil {
 		return err
 	}
-	existed := true
-	if _, err := os.Lstat(resolved); os.IsNotExist(err) {
-		existed = false
-	} else if err != nil {
+	info, err := os.Lstat(resolved)
+	existed := err == nil
+	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("inspect codex auth home: %w", err)
 	}
-	if err := ensurePrivateDirectory(resolved); err != nil {
-		return err
-	}
-	marker := filepath.Join(resolved, authHomeMarkerName)
-	if info, err := os.Lstat(marker); err == nil {
+	if existed {
 		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("rail auth marker must not be a symlink: %s", marker)
+			return fmt.Errorf("codex auth home must not be a symlink: %s", resolved)
 		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("rail auth marker must be a regular file: %s", marker)
+		if !info.IsDir() {
+			return fmt.Errorf("codex auth home must be a directory: %s", resolved)
 		}
-	} else if os.IsNotExist(err) {
-		if existed {
+		marker := filepath.Join(resolved, authHomeMarkerName)
+		if markerInfo, err := os.Lstat(marker); err == nil {
+			if markerInfo.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("rail auth marker must not be a symlink: %s", marker)
+			}
+			if !markerInfo.Mode().IsRegular() {
+				return fmt.Errorf("rail auth marker must be a regular file: %s", marker)
+			}
+		} else if os.IsNotExist(err) {
 			empty, err := isDirectoryEmpty(resolved)
 			if err != nil {
 				return err
@@ -64,24 +68,61 @@ func EnsureCodexAuthHome(path string) error {
 			if !empty {
 				return fmt.Errorf("existing unmarked codex auth home must be empty: %s", resolved)
 			}
+		} else {
+			return fmt.Errorf("inspect rail auth marker: %w", err)
 		}
+	}
+	if err := ensurePrivateDirectory(resolved); err != nil {
+		return err
+	}
+	marker := filepath.Join(resolved, authHomeMarkerName)
+	if _, err := os.Lstat(marker); os.IsNotExist(err) {
 		content := fmt.Sprintf("version: 1\ncreated_at: %s\n", time.Now().UTC().Format(time.RFC3339))
 		if err := os.WriteFile(marker, []byte(content), 0o600); err != nil {
 			return fmt.Errorf("write rail auth marker: %w", err)
 		}
-	} else {
+	} else if err != nil {
 		return fmt.Errorf("inspect rail auth marker: %w", err)
 	}
 	return nil
 }
 
-func defaultCodexAuthHomePath(xdgConfigHome string) (string, error) {
+func defaultCodexAuthHomePath(xdgConfigHome string, allowAmbientXDG bool) (string, error) {
 	if value := strings.TrimSpace(xdgConfigHome); value != "" {
 		configDir, err := filepath.Abs(value)
 		if err != nil {
 			return "", fmt.Errorf("resolve XDG config directory: %w", err)
 		}
 		return filepath.Join(configDir, "rail", "codex-auth-home"), nil
+	}
+	if !allowAmbientXDG {
+		return userConfigDirWithoutAmbientXDG()
+	}
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user config directory: %w", err)
+	}
+	return filepath.Join(configDir, "rail", "codex-auth-home"), nil
+}
+
+func userConfigDirWithoutAmbientXDG() (string, error) {
+	switch runtime.GOOS {
+	case "windows":
+		if value := strings.TrimSpace(os.Getenv("AppData")); value != "" {
+			return filepath.Join(value, "rail", "codex-auth-home"), nil
+		}
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user home directory: %w", err)
+		}
+		return filepath.Join(home, "Library", "Application Support", "rail", "codex-auth-home"), nil
+	default:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user home directory: %w", err)
+		}
+		return filepath.Join(home, ".config", "rail", "codex-auth-home"), nil
 	}
 	configDir, err := os.UserConfigDir()
 	if err != nil {

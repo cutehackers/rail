@@ -28,6 +28,7 @@ func NewApp() *App {
 		"execute",
 		"supervise",
 		"status",
+		"result",
 		"route-evaluation",
 		"integrate",
 		"apply-user-outcome-feedback",
@@ -182,6 +183,14 @@ func (a *App) Run(args []string) int {
 
 	if args[0] == "status" {
 		if err := RunStatus(args[1:], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+
+	if args[0] == "result" {
+		if err := RunResult(args[1:], os.Stdout); err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			return 1
 		}

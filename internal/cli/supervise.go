@@ -55,11 +55,20 @@ func RunSupervise(args []string, stdout io.Writer) error {
 	}
 	summary, err := runner.Supervise(resolvedArtifactPath, runtime.SuperviseOptions{RetryBudget: retryBudget})
 	if err != nil {
-		if status, statusErr := runtime.ReadRunStatusForArtifact(workspace.Root, resolvedArtifactPath); statusErr == nil {
+		if result, resultErr := runtime.ProjectHarnessResultForArtifact(workspace.Root, resolvedArtifactPath); resultErr == nil {
+			_, _ = fmt.Fprint(stdout, runtime.FormatHarnessResult(result))
+		} else if status, statusErr := runtime.ReadRunStatusForArtifact(workspace.Root, resolvedArtifactPath); statusErr == nil {
 			_, _ = fmt.Fprint(stdout, runtime.FormatRunStatusSummary(status))
 		}
 		return err
 	}
-	_, err = fmt.Fprintln(stdout, summary)
+	if _, err := fmt.Fprintln(stdout, summary); err != nil {
+		return err
+	}
+	result, err := runtime.ProjectHarnessResultForArtifact(workspace.Root, resolvedArtifactPath)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprint(stdout, runtime.FormatHarnessResult(result))
 	return err
 }

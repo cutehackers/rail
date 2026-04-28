@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ type Runner struct {
 	bootstrapper *Bootstrapper
 	router       *Router
 	commands     CommandRunner
+	actorBackend ActorBackend
 }
 
 func NewRunner(projectRoot string) (*Runner, error) {
@@ -34,6 +36,7 @@ func NewRunner(projectRoot string) (*Runner, error) {
 		bootstrapper: bootstrapper,
 		router:       router,
 		commands:     subprocessRunner{},
+		actorBackend: CodexCLIBackend{},
 	}, nil
 }
 
@@ -95,41 +98,39 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve workflow project root: %w", err)
 	}
-	backendPolicy, err := loadActorBackendPolicy(workingDirectory)
-	if err != nil {
-		return r.recordInterruption(
-			artifactDirectory,
-			currentState,
-			"runtime_setup",
-			actorLabel(currentState.CurrentActor),
-			fmt.Errorf("load actor backend policy: %w", err),
-		)
-	}
-	backend, err := backendPolicy.DefaultBackend()
-	if err != nil {
-		return r.recordInterruption(artifactDirectory, currentState, "runtime_setup", actorLabel(currentState.CurrentActor), err)
-	}
+	var backend ActorBackendConfig
 	var actorProfiles ActorProfiles
-	if len(currentState.ActorProfilesUsed) == 0 {
-		actorProfiles, err = loadActorProfiles(workingDirectory, profiledActorsForWorkflow(workflow))
+	standardActorRuntimeLoaded := false
+	ensureStandardActorRuntime := func() error {
+		if standardActorRuntimeLoaded {
+			return nil
+		}
+
+		backendPolicy, err := loadActorBackendPolicy(workingDirectory)
 		if err != nil {
-			return r.recordInterruption(
-				artifactDirectory,
-				currentState,
-				"runtime_setup",
-				actorLabel(currentState.CurrentActor),
-				fmt.Errorf("load actor profiles: %w", err),
-			)
+			return fmt.Errorf("load actor backend policy: %w", err)
 		}
-		currentState.ActorProfilesUsed = snapshotActorProfilesUsed(workflow, actorProfiles)
-		if err := writeJSON(statePath, currentState); err != nil {
-			return "", err
+		backend, err = backendPolicy.DefaultBackend()
+		if err != nil {
+			return err
 		}
-	} else {
-		if err := validateActorProfilesSnapshot(workflow, currentState.ActorProfilesUsed); err != nil {
-			return r.recordInterruption(artifactDirectory, currentState, "runtime_setup", actorLabel(currentState.CurrentActor), err)
+		if len(currentState.ActorProfilesUsed) == 0 {
+			actorProfiles, err = loadActorProfiles(workingDirectory, profiledActorsForWorkflow(workflow))
+			if err != nil {
+				return fmt.Errorf("load actor profiles: %w", err)
+			}
+			currentState.ActorProfilesUsed = snapshotActorProfilesUsed(workflow, actorProfiles)
+			if err := writeJSON(statePath, currentState); err != nil {
+				return err
+			}
+		} else {
+			if err := validateActorProfilesSnapshot(workflow, currentState.ActorProfilesUsed); err != nil {
+				return err
+			}
+			actorProfiles = actorProfilesFromSnapshot(currentState.ActorProfilesUsed)
 		}
-		actorProfiles = actorProfilesFromSnapshot(currentState.ActorProfilesUsed)
+		standardActorRuntimeLoaded = true
+		return nil
 	}
 
 	runsDirectory := filepath.Join(artifactDirectory, "runs")
@@ -164,6 +165,11 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 		eventsPath := filepath.Join(runsDirectory, actorEventFileName(actorIndex, actorName, currentState.CompletedActors))
 		briefPath := filepath.Join(artifactDirectory, "actor_briefs", fmt.Sprintf("%02d_%s.md", actorIndex+1, actorName))
 
+		if actorRequiresStandardRuntime(requestValue, actorName) {
+			if err := ensureStandardActorRuntime(); err != nil {
+				return r.recordInterruption(artifactDirectory, currentState, "runtime_setup", actorName, err)
+			}
+		}
 		response, err := r.runActor(actorName, actorIndex, artifactDirectory, briefPath, logPath, eventsPath, requestValue, executionPlan, actorProfiles, backend, workingDirectory)
 		if err != nil {
 			if isBackendPolicyViolation(err) {
@@ -232,6 +238,18 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 
 func isBackendPolicyViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "backend_policy_violation")
+}
+
+func actorRequiresStandardRuntime(requestValue request.CanonicalRequest, actorName string) bool {
+	if requestValue.ValidationProfile == "smoke" {
+		return false
+	}
+	switch actorName {
+	case "planner", "context_builder", "critic", "generator", "evaluator":
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *Runner) recordInterruption(
@@ -408,21 +426,26 @@ func (r *Runner) runActor(
 			"Project root: " + workingDirectory,
 			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the schema-valid actor response.",
 		}, "\n")
-		response, err := runCommand(backend, ActorCommandSpec{
+		actorBackend := r.actorBackend
+		if actorBackend == nil {
+			actorBackend = CodexCLIBackend{}
+		}
+		result, err := actorBackend.RunActor(context.Background(), ActorInvocation{
 			ActorName:         actorName,
-			Profile:           profile,
+			ActorRunID:        actorRunIDFromLogPath(logPath),
 			WorkingDirectory:  workingDirectory,
 			Prompt:            prompt,
-			LastMessagePath:   logPath,
-			SchemaPath:        schemaPath,
-			EventsPath:        eventsPath,
 			ArtifactDirectory: artifactDirectory,
-			ActorRunID:        actorRunIDFromLogPath(logPath),
+			OutputSchemaPath:  schemaPath,
+			LastMessagePath:   logPath,
+			EventsPath:        eventsPath,
+			Profile:           profile,
+			Policy:            backend,
 		})
 		if err != nil {
 			return nil, err
 		}
-		return response, nil
+		return result.StructuredOutput, nil
 	default:
 		return nil, fmt.Errorf("actor execution is not implemented for %s", actorName)
 	}

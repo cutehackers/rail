@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -76,80 +74,40 @@ func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []stri
 // repository-resolved actor profile passed by the caller. Environment overrides
 // are intentionally unsupported; profile selection belongs in actor_profiles.yaml.
 func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]any, error) {
-	profile, err := normalizeActorProfile(spec.ActorName, spec.Profile)
+	result, err := (CodexCLIBackend{}).RunActor(context.Background(), invocationFromCommandSpec(backend, spec))
 	if err != nil {
 		return nil, err
 	}
-	spec.Profile = profile
-	if backend.CaptureJSONEvents && strings.TrimSpace(spec.EventsPath) == "" {
-		return nil, fmt.Errorf("capture JSON events requires events path")
-	}
+	return result.StructuredOutput, nil
+}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func invocationFromCommandSpec(backend ActorBackendConfig, spec ActorCommandSpec) ActorInvocation {
+	return ActorInvocation{
+		ActorName:         spec.ActorName,
+		ActorRunID:        spec.ActorRunID,
+		WorkingDirectory:  spec.WorkingDirectory,
+		ArtifactDirectory: spec.ArtifactDirectory,
+		Prompt:            spec.Prompt,
+		OutputSchemaPath:  spec.SchemaPath,
+		LastMessagePath:   spec.LastMessagePath,
+		EventsPath:        spec.EventsPath,
+		Profile:           spec.Profile,
+		Policy:            backend,
+	}
+}
 
-	sealed, err := prepareSealedActorRuntime(backend, spec, os.Environ())
-	if err != nil {
-		return nil, err
+func actorCommandSpecFromInvocation(invocation ActorInvocation) ActorCommandSpec {
+	return ActorCommandSpec{
+		ActorName:         invocation.ActorName,
+		Profile:           invocation.Profile,
+		WorkingDirectory:  invocation.WorkingDirectory,
+		Prompt:            invocation.Prompt,
+		LastMessagePath:   invocation.LastMessagePath,
+		SchemaPath:        invocation.OutputSchemaPath,
+		EventsPath:        invocation.EventsPath,
+		ArtifactDirectory: invocation.ArtifactDirectory,
+		ActorRunID:        invocation.ActorRunID,
 	}
-
-	cmd := exec.CommandContext(ctx, sealed.CommandPath, buildCodexCLIArgs(backend, spec)...)
-	cmd.Dir = spec.WorkingDirectory
-	cmd.Env = sealed.Env
-
-	output := &synchronizedBuffer{}
-	watchdog := newActorWatchdog(spec.ActorName, defaultActorWatchdogConfig)
-	progressWriter := watchdog.ProgressWriter()
-	stdoutWriters := []io.Writer{output, progressWriter}
-	var eventsFile *os.File
-	if backend.CaptureJSONEvents {
-		eventsFile, err = os.Create(spec.EventsPath)
-		if err != nil {
-			return nil, fmt.Errorf("create JSON events log for %s: %w", spec.ActorName, err)
-		}
-		defer func() {
-			if eventsFile != nil {
-				_ = eventsFile.Close()
-			}
-		}()
-		stdoutWriters = append(stdoutWriters, eventsFile)
-	}
-	cmd.Stdout = io.MultiWriter(stdoutWriters...)
-	cmd.Stderr = io.MultiWriter(output, progressWriter)
-
-	watchdog.Start(cancel)
-	err = cmd.Run()
-	watchdog.Stop()
-	if eventsFile != nil {
-		if closeErr := eventsFile.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("close JSON events log for %s: %w", spec.ActorName, closeErr)
-		}
-		eventsFile = nil
-	}
-	if policyErr := postflightSealedActorRuntime(sealed); policyErr != nil {
-		return nil, policyErr
-	}
-	if backend.CaptureJSONEvents {
-		if auditErr := auditCodexEvents(spec.EventsPath); auditErr != nil {
-			return nil, auditErr
-		}
-	}
-	if expiration, expired := watchdog.Expiration(); expired {
-		return nil, fmt.Errorf("actor `%s` failed: actor_watchdog_expired: no command progress observed for %s", expiration.ActorName, expiration.QuietWindow)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("actor `%s` failed: %s", spec.ActorName, strings.TrimSpace(redactActorOutput(output.String(), sealedActorRedactionSecrets(sealed)...)))
-	}
-
-	data, err := os.ReadFile(spec.LastMessagePath)
-	if err != nil {
-		return nil, fmt.Errorf("read %s output: %w", spec.ActorName, err)
-	}
-	var response map[string]any
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("decode %s actor response: %w", spec.ActorName, err)
-	}
-	return response, nil
 }
 
 func redactActorOutput(value string, secrets ...string) string {

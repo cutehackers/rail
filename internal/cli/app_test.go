@@ -56,6 +56,37 @@ func runAppAndCaptureStdout(t *testing.T, args []string) (int, string) {
 	})
 }
 
+func runAppAndCaptureStderr(t *testing.T, args []string) (int, string) {
+	t.Helper()
+
+	originalStderr := os.Stderr
+	stderrRead, stderrWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stderr pipe: %v", err)
+	}
+	os.Stderr = stderrWrite
+	defer func() {
+		os.Stderr = originalStderr
+		_ = stderrRead.Close()
+		_ = stderrWrite.Close()
+	}()
+
+	var stderr bytes.Buffer
+	readDone := make(chan error, 1)
+	go func() {
+		_, err := stderr.ReadFrom(stderrRead)
+		readDone <- err
+	}()
+
+	exitCode := NewApp().Run(args)
+	_ = stderrWrite.Close()
+	os.Stderr = originalStderr
+	if err := <-readDone; err != nil {
+		t.Fatalf("failed to read stderr: %v", err)
+	}
+	return exitCode, stderr.String()
+}
+
 func captureAppStdout(t *testing.T, run func() int) (int, string) {
 	t.Helper()
 
@@ -203,6 +234,52 @@ func TestAppRunBootstrapsArtifactForRunCommand(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(projectRoot, ".harness", "artifacts", "cli-run-smoke", "state.json")); err != nil {
 		t.Fatalf("expected run command to create artifact state: %v", err)
+	}
+}
+
+func TestAppRunAllocatesImplicitTaskArtifactWhenDefaultExists(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLIWithDefaultRequestName(t)
+	seedOccupiedCLIArtifact(t, projectRoot, "request")
+
+	got, output := runAppAndCaptureStdout(t, []string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+	})
+	if got != 0 {
+		t.Fatalf("expected zero exit code for implicit run allocation, got %d", got)
+	}
+	artifactPath := strings.TrimSpace(output)
+	if !strings.HasSuffix(filepath.ToSlash(artifactPath), "/.harness/artifacts/request-2") {
+		t.Fatalf("expected run output to point at request-2 artifact, got %q", output)
+	}
+	if _, err := os.Stat(filepath.Join(artifactPath, "workflow.json")); err != nil {
+		t.Fatalf("expected request-2 workflow artifact: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(artifactPath, "state.json")); err != nil {
+		t.Fatalf("expected request-2 state artifact: %v", err)
+	}
+	assertCLITaskID(t, filepath.Join(artifactPath, "workflow.json"), "request-2")
+	assertCLITaskID(t, filepath.Join(artifactPath, "state.json"), "request-2")
+}
+
+func TestAppRunRejectsBlankTaskID(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectForCLIWithDefaultRequestName(t)
+
+	got, output := runAppAndCaptureStderr(t, []string{
+		"run",
+		"--request", requestPath,
+		"--project-root", projectRoot,
+		"--task-id", "   ",
+	})
+	if got == 0 {
+		t.Fatalf("expected non-zero exit code for blank task id")
+	}
+	if !strings.Contains(output, "task id must not be blank") {
+		t.Fatalf("expected blank task id error, got %q", output)
+	}
+	if _, err := os.Stat(filepath.Join(projectRoot, ".harness", "artifacts", "request")); !os.IsNotExist(err) {
+		t.Fatalf("expected blank explicit task id not to create request artifact, stat err=%v", err)
 	}
 }
 
@@ -1392,6 +1469,49 @@ func prepareSmokeProjectForCLI(t *testing.T) (string, string) {
 	}
 
 	return projectRoot, requestPath
+}
+
+func prepareSmokeProjectForCLIWithDefaultRequestName(t *testing.T) (string, string) {
+	t.Helper()
+
+	projectRoot, requestPath := prepareSmokeProjectForCLI(t)
+	requestBody, err := os.ReadFile(requestPath)
+	if err != nil {
+		t.Fatalf("failed to read smoke request: %v", err)
+	}
+	defaultRequestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	if err := os.WriteFile(defaultRequestPath, requestBody, 0o644); err != nil {
+		t.Fatalf("failed to write default request: %v", err)
+	}
+	return projectRoot, defaultRequestPath
+}
+
+func seedOccupiedCLIArtifact(t *testing.T, projectRoot, taskID string) {
+	t.Helper()
+
+	artifactPath := filepath.Join(projectRoot, ".harness", "artifacts", taskID)
+	if err := os.MkdirAll(artifactPath, 0o755); err != nil {
+		t.Fatalf("failed to create occupied artifact %q: %v", taskID, err)
+	}
+	if err := os.WriteFile(filepath.Join(artifactPath, "occupied.txt"), []byte("occupied: "+taskID+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to seed occupied artifact %q: %v", taskID, err)
+	}
+}
+
+func assertCLITaskID(t *testing.T, path string, want string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", path, err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(data, &value); err != nil {
+		t.Fatalf("failed to decode %s: %v", path, err)
+	}
+	if got, _ := value["taskId"].(string); got != want {
+		t.Fatalf("unexpected taskId in %s: got %q want %q", path, got, want)
+	}
 }
 
 func writeCLIResultArtifact(t *testing.T, projectRoot, artifactID, status, phase, currentActor, updatedAt string) string {

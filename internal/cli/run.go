@@ -32,6 +32,9 @@ func RunRun(args []string, stdout io.Writer) error {
 				return fmt.Errorf("missing value for --task-id")
 			}
 			taskID = args[i+1]
+			if strings.TrimSpace(taskID) == "" {
+				return fmt.Errorf("task id must not be blank")
+			}
 			i++
 		default:
 			return fmt.Errorf("unknown run flag: %s", args[i])

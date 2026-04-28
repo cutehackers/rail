@@ -3,7 +3,10 @@
 These examples show the current user-facing contract: ask Codex to use the Rail
 skill, give the target repository path, and describe the work in natural
 language. The skill infers the request shape and materializes it with
-`rail compose-request --stdin`; users should not hand-write harness YAML.
+`rail compose-request --stdin`; users should not hand-write harness YAML. When
+execution is requested, the skill starts the fresh task with `rail run` without
+asking for a task id, captures the printed artifact path, and uses that path for
+`supervise`, `status`, and `result`.
 
 Use `/absolute/path/to/target-repo` as a placeholder for the target application
 repository. The target repository is not the Rail source checkout.
@@ -28,7 +31,9 @@ Expected skill behavior:
 - infer a low-risk bug-fix request
 - keep `validation_profile` omitted so Rail uses the real `standard` path
 - materialize the normalized request with `rail compose-request --stdin`
-- report the created `.harness/requests/request.yaml` path
+- run `rail run` without `--task-id` when execution is requested
+- capture and report the artifact path printed by `rail run`
+- use that artifact path for `supervise`, `status`, and `result`
 
 ## Feature Addition Rubric
 
@@ -52,6 +57,9 @@ Expected skill behavior:
 - keep constraints concrete instead of inventing extra policy
 - leave file hints empty unless the user supplied reliable paths
 - materialize the normalized request with `rail compose-request --stdin`
+- run `rail run` without `--task-id` when execution is requested
+- capture and report the artifact path printed by `rail run`
+- use that artifact path for `supervise`, `status`, and `result`
 
 ## Safe Refactor Rubric
 
@@ -75,6 +83,9 @@ Expected skill behavior:
 - keep the definition of done centered on unchanged behavior
 - avoid expanding the task into unrelated redesign
 - materialize the normalized request with `rail compose-request --stdin`
+- run `rail run` without `--task-id` when execution is requested
+- capture and report the artifact path printed by `rail run`
+- use that artifact path for `supervise`, `status`, and `result`
 
 ## Test Repair Rubric
 
@@ -97,6 +108,9 @@ Expected skill behavior:
 - keep the change targeted to the reported test or coverage gap
 - preserve product behavior unless the user explicitly accepts a bug fix
 - materialize the normalized request with `rail compose-request --stdin`
+- run `rail run` without `--task-id` when execution is requested
+- capture and report the artifact path printed by `rail run`
+- use that artifact path for `supervise`, `status`, and `result`
 
 ## Smoke Mode
 
@@ -122,3 +136,6 @@ Expected skill behavior:
 - set `validation_profile` to `smoke`
 - keep the request scoped to harness verification
 - materialize the normalized request with `rail compose-request --stdin`
+- run `rail run` without `--task-id` when execution is requested
+- capture and report the artifact path printed by `rail run`
+- use that artifact path for `supervise`, `status`, and `result`

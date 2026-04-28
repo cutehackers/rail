@@ -2,6 +2,20 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.5.4 - 2026-04-28
+
+### Fixed
+- Allocated fresh runtime artifacts for implicit tasks.
+
+### Changed
+- Updated README guidance for implicit task artifact behavior.
+- Updated the repo-owned and bundled Rail skill instructions and examples.
+- Added task documentation for implicit task artifact allocation.
+
+### Verification
+- `tool/prepare_release.sh v0.5.4`
+
+
 ## v0.5.3 - 2026-04-28
 
 ### Fixed

@@ -2,6 +2,22 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.5.2 - 2026-04-28
+
+### Added
+- Expanded runtime and release gate test coverage for blocked actor retry behavior.
+
+### Changed
+- Clarified publish progress logging in `tool/publish.sh`.
+
+### Fixed
+- Hardened runtime handling for blocked actor retry transitions.
+- Ensured blocked actors retry using the current runtime flow.
+
+### Verification
+- `tool/prepare_release.sh v0.5.2`
+
+
 ## v0.5.1 - 2026-04-28
 
 ### Added

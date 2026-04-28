@@ -656,6 +656,21 @@ func TestExecuteRoutesAuditViolationToTerminalSummary(t *testing.T) {
 			t.Fatalf("expected terminal summary to contain %q, got:\n%s", fragment, string(terminalSummary))
 		}
 	}
+
+	state, err := readState(filepath.Join(artifactPath, "state.json"))
+	if err != nil {
+		t.Fatalf("expected state.json to remain readable: %v", err)
+	}
+	if state.BlockedActor == nil || *state.BlockedActor != "evaluator" || !state.BlockedRetryable {
+		t.Fatalf("expected backend policy block to persist one retryable blocked actor, got blockedActor=%v blockedRetryable=%v", state.BlockedActor, state.BlockedRetryable)
+	}
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to remain readable: %v", err)
+	}
+	if runStatus.Status != "retrying" || runStatus.Phase != "blocked_actor_retry_available" || runStatus.CurrentActor != "evaluator" {
+		t.Fatalf("expected retryable backend policy block to project retry availability, got %#v", runStatus)
+	}
 }
 
 func TestExecuteRetriesBlockedActorWithCurrentSealedRuntime(t *testing.T) {
@@ -679,6 +694,8 @@ func TestExecuteRetriesBlockedActorWithCurrentSealedRuntime(t *testing.T) {
 	}
 	state.Status = "blocked_environment"
 	state.CurrentActor = nil
+	state.BlockedActor = stringPtr("planner")
+	state.BlockedRetryable = true
 	state.LastDecision = stringPtr("reject")
 	state.LastReasonCodes = []string{"backend_policy_violation"}
 	state.ActionHistory = append(state.ActionHistory, "block_environment")
@@ -722,6 +739,231 @@ func TestExecuteRetriesBlockedActorWithCurrentSealedRuntime(t *testing.T) {
 	}
 	if !strings.Contains(string(actorLog), "planner|") {
 		t.Fatalf("expected blocked execution to rerun planner, got log:\n%s", string(actorLog))
+	}
+}
+
+func TestExecuteDoesNotRetryBlockedActorWithoutCanonicalRetryState(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_VIOLATION_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-blocked-actor-no-marker")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("expected initial Execute to route backend policy block, got: %v", err)
+	}
+	if !strings.Contains(summary, "status=blocked_environment") {
+		t.Fatalf("expected initial Execute to block, got %q", summary)
+	}
+
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.BlockedActor = nil
+	state.BlockedRetryable = false
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to write blocked state: %v", err)
+	}
+
+	actorLogBefore, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	plannerRunsBefore := strings.Count(string(actorLogBefore), "planner|")
+	if plannerRunsBefore == 0 {
+		t.Fatalf("expected initial block to invoke planner, got log:\n%s", string(actorLogBefore))
+	}
+	if err := os.Unsetenv("RAIL_TEST_CODEX_VIOLATION_ACTOR"); err != nil {
+		t.Fatalf("failed to clear violation actor env: %v", err)
+	}
+
+	summary, err = runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("Execute should preserve terminal blocked state, got: %v", err)
+	}
+	if !strings.Contains(summary, "already completed") {
+		t.Fatalf("expected Execute to preserve completed blocked state, got %q", summary)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to inspect fake codex actor log: %v", err)
+	}
+	if plannerRunsAfter := strings.Count(string(actorLog), "planner|"); plannerRunsAfter != plannerRunsBefore {
+		t.Fatalf("expected no actor rerun without canonical retry state, got %d before and %d after log:\n%s", plannerRunsBefore, plannerRunsAfter, string(actorLog))
+	}
+}
+
+func TestExecuteConsumesBlockedActorRetryAfterPersistentViolation(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_VIOLATION_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-blocked-actor-retry-consumed")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if summary, err := runner.Execute(artifactPath); err != nil || !strings.Contains(summary, "status=blocked_environment") {
+		t.Fatalf("expected initial Execute to block, summary=%q err=%v", summary, err)
+	}
+	initialState, err := readState(filepath.Join(artifactPath, "state.json"))
+	if err != nil {
+		t.Fatalf("failed to read state after initial block: %v", err)
+	}
+	if initialState.BlockedActor == nil || *initialState.BlockedActor != "planner" || !initialState.BlockedRetryable {
+		t.Fatalf("expected initial block to be retryable for planner, got blockedActor=%v blockedRetryable=%v actionHistory=%v", initialState.BlockedActor, initialState.BlockedRetryable, initialState.ActionHistory)
+	}
+	if summary, err := runner.Execute(artifactPath); err != nil || !strings.Contains(summary, "status=blocked_environment") {
+		t.Fatalf("expected retry Execute to block again, summary=%q err=%v", summary, err)
+	}
+
+	state, err := readState(filepath.Join(artifactPath, "state.json"))
+	if err != nil {
+		t.Fatalf("failed to read state after persistent block: %v", err)
+	}
+	if state.BlockedActor == nil || *state.BlockedActor != "planner" {
+		t.Fatalf("expected persistent block to keep blocked actor evidence, got %#v", state.BlockedActor)
+	}
+	if state.BlockedRetryable {
+		t.Fatalf("expected blocked actor retry to be consumed after persistent violation")
+	}
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml after persistent block: %v", err)
+	}
+	if runStatus.Status != "blocked_environment" || runStatus.Phase != "backend_policy" || runStatus.CurrentActor != "planner" {
+		t.Fatalf("expected consumed backend block to keep backend policy status, got %#v", runStatus)
+	}
+
+	actorLogBefore, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	plannerRunsBefore := strings.Count(string(actorLogBefore), "planner|")
+	if plannerRunsBefore == 0 {
+		t.Fatalf("expected policy block to invoke planner at least once, got log:\n%s", string(actorLogBefore))
+	}
+	retryActionsBefore := 0
+	for _, action := range state.ActionHistory {
+		if action == "retry_blocked_actor_with_current_runtime" {
+			retryActionsBefore++
+		}
+	}
+	if retryActionsBefore != 1 {
+		t.Fatalf("expected exactly one blocked actor retry action, got %d state=%+v", retryActionsBefore, state)
+	}
+	if err := os.Unsetenv("RAIL_TEST_CODEX_VIOLATION_ACTOR"); err != nil {
+		t.Fatalf("failed to clear violation actor env: %v", err)
+	}
+
+	if summary, err := runner.Execute(artifactPath); err != nil || !strings.Contains(summary, "already completed") {
+		t.Fatalf("expected consumed retry to preserve terminal block, summary=%q err=%v", summary, err)
+	}
+	runStatus, err = ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml after completed blocked execute: %v", err)
+	}
+	if runStatus.Status != "blocked_environment" || runStatus.Phase != "backend_policy" || runStatus.CurrentActor != "planner" || runStatus.LastSuccessfulActor == "evaluator" {
+		t.Fatalf("expected completed blocked execute to preserve backend policy status, got %#v", runStatus)
+	}
+	actorLogAfter, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to reread fake codex actor log: %v", err)
+	}
+	if plannerRunsAfter := strings.Count(string(actorLogAfter), "planner|"); plannerRunsAfter != plannerRunsBefore {
+		t.Fatalf("expected no third actor rerun after retry was consumed, got %d before and %d after log:\n%s", plannerRunsBefore, plannerRunsAfter, string(actorLogAfter))
+	}
+	finalState, err := readState(filepath.Join(artifactPath, "state.json"))
+	if err != nil {
+		t.Fatalf("failed to read final state: %v", err)
+	}
+	retryActionsAfter := 0
+	for _, action := range finalState.ActionHistory {
+		if action == "retry_blocked_actor_with_current_runtime" {
+			retryActionsAfter++
+		}
+	}
+	if retryActionsAfter != retryActionsBefore {
+		t.Fatalf("expected consumed retry budget not to create another retry action, got %d before and %d after", retryActionsBefore, retryActionsAfter)
+	}
+}
+
+func countAction(actions []string, target string) int {
+	count := 0
+	for _, action := range actions {
+		if action == target {
+			count++
+		}
+	}
+	return count
+}
+
+func TestSuperviseDoesNotScheduleBlockedRetryForUnknownBlockedActor(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_VIOLATION_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-supervise-policy-unknown-actor")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if summary, err := runner.Execute(artifactPath); err != nil || !strings.Contains(summary, "status=blocked_environment") {
+		t.Fatalf("expected initial Execute to block, summary=%q err=%v", summary, err)
+	}
+
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read blocked state: %v", err)
+	}
+	state.BlockedActor = stringPtr("missing_actor")
+	state.BlockedRetryable = true
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to write stale blocked actor state: %v", err)
+	}
+
+	summary, err := runner.Supervise(artifactPath, SuperviseOptions{RetryBudget: 2})
+	if err != nil {
+		t.Fatalf("Supervise should preserve unknown blocked actor state without retrying, got: %v", err)
+	}
+	if !strings.Contains(summary, "already completed") {
+		t.Fatalf("expected Supervise to preserve completed blocked state, got %q", summary)
+	}
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml after supervise: %v", err)
+	}
+	if runStatus.Status == "retrying" || runStatus.Phase == "blocked_actor_retry" {
+		t.Fatalf("expected invalid blocked actor not to schedule retry status, got %#v", runStatus)
+	}
+	state, err = readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to reread blocked state: %v", err)
+	}
+	if countAction(state.ActionHistory, "retry_blocked_actor_with_current_runtime") != 0 {
+		t.Fatalf("expected invalid blocked actor not to append retry action, got %v", state.ActionHistory)
 	}
 }
 
@@ -850,6 +1092,49 @@ func TestSuperviseRetriesMissingActorOutputToTerminal(t *testing.T) {
 	}
 	if got := strings.Count(string(actorLog), "planner|"); got != 2 {
 		t.Fatalf("expected planner to run twice after missing-output retry, got %d log:\n%s", got, string(actorLog))
+	}
+}
+
+func TestSuperviseRetriesBackendPolicyBlockWithCurrentSealedRuntimeToTerminal(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_VIOLATION_ONCE_ACTOR", "planner")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-supervise-policy-retry")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Supervise(artifactPath, SuperviseOptions{RetryBudget: 1})
+	if err != nil {
+		t.Fatalf("Supervise should retry a retryable backend policy block once and finish, got: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") || !strings.Contains(summary, "1 retry") {
+		runStatus, _ := ReadRunStatus(artifactPath)
+		markerPath := filepath.Join(projectRoot, ".actor-violation-once-planner")
+		_, markerErr := os.Stat(markerPath)
+		t.Fatalf("expected supervised policy retry to finish passed after one retry, got %q runStatus=%#v markerErr=%v", summary, runStatus, markerErr)
+	}
+
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "passed" || runStatus.Phase != "terminal" {
+		t.Fatalf("expected supervised policy retry to finish terminal passed, got %#v", runStatus)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if got := strings.Count(string(actorLog), "planner|"); got != 2 {
+		t.Fatalf("expected planner to run twice after backend policy retry, got %d log:\n%s", got, string(actorLog))
 	}
 }
 
@@ -1423,7 +1708,16 @@ if actor == skip_output_once_actor and project_root:
         raise SystemExit(0)
 
 violation_actor = os.environ.get("RAIL_TEST_CODEX_VIOLATION_ACTOR", "")
-if actor == violation_actor:
+violation_once_actor = os.environ.get("RAIL_TEST_CODEX_VIOLATION_ONCE_ACTOR", "")
+if actor == violation_once_actor and project_root:
+    marker_path = os.path.join(project_root, ".actor-violation-once-" + actor)
+    if not os.path.exists(marker_path):
+        with open(marker_path, "w", encoding="utf-8") as marker:
+            marker.write("violated\n")
+        print(json.dumps({"type": "item.started", "item": {"type": "command_execution", "command": "sed -n '1,40p' /tmp/.codex/superpowers/skills/using-superpowers/SKILL.md"}}))
+    else:
+        print(json.dumps({"type": "thread.started", "thread_id": actor}))
+elif actor == violation_actor:
     print(json.dumps({"type": "item.started", "item": {"type": "command_execution", "command": "sed -n '1,40p' /tmp/.codex/superpowers/skills/using-superpowers/SKILL.md"}}))
 else:
     print(json.dumps({"type": "thread.started", "thread_id": actor}))

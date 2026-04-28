@@ -111,6 +111,17 @@ func buildNextActionAfterEvaluation(state State, fallbackActor string) map[strin
 	}
 }
 
+func buildNextActionForBlockedActorRetry(actorName string) map[string]any {
+	return map[string]any{
+		"actor":              actorName,
+		"reason":             "blocked_actor_retry",
+		"must_do":            []string{"Rerun the blocked actor with the current sealed runtime before reporting a terminal block."},
+		"must_not_do":        []string{"Do not use stale run_status.yaml contents to choose a different actor."},
+		"evidence_to_read":   []string{"state.json", runStatusFileName, workLedgerFileName, "runs/"},
+		"blocking_questions": []string{},
+	}
+}
+
 func nextActorAndReasonAfterEvaluation(state State, fallbackActor string) (*string, string) {
 	switch state.Status {
 	case "passed":

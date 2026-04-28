@@ -326,9 +326,9 @@ func recommendedResultNextStep(runStatus RunStatus, artifactDirectory string, pr
 	}
 	switch projectedStatus {
 	case "initialized":
-		return "Run rail execute --artifact " + artifactDirectory + " to continue the harness workflow."
+		return "Run rail supervise --artifact " + artifactDirectory + " to continue the harness workflow."
 	case "interrupted":
-		return "Inspect run_status.yaml and runs/ evidence, fix the blocker, then rerun rail execute."
+		return "Inspect run_status.yaml and runs/ evidence, fix the blocker, then rerun rail supervise."
 	case "in_progress", "retrying":
 		return "Continue from next_action.yaml with the selected actor brief."
 	default:

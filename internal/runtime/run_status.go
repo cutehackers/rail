@@ -43,7 +43,7 @@ func initialRunStatus(workflow Workflow, artifactDirectory string) RunStatus {
 			workLedgerFileName,
 			nextActionFileName,
 		},
-		NextStep: "Run rail execute --artifact " + artifactDirectory + " to continue the harness workflow.",
+		NextStep: "Run rail supervise --artifact " + artifactDirectory + " to continue the harness workflow.",
 	}
 }
 
@@ -93,6 +93,45 @@ func runStatusAfterEvaluation(artifactDirectory string, state State) RunStatus {
 	}
 }
 
+func runStatusForCompletedState(artifactDirectory string, state State, message string) RunStatus {
+	if state.Status == "blocked_environment" && state.BlockedActor != nil {
+		return backendPolicyRunStatus(artifactDirectory, state, message)
+	}
+	return runStatusAfterEvaluation(artifactDirectory, state)
+}
+
+func backendPolicyRunStatus(artifactDirectory string, state State, message string) RunStatus {
+	status := "blocked_environment"
+	phase := "backend_policy"
+	interruptionKind := "backend_policy_violation"
+	nextStep := "Read terminal_summary.md and fix backend policy isolation before continuing."
+	if state.BlockedRetryable {
+		status = "retrying"
+		phase = "blocked_actor_retry_available"
+		interruptionKind = "blocked_actor_retry_available"
+		nextStep = "Run rail supervise --artifact " + artifactDirectory + " to retry the blocked actor with current sealed runtime isolation."
+	}
+	return RunStatus{
+		Status:              status,
+		Phase:               phase,
+		CurrentActor:        actorLabel(state.BlockedActor),
+		LastSuccessfulActor: lastSuccessfulActor(state),
+		InterruptionKind:    interruptionKind,
+		Message:             strings.TrimSpace(message),
+		ArtifactDir:         artifactDirectory,
+		Evidence: []string{
+			"execution_report.yaml",
+			"critic_report.yaml",
+			"terminal_summary.md",
+			"state.json",
+			workLedgerFileName,
+			nextActionFileName,
+			"runs/",
+		},
+		NextStep: nextStep,
+	}
+}
+
 func interruptedRunStatus(artifactDirectory string, phase string, actorName string, state State, err error) RunStatus {
 	return RunStatus{
 		Status:              "interrupted",
@@ -108,7 +147,7 @@ func interruptedRunStatus(artifactDirectory string, phase string, actorName stri
 			nextActionFileName,
 			"runs/",
 		},
-		NextStep: "Inspect run_status.yaml, work_ledger.md, next_action.yaml, and runs/ logs; fix the blocker, then rerun rail execute --artifact " + artifactDirectory + ".",
+		NextStep: "Inspect run_status.yaml, work_ledger.md, next_action.yaml, and runs/ logs; fix the blocker, then rerun rail supervise --artifact " + artifactDirectory + ".",
 	}
 }
 
@@ -157,7 +196,7 @@ func synthesizeRunStatusFromState(artifactDirectory string) (RunStatus, error) {
 	nextStep := "Continue with next_action.yaml and the selected actor brief."
 	if state.Status == "initialized" && len(state.CompletedActors) == 0 {
 		phase = "bootstrap"
-		nextStep = "Run rail execute --artifact " + artifactDirectory + " to continue the harness workflow."
+		nextStep = "Run rail supervise --artifact " + artifactDirectory + " to continue the harness workflow."
 	} else if shouldTerminate(state) {
 		phase = "terminal"
 		nextStep = "Read terminal_summary.md before reporting the result to the user."

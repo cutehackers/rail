@@ -141,7 +141,9 @@ func TestPrepareReleaseScriptRequiresHomebrewTapToken(t *testing.T) {
 func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 	script := readRepoFile(t, "tool", "publish.sh")
 	for _, expected := range []string{
+		`PUBLISH_TOTAL_STEPS=09`,
 		"log_step()",
+		`printf 'publish [%s/%s] %s\n' "$step" "$PUBLISH_TOTAL_STEPS" "$message" >&2`,
 		`log_step "01" "validate inputs"`,
 		`log_step "02" "check repository state"`,
 		`log_step "03" "check release uniqueness"`,
@@ -185,6 +187,9 @@ func TestPublishScriptPreparesReleasePullRequest(t *testing.T) {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("publish script missing %q", expected)
 		}
+	}
+	if strings.Contains(script, "publish: step") {
+		t.Fatalf("publish script should not use verbose step log prefix")
 	}
 }
 

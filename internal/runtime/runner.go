@@ -76,11 +76,20 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if recoveredState, recovered, err := r.retryBlockedActorWithCurrentRuntimeIfNeeded(artifactDirectory, statePath, workflow, currentState); err != nil {
+		return "", err
+	} else if recovered {
+		currentState = recoveredState
+	}
 	if currentState.CurrentActor == nil {
 		if r.needsPersistedOutputRefresh(artifactDirectory, currentState) {
 			return r.router.RouteEvaluation(artifactDirectory)
 		}
-		if err := writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, currentState)); err != nil {
+		statusState := currentState
+		if statusState.BlockedRetryable && !validBlockedActorForWorkflow(statusState, workflow) {
+			statusState.BlockedRetryable = false
+		}
+		if err := writeRunStatus(artifactDirectory, runStatusForCompletedState(artifactDirectory, statusState, "")); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("Harness execution already completed for %s", artifactDirectory), nil
@@ -161,8 +170,9 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 
 		outputName := canonicalOutputForActor(actorName)
 		outputPath := filepath.Join(artifactDirectory, artifactFileName(outputName))
-		logPath := filepath.Join(runsDirectory, actorLogFileName(actorIndex, actorName, currentState.CompletedActors))
-		eventsPath := filepath.Join(runsDirectory, actorEventFileName(actorIndex, actorName, currentState.CompletedActors))
+		actorAttempt := nextActorAttempt(artifactDirectory, runsDirectory, actorIndex, actorName, currentState.CompletedActors)
+		logPath := filepath.Join(runsDirectory, actorLogFileNameForAttempt(actorIndex, actorName, actorAttempt))
+		eventsPath := filepath.Join(runsDirectory, actorEventFileNameForAttempt(actorIndex, actorName, actorAttempt))
 		briefPath := filepath.Join(artifactDirectory, "actor_briefs", fmt.Sprintf("%02d_%s.md", actorIndex+1, actorName))
 
 		if actorRequiresStandardRuntime(requestValue, actorName) {
@@ -240,6 +250,15 @@ func isBackendPolicyViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "backend_policy_violation")
 }
 
+func hasAction(actions []string, target string) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
 func actorRequiresStandardRuntime(requestValue request.CanonicalRequest, actorName string) bool {
 	if requestValue.ValidationProfile == "smoke" {
 		return false
@@ -250,6 +269,78 @@ func actorRequiresStandardRuntime(requestValue request.CanonicalRequest, actorNa
 	default:
 		return false
 	}
+}
+
+func (r *Runner) retryBlockedActorWithCurrentRuntimeIfNeeded(
+	artifactDirectory string,
+	statePath string,
+	workflow Workflow,
+	state State,
+) (State, bool, error) {
+	if state.CurrentActor != nil || state.Status != "blocked_environment" || !state.BlockedRetryable || state.BlockedActor == nil {
+		return state, false, nil
+	}
+
+	actorName := strings.TrimSpace(*state.BlockedActor)
+	if !validBlockedActorForWorkflow(state, workflow) {
+		return state, false, nil
+	}
+
+	nextState := state
+	nextState.Status = "retrying"
+	nextState.CurrentActor = stringPtr(actorName)
+	nextState.BlockedActor = nil
+	nextState.BlockedRetryable = false
+	nextState.LastDecision = nil
+	nextState.LastReasonCodes = []string{}
+	nextState.ActionHistory = append(nextState.ActionHistory, "retry_blocked_actor_with_current_runtime")
+	if err := writeJSON(statePath, nextState); err != nil {
+		return state, false, err
+	}
+	if err := writeYAML(
+		filepath.Join(artifactDirectory, nextActionFileName),
+		buildNextActionForBlockedActorRetry(actorName),
+	); err != nil {
+		return state, false, err
+	}
+	if err := appendWorkLedgerEntry(
+		filepath.Join(artifactDirectory, workLedgerFileName),
+		"Retrying blocked actor with current runtime",
+		[]string{
+			"actor: " + actorName,
+			"previous status: " + state.Status,
+			"previous reason codes: " + joinOrNone(state.LastReasonCodes),
+			"next: rerun actor with current sealed runtime",
+		},
+	); err != nil {
+		return state, false, err
+	}
+	if err := writeRunStatus(artifactDirectory, RunStatus{
+		Status:           "retrying",
+		Phase:            "blocked_actor_retry",
+		CurrentActor:     actorName,
+		InterruptionKind: "blocked_actor_retry",
+		Message:          "Retrying blocked actor with current sealed runtime.",
+		ArtifactDir:      artifactDirectory,
+		Evidence: []string{
+			"state.json",
+			nextActionFileName,
+			workLedgerFileName,
+			runStatusFileName,
+		},
+		NextStep: "Rail is rerunning the blocked actor with current sealed runtime isolation.",
+	}); err != nil {
+		return state, false, err
+	}
+	return nextState, true, nil
+}
+
+func validBlockedActorForWorkflow(state State, workflow Workflow) bool {
+	if state.BlockedActor == nil {
+		return false
+	}
+	actorName := strings.TrimSpace(*state.BlockedActor)
+	return actorName != "" && workflowActorIndex(workflow, actorName) != -1
 }
 
 func (r *Runner) recordInterruption(
@@ -288,6 +379,8 @@ func (r *Runner) blockForBackendPolicyViolation(
 	nextState := state
 	nextState.Status = "blocked_environment"
 	nextState.CurrentActor = nil
+	nextState.BlockedActor = stringPtr(actorName)
+	nextState.BlockedRetryable = !hasAction(nextState.ActionHistory, "retry_blocked_actor_with_current_runtime")
 	nextState.LastReasonCodes = []string{"backend_policy_violation"}
 	nextState.ActionHistory = append(nextState.ActionHistory, "block_environment")
 	nextState.LastDecision = stringPtr("reject")
@@ -310,23 +403,7 @@ func (r *Runner) blockForBackendPolicyViolation(
 	if err := r.router.writeTerminalSummary(artifactDirectory, nextState); err != nil {
 		return "", err
 	}
-	if err := writeRunStatus(artifactDirectory, RunStatus{
-		Status:              "blocked_environment",
-		Phase:               "backend_policy",
-		CurrentActor:        actorName,
-		LastSuccessfulActor: lastSuccessfulActor(state),
-		InterruptionKind:    "backend_policy_violation",
-		Message:             violation.Error(),
-		Evidence: []string{
-			"execution_report.yaml",
-			"critic_report.yaml",
-			"terminal_summary.md",
-			"state.json",
-			workLedgerFileName,
-			nextActionFileName,
-		},
-		NextStep: "Read terminal_summary.md and fix backend policy isolation before continuing.",
-	}); err != nil {
+	if err := writeRunStatus(artifactDirectory, runStatusForCompletedState(artifactDirectory, nextState, violation.Error())); err != nil {
 		return "", err
 	}
 	return formatExecutionSummary(artifactDirectory, nextState, "Harness execution blocked by backend policy"), nil
@@ -612,6 +689,10 @@ func writeActorLog(path string, value map[string]any) error {
 
 func actorLogFileName(actorIndex int, actorName string, completedActors []string) string {
 	visit := countActor(completedActors, actorName) + 1
+	return actorLogFileNameForAttempt(actorIndex, actorName, visit)
+}
+
+func actorLogFileNameForAttempt(actorIndex int, actorName string, visit int) string {
 	if visit == 1 {
 		return fmt.Sprintf("%02d_%s-last-message.txt", actorIndex+1, actorName)
 	}
@@ -620,10 +701,27 @@ func actorLogFileName(actorIndex int, actorName string, completedActors []string
 
 func actorEventFileName(actorIndex int, actorName string, completedActors []string) string {
 	visit := countActor(completedActors, actorName) + 1
+	return actorEventFileNameForAttempt(actorIndex, actorName, visit)
+}
+
+func actorEventFileNameForAttempt(actorIndex int, actorName string, visit int) string {
 	if visit == 1 {
 		return fmt.Sprintf("%02d_%s-events.jsonl", actorIndex+1, actorName)
 	}
 	return fmt.Sprintf("%02d_%s-visit-%02d-events.jsonl", actorIndex+1, actorName, visit)
+}
+
+func nextActorAttempt(artifactDirectory string, runsDirectory string, actorIndex int, actorName string, completedActors []string) int {
+	for visit := countActor(completedActors, actorName) + 1; ; visit++ {
+		logName := actorLogFileNameForAttempt(actorIndex, actorName, visit)
+		eventsName := actorEventFileNameForAttempt(actorIndex, actorName, visit)
+		runID := strings.TrimSuffix(logName, "-last-message.txt")
+		if persistedOutputMissing(filepath.Join(runsDirectory, logName)) &&
+			persistedOutputMissing(filepath.Join(runsDirectory, eventsName)) &&
+			persistedOutputMissing(filepath.Join(artifactDirectory, "runtime", runID)) {
+			return visit
+		}
+	}
 }
 
 func (r *Runner) needsPersistedOutputRefresh(artifactDirectory string, state State) bool {

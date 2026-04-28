@@ -245,6 +245,8 @@ type State struct {
 	TaskFamilySource                   string             `json:"taskFamilySource"`
 	Status                             string             `json:"status"`
 	CurrentActor                       *string            `json:"currentActor"`
+	BlockedActor                       *string            `json:"blockedActor,omitempty"`
+	BlockedRetryable                   bool               `json:"blockedRetryable,omitempty"`
 	CompletedActors                    []string           `json:"completedActors"`
 	GeneratorRetriesRemaining          int                `json:"generatorRetriesRemaining"`
 	ContextRebuildsRemaining           int                `json:"contextRebuildsRemaining"`

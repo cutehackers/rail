@@ -134,6 +134,9 @@ func parseCanonicalRequest(value any) (request.CanonicalRequest, error) {
 	if strings.TrimSpace(canonical.RiskTolerance) == "" {
 		return request.CanonicalRequest{}, errors.New("risk_tolerance is required")
 	}
+	if err := request.ValidateValidationTargets(canonical.Context.ValidationTargets); err != nil {
+		return request.CanonicalRequest{}, err
+	}
 	return canonical, nil
 }
 

@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"rail/internal/auth"
+	railruntime "rail/internal/runtime"
 )
 
 const (
@@ -14,7 +16,10 @@ const (
 	actorAuthConfigureError     = "rail actor auth cannot be configured because the auth home is unsafe"
 	actorAuthCheckUnsafeError   = "rail actor auth cannot be checked because it is not a Rail-owned auth home"
 	actorAuthRemoveUnsafeError  = "rail actor auth cannot be removed because it is not a Rail-owned auth home"
+	actorRuntimeNotReadyError   = "rail actor runtime not ready"
 )
+
+var actorRuntimeReadinessCheck = railruntime.CheckActorRuntimeReadinessForDoctor
 
 func RunAuth(args []string, stdin io.Reader, stdout io.Writer) error {
 	if len(args) == 0 {
@@ -41,6 +46,7 @@ func RunAuth(args []string, stdin io.Reader, stdout io.Writer) error {
 
 type authOptions struct {
 	codexCommand string
+	projectRoot  string
 }
 
 func parseAuthOptions(args []string) (authOptions, error) {
@@ -53,6 +59,12 @@ func parseAuthOptions(args []string) (authOptions, error) {
 				return authOptions{}, fmt.Errorf("--codex-command requires a command")
 			}
 			options.codexCommand = args[i]
+		case "--project-root":
+			i++
+			if i >= len(args) || strings.TrimSpace(args[i]) == "" {
+				return authOptions{}, fmt.Errorf("--project-root requires a path")
+			}
+			options.projectRoot = args[i]
 		default:
 			return authOptions{}, fmt.Errorf("unknown auth flag")
 		}
@@ -61,6 +73,9 @@ func parseAuthOptions(args []string) (authOptions, error) {
 }
 
 func runAuthLogin(options authOptions, stdin io.Reader, stdout io.Writer) error {
+	if strings.TrimSpace(options.projectRoot) != "" {
+		return fmt.Errorf("--project-root is only supported for auth doctor")
+	}
 	authHome, err := railCodexAuthHomeForProcess()
 	if err != nil {
 		return err
@@ -84,6 +99,9 @@ func runAuthLogin(options authOptions, stdin io.Reader, stdout io.Writer) error 
 }
 
 func runAuthStatus(options authOptions, stdout io.Writer, doctor bool) error {
+	if !doctor && strings.TrimSpace(options.projectRoot) != "" {
+		return fmt.Errorf("--project-root is only supported for auth doctor")
+	}
 	authHome, err := railCodexAuthHomeForProcess()
 	if err != nil {
 		return err
@@ -103,6 +121,18 @@ func runAuthStatus(options authOptions, stdout io.Writer, doctor bool) error {
 	}
 	if doctor {
 		_, _ = fmt.Fprintln(stdout, "Rail actor auth ready (source=rail_codex_login)")
+		projectRoot, err := authDoctorProjectRoot(options)
+		if err != nil {
+			_, _ = fmt.Fprintln(stdout, "Rail actor runtime not ready.")
+			_, _ = fmt.Fprintln(stdout, "Use `rail auth doctor --project-root <target-repo>` before standard actor execution.")
+			return fmt.Errorf(actorRuntimeNotReadyError)
+		}
+		if err := actorRuntimeReadinessCheck(projectRoot); err != nil {
+			_, _ = fmt.Fprintln(stdout, "Rail actor runtime not ready.")
+			_, _ = fmt.Fprintln(stdout, "Ensure `codex` is available on a trusted system PATH and actor backend command is `codex`.")
+			return fmt.Errorf(actorRuntimeNotReadyError)
+		}
+		_, _ = fmt.Fprintln(stdout, "Rail actor runtime ready (backend=codex_cli)")
 		_, _ = fmt.Fprintln(stdout, "Secret values are not printed.")
 		return nil
 	}
@@ -111,6 +141,9 @@ func runAuthStatus(options authOptions, stdout io.Writer, doctor bool) error {
 }
 
 func runAuthLogout(options authOptions, stdout io.Writer) error {
+	if strings.TrimSpace(options.projectRoot) != "" {
+		return fmt.Errorf("--project-root is only supported for auth doctor")
+	}
 	authHome, err := railCodexAuthHomeForProcess()
 	if err != nil {
 		return err
@@ -138,6 +171,13 @@ func authCommand(options authOptions) string {
 		return options.codexCommand
 	}
 	return "codex"
+}
+
+func authDoctorProjectRoot(options authOptions) (string, error) {
+	if strings.TrimSpace(options.projectRoot) != "" {
+		return filepath.Abs(options.projectRoot)
+	}
+	return os.Getwd()
 }
 
 func isActorAuthNotConfigured(err error) bool {

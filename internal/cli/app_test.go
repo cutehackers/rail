@@ -1188,6 +1188,51 @@ func TestRunValidateRequestRejectsRequestOutsideDiscoveredProjectRoot(t *testing
 	}
 }
 
+func TestRunValidateRequestRejectsCommandLikeValidationTargets(t *testing.T) {
+	projectRoot := t.TempDir()
+	requestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	if err := os.MkdirAll(filepath.Dir(requestPath), 0o755); err != nil {
+		t.Fatalf("failed to create request directory: %v", err)
+	}
+	requestBody := `task_type: test_repair
+goal: reject command-like validation targets
+context:
+  validation_targets:
+    - go test ./...
+constraints: []
+definition_of_done:
+  - reject command-like validation target
+priority: medium
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write request fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".git"), []byte("gitdir: test\n"), 0o644); err != nil {
+		t.Fatalf("failed to write git marker: %v", err)
+	}
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	var stdout bytes.Buffer
+	err = RunValidateRequest([]string{"--request", requestPath}, &stdout)
+	if err == nil {
+		t.Fatalf("expected validate-request to reject command-like validation_targets")
+	}
+	if !strings.Contains(err.Error(), "validation_targets") {
+		t.Fatalf("expected validation_targets error, got %v", err)
+	}
+}
+
 func TestRunRouteEvaluationAcceptsEvaluationFilePath(t *testing.T) {
 	repoRoot := repoRootFromCLIPackage(t)
 	projectRoot := t.TempDir()

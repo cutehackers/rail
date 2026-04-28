@@ -58,6 +58,14 @@ func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []stri
 		`shell_environment_policy.inherit="none"`,
 		"-c",
 		`shell_environment_policy.include_only=["PATH","HOME","TMPDIR","TMP","TEMP","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_CACHE_HOME"]`,
+	)
+	if backend.Capabilities.Plugins == "disabled" {
+		args = append(args, "--disable", "plugins")
+	}
+	if backend.Capabilities.Hooks == "disabled" {
+		args = append(args, "--disable", "codex_hooks")
+	}
+	args = append(args,
 		"--output-schema",
 		spec.SchemaPath,
 		"--output-last-message",

@@ -11,6 +11,37 @@ asking for a task id, captures the printed artifact path, and uses that path for
 Use `/absolute/path/to/target-repo` as a placeholder for the target application
 repository. The target repository is not the Rail source checkout.
 
+## Task Identity Examples
+
+Fresh task prompt:
+
+```text
+Use the Rail skill.
+Target repo: /absolute/path/to/target-repo
+Goal: Fix the checkout total rounding bug.
+```
+
+Expected behavior:
+
+- treat this as fresh work
+- materialize a request
+- run `rail run` without `--task-id`
+- use the printed artifact path for execution and reporting
+
+Existing artifact prompt:
+
+```text
+Use the Rail skill.
+Continue /absolute/path/to/target-repo/.harness/artifacts/request-2 and report the result.
+```
+
+Expected behavior:
+
+- treat this as existing artifact work
+- do not run `compose-request`
+- do not run `rail run`
+- run `rail status`, `rail supervise`, `rail result`, or `rail integrate` against the supplied artifact path as requested
+
 ## Bug Fix Rubric
 
 Prompt:

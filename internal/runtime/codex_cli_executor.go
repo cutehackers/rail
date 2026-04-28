@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type CodexCLIBackend struct{}
+type CodexCLIExecutor struct{}
 
 type RuntimeEvidence struct {
 	SchemaVersion    int                      `yaml:"schema_version"`
@@ -38,7 +38,7 @@ type RuntimeEvidenceRedaction struct {
 	SecretValuesWritten bool `yaml:"secret_values_written"`
 }
 
-func (CodexCLIBackend) RunActor(ctx context.Context, invocation ActorInvocation) (ActorResult, error) {
+func (CodexCLIExecutor) RunActor(ctx context.Context, invocation ActorInvocation) (ActorResult, error) {
 	profile, err := normalizeActorProfile(invocation.ActorName, invocation.Profile)
 	if err != nil {
 		return ActorResult{}, err

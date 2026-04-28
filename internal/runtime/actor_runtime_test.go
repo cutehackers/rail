@@ -623,7 +623,7 @@ func TestBuildCodexCLIArgsUsesBackendPolicy(t *testing.T) {
 	}
 }
 
-func TestCodexCLIBackendBuildsExpectedArgs(t *testing.T) {
+func TestCodexCLIExecutorBuildsExpectedArgs(t *testing.T) {
 	workingDirectory := t.TempDir()
 	logPath := filepath.Join(workingDirectory, "response.json")
 	schemaPath := filepath.Join(workingDirectory, "schema.json")
@@ -668,7 +668,7 @@ func TestCodexCLIBackendBuildsExpectedArgs(t *testing.T) {
 	}
 }
 
-func TestCodexCLIBackendPreservesCallerCancellation(t *testing.T) {
+func TestCodexCLIExecutorPreservesCallerCancellation(t *testing.T) {
 	workingDirectory := t.TempDir()
 	fakeBin := t.TempDir()
 	logPath := filepath.Join(workingDirectory, "response.json")
@@ -698,7 +698,7 @@ time.sleep(5)
 		cancel()
 	}()
 
-	_, err := (CodexCLIBackend{}).RunActor(ctx, ActorInvocation{
+	_, err := (CodexCLIExecutor{}).RunActor(ctx, ActorInvocation{
 		ActorName:         "planner",
 		ActorRunID:        "01_planner",
 		WorkingDirectory:  workingDirectory,
@@ -715,7 +715,7 @@ time.sleep(5)
 	}
 }
 
-func TestCodexCLIBackendWritesRuntimeEvidence(t *testing.T) {
+func TestCodexCLIExecutorWritesRuntimeEvidence(t *testing.T) {
 	artifactDirectory := t.TempDir()
 	workingDirectory := t.TempDir()
 	runsDirectory := filepath.Join(artifactDirectory, "runs")
@@ -752,7 +752,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 
 	backend := defaultTestActorBackend()
 	backend.CaptureJSONEvents = true
-	result, err := (CodexCLIBackend{}).RunActor(context.Background(), ActorInvocation{
+	result, err := (CodexCLIExecutor{}).RunActor(context.Background(), ActorInvocation{
 		ActorName:         "planner",
 		ActorRunID:        "01_planner",
 		WorkingDirectory:  workingDirectory,
@@ -835,7 +835,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 	}
 }
 
-func TestCodexCLIBackendRejectsEscapedInvocationPaths(t *testing.T) {
+func TestCodexCLIExecutorRejectsEscapedInvocationPaths(t *testing.T) {
 	artifactDirectory := t.TempDir()
 	runsDirectory := filepath.Join(artifactDirectory, "runs")
 	if err := os.MkdirAll(runsDirectory, 0o755); err != nil {
@@ -885,7 +885,7 @@ func TestCodexCLIBackendRejectsEscapedInvocationPaths(t *testing.T) {
 			invocation := baseInvocation
 			tc.mutate(&invocation, outsidePath)
 
-			_, err := (CodexCLIBackend{}).RunActor(context.Background(), invocation)
+			_, err := (CodexCLIExecutor{}).RunActor(context.Background(), invocation)
 			if err == nil {
 				t.Fatalf("expected escaped %s path to be rejected", tc.name)
 			}
@@ -899,7 +899,7 @@ func TestCodexCLIBackendRejectsEscapedInvocationPaths(t *testing.T) {
 	}
 }
 
-func TestCodexCLIBackendRejectsSymlinkEscapedInvocationPaths(t *testing.T) {
+func TestCodexCLIExecutorRejectsSymlinkEscapedInvocationPaths(t *testing.T) {
 	artifactDirectory := t.TempDir()
 	outsideRunsDirectory := t.TempDir()
 	runsDirectory := filepath.Join(artifactDirectory, "runs")
@@ -909,7 +909,7 @@ func TestCodexCLIBackendRejectsSymlinkEscapedInvocationPaths(t *testing.T) {
 	backend := defaultTestActorBackend()
 	backend.CaptureJSONEvents = true
 
-	_, err := (CodexCLIBackend{}).RunActor(context.Background(), ActorInvocation{
+	_, err := (CodexCLIExecutor{}).RunActor(context.Background(), ActorInvocation{
 		ActorName:         "planner",
 		ActorRunID:        "01_planner",
 		WorkingDirectory:  t.TempDir(),
@@ -932,7 +932,7 @@ func TestCodexCLIBackendRejectsSymlinkEscapedInvocationPaths(t *testing.T) {
 	}
 }
 
-func TestCodexCLIBackendDoesNotWritePassedEvidenceForMalformedOutput(t *testing.T) {
+func TestCodexCLIExecutorDoesNotWritePassedEvidenceForMalformedOutput(t *testing.T) {
 	artifactDirectory := t.TempDir()
 	workingDirectory := t.TempDir()
 	runsDirectory := filepath.Join(artifactDirectory, "runs")
@@ -968,7 +968,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 
 	backend := defaultTestActorBackend()
 	backend.CaptureJSONEvents = true
-	_, err := (CodexCLIBackend{}).RunActor(context.Background(), ActorInvocation{
+	_, err := (CodexCLIExecutor{}).RunActor(context.Background(), ActorInvocation{
 		ActorName:         "planner",
 		ActorRunID:        "01_planner",
 		WorkingDirectory:  workingDirectory,

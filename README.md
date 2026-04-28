@@ -16,6 +16,28 @@ Rail is the governance control plane. Codex remains the agent runtime.
 
 Rail owns request normalization, bounded workflow state, artifact contracts, evaluation routing, validation evidence, and reviewed learning state. Codex owns repository inspection, file editing, tool execution, sandbox enforcement, rules, skills, hooks, and structured final actor output.
 
+## Future Codex SDK Executor
+
+Rail currently executes standard actors through `ActorExecutor` with
+`CodexCLIExecutor` as the only implemented executor. `CodexSDKExecutor` is a
+planned implementation of the same port, not a separate harness path.
+
+The intended migration shape is:
+
+- keep `CodexCLIExecutor` as the baseline and compatibility fallback
+- add `CodexSDKExecutor` behind the existing `ActorExecutor` interface
+- preserve the same `ActorInvocation`, `ActorResult`, actor output schemas,
+  run status projection, and runtime evidence contract
+- introduce executor selection through explicit Rail policy only after CLI and
+  SDK behavior can be compared with the same harness fixtures
+- compare CLI and SDK runs on cancellation behavior, structured error mapping,
+  event/evidence fidelity, sandbox/auth isolation, and final evaluator outcome
+
+The SDK executor should not move governance into the SDK layer. Rail should
+continue to own routing, retries, terminal decisions, result projection, and
+artifact contracts. The SDK implementation should only replace the current
+subprocess boundary used by `CodexCLIExecutor`.
+
 ## What Users Actually Do
 
 Install Rail once:

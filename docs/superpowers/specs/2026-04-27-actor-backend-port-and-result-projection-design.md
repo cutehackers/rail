@@ -1,4 +1,4 @@
-# Actor Backend Port and Result Projection Design
+# Actor Executor Port and Result Projection Design
 
 **Date:** 2026-04-27
 
@@ -6,7 +6,7 @@
 
 Refine Rail's long-term Codex integration plan after the sealed actor runtime
 and browser-based Rail actor auth work. Rail should keep its governance
-contracts stable while making Codex execution backend-neutral and making harness
+contracts stable while making Codex execution executor-neutral and making harness
 outcomes easy for Codex and humans to report.
 
 ## Decision Summary
@@ -20,7 +20,7 @@ The current direction is fundamentally sound:
 
 The design needs two corrections before implementation continues:
 
-1. The actor backend layer must become a true Rail-level port, not a Codex CLI
+1. The actor executor layer must become a true Rail-level port, not a Codex CLI
    flag abstraction.
 2. Harness result reporting should start as a derived `rail result` projection
    over existing artifacts, not as new durable `result.json` or `result.md`
@@ -85,13 +85,13 @@ Rail governance layer
   validation evidence
   learning state
 
-Rail backend ports
-  ActorBackend
+Rail executor ports
+  ActorExecutor
   ValidationRunner
   RuntimeEvidenceSink
   ResultProjector
 
-Backend adapters
+Executor adapters
   codex_cli
   future codex_sdk
   future codex_mcp
@@ -109,12 +109,12 @@ Codex runtime
 The governance layer must speak in Rail concepts. Codex CLI flags are adapter
 implementation details.
 
-## Actor Backend Port
+## Actor Executor Port
 
-Introduce a backend-neutral port before adding new backend types:
+Introduce an executor-neutral port before adding new executor types:
 
 ```go
-type ActorBackend interface {
+type ActorExecutor interface {
     RunActor(context.Context, ActorInvocation) (ActorResult, error)
 }
 
@@ -187,11 +187,11 @@ target-local file asks for it.
 
 `session_mode: per_actor` is the only currently real mode.
 
-`per_run` should be treated as reserved until the backend port supports explicit
+`per_run` should be treated as reserved until the executor port supports explicit
 session lifecycle operations:
 
 ```go
-type StatefulActorBackend interface {
+type StatefulActorExecutor interface {
     StartRunSession(context.Context, RunSessionSpec) (RunSession, error)
 }
 ```
@@ -413,13 +413,13 @@ underlying `state.json` state machine in the first iteration. For example:
    result projection.
 5. Update `skills/rail/SKILL.md` and `assets/skill/Rail/SKILL.md` so Codex runs
    `rail result --json` after `supervise`.
-6. Introduce backend-neutral `ActorBackend`, `ActorInvocation`, and
+6. Introduce executor-neutral `ActorExecutor`, `ActorInvocation`, and
    `ActorResult` types.
 7. Move current `codex exec` construction into a `codex_cli` adapter while
    keeping current behavior.
 8. Add normalized runtime evidence after the adapter boundary is in place.
 9. Add a validation-runner design and implementation phase after result
-   projection and actor backend porting are stable.
+   projection and actor executor porting are stable.
 
 ## Validation Strategy
 
@@ -431,7 +431,7 @@ Unit tests:
 - `--latest --project-root` selects the newest `run_status.yaml` by
   `updated_at`.
 - result projection does not write `result.json` or `result.md`.
-- `codex_cli` adapter receives backend-neutral `ActorInvocation` and still
+- `codex_cli` adapter receives executor-neutral `ActorInvocation` and still
   constructs the current expected `codex exec` command.
 - sealed actor runtime provenance remains available through the adapter result.
 
@@ -450,9 +450,9 @@ Docs checks:
 
 ## Acceptance Criteria
 
-- Rail has a backend-neutral actor execution port.
+- Rail has an executor-neutral actor execution port.
 - `codex_cli` is an adapter behind that port.
-- CLI-only concepts do not leak into the backend-neutral invocation/result
+- CLI-only concepts do not leak into the executor-neutral invocation/result
   types.
 - `rail result` gives Codex a stable machine-readable outcome projection.
 - `rail result` gives operators a concise human-readable outcome.

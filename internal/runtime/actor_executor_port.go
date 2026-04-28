@@ -2,7 +2,7 @@ package runtime
 
 import "context"
 
-type ActorBackend interface {
+type ActorExecutor interface {
 	RunActor(context.Context, ActorInvocation) (ActorResult, error)
 }
 

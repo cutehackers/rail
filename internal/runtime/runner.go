@@ -15,11 +15,11 @@ import (
 )
 
 type Runner struct {
-	projectRoot  string
-	bootstrapper *Bootstrapper
-	router       *Router
-	commands     CommandRunner
-	actorBackend ActorBackend
+	projectRoot   string
+	bootstrapper  *Bootstrapper
+	router        *Router
+	commands      CommandRunner
+	actorExecutor ActorExecutor
 }
 
 func NewRunner(projectRoot string) (*Runner, error) {
@@ -32,11 +32,11 @@ func NewRunner(projectRoot string) (*Runner, error) {
 		return nil, err
 	}
 	return &Runner{
-		projectRoot:  bootstrapper.projectRoot,
-		bootstrapper: bootstrapper,
-		router:       router,
-		commands:     subprocessRunner{},
-		actorBackend: CodexCLIBackend{},
+		projectRoot:   bootstrapper.projectRoot,
+		bootstrapper:  bootstrapper,
+		router:        router,
+		commands:      subprocessRunner{},
+		actorExecutor: CodexCLIExecutor{},
 	}, nil
 }
 
@@ -426,11 +426,11 @@ func (r *Runner) runActor(
 			"Project root: " + workingDirectory,
 			"Follow the actor brief exactly. You may inspect or edit files under the project root only when the brief requires it. Do not write artifact files yourself; return only the schema-valid actor response.",
 		}, "\n")
-		actorBackend := r.actorBackend
-		if actorBackend == nil {
-			actorBackend = CodexCLIBackend{}
+		actorExecutor := r.actorExecutor
+		if actorExecutor == nil {
+			actorExecutor = CodexCLIExecutor{}
 		}
-		result, err := actorBackend.RunActor(context.Background(), ActorInvocation{
+		result, err := actorExecutor.RunActor(context.Background(), ActorInvocation{
 			ActorName:         actorName,
 			ActorRunID:        actorRunIDFromLogPath(logPath),
 			WorkingDirectory:  workingDirectory,

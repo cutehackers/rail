@@ -74,7 +74,7 @@ func buildCodexCLIArgs(backend ActorBackendConfig, spec ActorCommandSpec) []stri
 // repository-resolved actor profile passed by the caller. Environment overrides
 // are intentionally unsupported; profile selection belongs in actor_profiles.yaml.
 func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]any, error) {
-	result, err := (CodexCLIBackend{}).RunActor(context.Background(), invocationFromCommandSpec(backend, spec))
+	result, err := (CodexCLIExecutor{}).RunActor(context.Background(), invocationFromCommandSpec(backend, spec))
 	if err != nil {
 		return nil, err
 	}

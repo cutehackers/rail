@@ -1,10 +1,10 @@
-# Actor Backend Port and Result Projection Implementation Plan
+# Actor Executor Port and Result Projection Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a `rail result` read-model projection for harness outcomes, then refactor actor execution behind a backend-neutral `ActorBackend` port without changing current `codex_cli` behavior.
+**Goal:** Add a `rail result` read-model projection for harness outcomes, then refactor actor execution behind an executor-neutral `ActorExecutor` port without changing current `codex_cli` behavior.
 
-**Architecture:** Keep `run_status.yaml` and `terminal_summary.md` as canonical artifacts. Add pure runtime projection builders, a thin CLI command, and a Codex-skill reporting flow before porting `codex exec` into a `codex_cli` adapter. When `run_status.yaml` is absent and Rail synthesizes status from `state.json`, the projection must cite `state.json` rather than a missing status file. The backend port should speak Rail concepts while CLI flags remain adapter-local.
+**Architecture:** Keep `run_status.yaml` and `terminal_summary.md` as canonical artifacts. Add pure runtime projection builders, a thin CLI command, and a Codex-skill reporting flow before porting `codex exec` into a `codex_cli` adapter. When `run_status.yaml` is absent and Rail synthesizes status from `state.json`, the projection must cite `state.json` rather than a missing status file. The executor port should speak Rail concepts while CLI flags remain adapter-local.
 
 **Tech Stack:** Go CLI in `cmd/rail`, `internal/cli`, and `internal/runtime`; Markdown skill/docs updates; tests with existing smoke artifacts and fake Codex command helpers.
 
@@ -38,14 +38,14 @@
   - Updates later execution flow to run `rail result --json` after `rail supervise`.
 - Modify: `assets/skill/Rail/SKILL.md`
   - Mirrors the repo-owned skill changes.
-- Create: `internal/runtime/actor_backend_port.go`
-  - Defines backend-neutral `ActorBackend`, `ActorInvocation`, `ActorResult`, and supporting types.
-- Create: `internal/runtime/codex_cli_backend.go`
-  - Moves `codex exec` command construction/execution behind a `CodexCLIBackend` adapter.
+- Create: `internal/runtime/actor_executor_port.go`
+  - Defines executor-neutral `ActorExecutor`, `ActorInvocation`, `ActorResult`, and supporting types.
+- Create: `internal/runtime/codex_cli_executor.go`
+  - Moves `codex exec` command construction/execution behind a `CodexCLIExecutor` adapter.
 - Modify: `internal/runtime/actor_runtime.go`
   - Shrinks to shared schema/redaction helpers or delegates through the new adapter.
 - Modify: `internal/runtime/runner.go`
-  - Calls the `ActorBackend` port instead of directly calling `runCommand`.
+  - Calls the `ActorExecutor` port instead of directly calling `runCommand`.
 - Modify: `internal/runtime/actor_runtime_test.go`
   - Updates CLI-arg and sealed-runtime tests to exercise the `codex_cli` adapter.
 
@@ -566,18 +566,18 @@ git commit -m "feat: report supervise results through rail result"
 
 ---
 
-### Task 5: Backend-Neutral Actor Port
+### Task 5: Executor-Neutral Actor Port
 
 **Files:**
-- Create: `internal/runtime/actor_backend_port.go`
-- Create: `internal/runtime/codex_cli_backend.go`
+- Create: `internal/runtime/actor_executor_port.go`
+- Create: `internal/runtime/codex_cli_executor.go`
 - Modify: `internal/runtime/actor_runtime.go`
 - Modify: `internal/runtime/runner.go`
 - Modify: `internal/runtime/actor_runtime_test.go`
 
 - [ ] **Step 1: Write failing adapter args test**
 
-Move or add a test named `TestCodexCLIBackendBuildsExpectedArgs` that constructs a backend-neutral `ActorInvocation` and asserts the adapter still produces the current `codex exec` args.
+Move or add a test named `TestCodexCLIExecutorBuildsExpectedArgs` that constructs an executor-neutral `ActorInvocation` and asserts the adapter still produces the current `codex exec` args.
 
 Expected current args include:
 
@@ -597,12 +597,12 @@ Expected current args include:
 - `--output-last-message`
 - prompt
 
-- [ ] **Step 2: Add backend-neutral types**
+- [ ] **Step 2: Add executor-neutral types**
 
-Create `internal/runtime/actor_backend_port.go`:
+Create `internal/runtime/actor_executor_port.go`:
 
 ```go
-type ActorBackend interface {
+type ActorExecutor interface {
     RunActor(context.Context, ActorInvocation) (ActorResult, error)
 }
 
@@ -629,14 +629,14 @@ type ActorResult struct {
 
 Use `ActorBackendConfig` temporarily as `Policy` to avoid a large policy migration in this task. Do not expose CLI-only fields in the invocation itself.
 
-- [ ] **Step 3: Create `CodexCLIBackend` adapter**
+- [ ] **Step 3: Create `CodexCLIExecutor` adapter**
 
-Create `internal/runtime/codex_cli_backend.go` with:
+Create `internal/runtime/codex_cli_executor.go` with:
 
 ```go
-type CodexCLIBackend struct{}
+type CodexCLIExecutor struct{}
 
-func (CodexCLIBackend) RunActor(ctx context.Context, invocation ActorInvocation) (ActorResult, error) {
+func (CodexCLIExecutor) RunActor(ctx context.Context, invocation ActorInvocation) (ActorResult, error) {
     // normalize profile
     // prepare sealed runtime
     // execute sealed codex command
@@ -653,7 +653,7 @@ Keep `runCommand(backend ActorBackendConfig, spec ActorCommandSpec)` as a thin w
 
 ```go
 func runCommand(backend ActorBackendConfig, spec ActorCommandSpec) (map[string]any, error) {
-    result, err := CodexCLIBackend{}.RunActor(context.Background(), invocationFromCommandSpec(backend, spec))
+    result, err := CodexCLIExecutor{}.RunActor(context.Background(), invocationFromCommandSpec(backend, spec))
     if err != nil {
         return nil, err
     }
@@ -668,7 +668,7 @@ This keeps existing tests passing while allowing `runner.go` to move later.
 Run:
 
 ```bash
-go test ./internal/runtime -run 'TestCodexCLIBackend|TestBuildCodexCLIArgs|TestRunCommand|TestPrepareSealedActorRuntime' -count=1
+go test ./internal/runtime -run 'TestCodexCLIExecutor|TestBuildCodexCLIArgs|TestRunCommand|TestPrepareSealedActorRuntime' -count=1
 ```
 
 Expected: PASS.
@@ -676,48 +676,48 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add internal/runtime/actor_backend_port.go internal/runtime/codex_cli_backend.go internal/runtime/actor_runtime.go internal/runtime/actor_runtime_test.go
-git commit -m "refactor: introduce actor backend port"
+git add internal/runtime/actor_executor_port.go internal/runtime/codex_cli_executor.go internal/runtime/actor_runtime.go internal/runtime/actor_runtime_test.go
+git commit -m "refactor: introduce actor executor port"
 ```
 
 ---
 
-### Task 6: Runner Uses ActorBackend Port
+### Task 6: Runner Uses ActorExecutor Port
 
 **Files:**
 - Modify: `internal/runtime/runner.go`
 - Modify: `internal/runtime/runner_test.go`
 - Modify: `internal/runtime/integration_test.go` if fake Codex setup needs adjustment
 
-- [ ] **Step 1: Add backend field to Runner**
+- [ ] **Step 1: Add executor field to Runner**
 
-Update `Runner` construction so real actor execution can use an `ActorBackend`:
+Update `Runner` construction so real actor execution can use an `ActorExecutor`:
 
 ```go
 type Runner struct {
     // existing fields
-    actorBackend ActorBackend
+    actorExecutor ActorExecutor
 }
 ```
 
-Default to `CodexCLIBackend{}` in `NewRunner`.
+Default to `CodexCLIExecutor{}` in `NewRunner`.
 
 - [ ] **Step 2: Route actor execution through port**
 
 In `runner.go`, replace direct `runCommand` usage with:
 
 ```go
-result, err := r.actorBackend.RunActor(ctx, ActorInvocation{...})
+result, err := r.actorExecutor.RunActor(ctx, ActorInvocation{...})
 response := result.StructuredOutput
 ```
 
 Keep smoke actor behavior deterministic and unchanged.
 
-- [ ] **Step 3: Add fake backend test**
+- [ ] **Step 3: Add fake executor test**
 
-Add a focused test that injects a fake `ActorBackend` into `Runner` and proves `runner.Execute` can complete planner/context/critic/generator/evaluator actor calls without invoking Codex directly.
+Add a focused test that injects a fake `ActorExecutor` into `Runner` and proves `runner.Execute` can complete planner/context/critic/generator/evaluator actor calls without invoking Codex directly.
 
-The fake backend should return minimal schema-valid outputs by actor name.
+The fake executor should return minimal schema-valid outputs by actor name.
 
 - [ ] **Step 4: Preserve existing fake Codex tests**
 
@@ -736,7 +736,7 @@ Expected: PASS or no tests for patterns that do not exist.
 
 ```bash
 git add internal/runtime/runner.go internal/runtime/runner_test.go internal/runtime/integration_test.go
-git commit -m "refactor: execute actors through backend port"
+git commit -m "refactor: execute actors through executor port"
 ```
 
 ---
@@ -744,7 +744,7 @@ git commit -m "refactor: execute actors through backend port"
 ### Task 7: Normalized Runtime Evidence
 
 **Files:**
-- Modify: `internal/runtime/codex_cli_backend.go`
+- Modify: `internal/runtime/codex_cli_executor.go`
 - Modify: `internal/runtime/actor_runtime_sealed.go`
 - Modify: `internal/runtime/actor_runtime_test.go`
 
@@ -768,7 +768,7 @@ with:
 
 - [ ] **Step 2: Add evidence writer**
 
-Add a small struct and writer in `codex_cli_backend.go`:
+Add a small struct and writer in `codex_cli_executor.go`:
 
 ```go
 type RuntimeEvidence struct {
@@ -796,7 +796,7 @@ Set `ActorResult.RuntimeEvidence` or an equivalent path field so future summarie
 Run:
 
 ```bash
-go test ./internal/runtime -run 'TestCodexCLIBackend.*Evidence|TestRunCommand' -count=1
+go test ./internal/runtime -run 'TestCodexCLIExecutor.*Evidence|TestRunCommand' -count=1
 ```
 
 Expected: PASS.
@@ -804,7 +804,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/runtime/codex_cli_backend.go internal/runtime/actor_runtime_sealed.go internal/runtime/actor_runtime_test.go
+git add internal/runtime/codex_cli_executor.go internal/runtime/actor_runtime_sealed.go internal/runtime/actor_runtime_test.go
 git commit -m "feat: write normalized actor runtime evidence"
 ```
 

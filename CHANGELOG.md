@@ -2,6 +2,21 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.5.1 - 2026-04-28
+
+### Added
+- Added a runtime actor executor port abstraction with a Codex CLI executor implementation.
+- Added result projection support across the runtime and CLI.
+- Added design and implementation documentation for actor execution and result projection.
+
+### Changed
+- Renamed the actor backend port terminology to executor.
+- Updated README and Rail skill documentation to reflect the runtime workflow changes.
+
+### Verification
+- `tool/prepare_release.sh v0.5.1`
+
+
 ## v0.5.0 - 2026-04-27
 
 ### Added

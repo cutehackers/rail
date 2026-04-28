@@ -658,6 +658,73 @@ func TestExecuteRoutesAuditViolationToTerminalSummary(t *testing.T) {
 	}
 }
 
+func TestExecuteRetriesBlockedActorWithCurrentSealedRuntime(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	actorLogPath := installFakeCodexForRealMode(t, projectRoot)
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-blocked-actor-retry")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	statePath := filepath.Join(artifactPath, "state.json")
+	state, err := readState(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	state.Status = "blocked_environment"
+	state.CurrentActor = nil
+	state.LastDecision = stringPtr("reject")
+	state.LastReasonCodes = []string{"backend_policy_violation"}
+	state.ActionHistory = append(state.ActionHistory, "block_environment")
+	if err := writeJSON(statePath, state); err != nil {
+		t.Fatalf("failed to write blocked state: %v", err)
+	}
+
+	if err := writeRunStatus(artifactPath, RunStatus{
+		Status:           "blocked_environment",
+		Phase:            "backend_policy",
+		CurrentActor:     "planner",
+		InterruptionKind: "backend_policy_violation",
+		Message:          "backend_policy_violation: unexpected actor backend isolation failure",
+		ArtifactDir:      artifactPath,
+	}); err != nil {
+		t.Fatalf("failed to write blocked run status: %v", err)
+	}
+
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("Execute should retry blocked actor, got: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") {
+		t.Fatalf("expected retried execution to pass, got %q", summary)
+	}
+
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable: %v", err)
+	}
+	if runStatus.Status != "passed" || runStatus.Phase != "terminal" {
+		t.Fatalf("expected retried run to finish terminal passed, got %#v", runStatus)
+	}
+	if _, err := os.Stat(filepath.Join(artifactPath, "runtime", "01_planner", "actor_environment.yaml")); err != nil {
+		t.Fatalf("expected retried planner to use sealed actor runtime: %v", err)
+	}
+
+	actorLog, err := os.ReadFile(actorLogPath)
+	if err != nil {
+		t.Fatalf("failed to read fake codex actor log: %v", err)
+	}
+	if !strings.Contains(string(actorLog), "planner|") {
+		t.Fatalf("expected blocked execution to rerun planner, got log:\n%s", string(actorLog))
+	}
+}
+
 func TestExecuteRecordsRunStatusForActorFailure(t *testing.T) {
 	projectRoot, requestPath := prepareRealProject(t)
 	installFakeCodexForRealMode(t, projectRoot)

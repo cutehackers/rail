@@ -76,6 +76,11 @@ func (r *Runner) Execute(artifactPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if recoveredState, recovered, err := r.retryBlockedActorWithCurrentRuntimeIfNeeded(artifactDirectory, statePath, currentState); err != nil {
+		return "", err
+	} else if recovered {
+		currentState = recoveredState
+	}
 	if currentState.CurrentActor == nil {
 		if r.needsPersistedOutputRefresh(artifactDirectory, currentState) {
 			return r.router.RouteEvaluation(artifactDirectory)
@@ -250,6 +255,70 @@ func actorRequiresStandardRuntime(requestValue request.CanonicalRequest, actorNa
 	default:
 		return false
 	}
+}
+
+func (r *Runner) retryBlockedActorWithCurrentRuntimeIfNeeded(
+	artifactDirectory string,
+	statePath string,
+	state State,
+) (State, bool, error) {
+	if state.CurrentActor != nil || state.Status != "blocked_environment" {
+		return state, false, nil
+	}
+
+	status, err := ReadRunStatus(artifactDirectory)
+	if err != nil {
+		return state, false, nil
+	}
+	if !isBlockedActorRetryStatus(status) {
+		return state, false, nil
+	}
+
+	nextState := state
+	nextState.Status = "retrying"
+	nextState.CurrentActor = stringPtr(status.CurrentActor)
+	nextState.LastDecision = nil
+	nextState.LastReasonCodes = []string{}
+	nextState.ActionHistory = append(nextState.ActionHistory, "retry_blocked_actor_with_current_runtime")
+	if err := writeJSON(statePath, nextState); err != nil {
+		return state, false, err
+	}
+	if err := appendWorkLedgerEntry(
+		filepath.Join(artifactDirectory, workLedgerFileName),
+		"Retrying blocked actor with current runtime",
+		[]string{
+			"actor: " + status.CurrentActor,
+			"previous status: " + status.Status,
+			"previous phase: " + status.Phase,
+			"previous interruption: " + fallbackString(status.InterruptionKind, "unknown"),
+			"next: rerun actor with current sealed runtime",
+		},
+	); err != nil {
+		return state, false, err
+	}
+	if err := writeRunStatus(artifactDirectory, RunStatus{
+		Status:           "retrying",
+		Phase:            "blocked_actor_retry",
+		CurrentActor:     status.CurrentActor,
+		InterruptionKind: "blocked_actor_retry",
+		Message:          "Retrying blocked actor with current sealed runtime.",
+		ArtifactDir:      artifactDirectory,
+		Evidence: []string{
+			"state.json",
+			workLedgerFileName,
+			runStatusFileName,
+		},
+		NextStep: "Rail is rerunning the blocked actor with current sealed runtime isolation.",
+	}); err != nil {
+		return state, false, err
+	}
+	return nextState, true, nil
+}
+
+func isBlockedActorRetryStatus(status RunStatus) bool {
+	return status.Status == "blocked_environment" &&
+		status.Phase != "terminal" &&
+		strings.TrimSpace(status.CurrentActor) != ""
 }
 
 func (r *Runner) recordInterruption(

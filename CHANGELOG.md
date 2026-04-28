@@ -2,6 +2,19 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.5.3 - 2026-04-28
+
+### Fixed
+- Show backend policy blocks consistently in runtime status output.
+
+### Changed
+- Skip release-gate CI checks on main-branch merge workflows.
+- Updated release gate documentation and task tracking.
+
+### Verification
+- `tool/prepare_release.sh v0.5.3`
+
+
 ## v0.5.2 - 2026-04-28
 
 ### Added

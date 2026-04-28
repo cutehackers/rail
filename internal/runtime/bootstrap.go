@@ -220,6 +220,7 @@ func (b *Bootstrapper) Bootstrap(requestPath, taskID string) (string, error) {
 type Workflow struct {
 	TaskID                  string   `json:"taskId"`
 	TaskType                string   `json:"taskType"`
+	ValidationProfile       string   `json:"validationProfile,omitempty"`
 	TaskFamily              string   `json:"taskFamily"`
 	TaskFamilySource        string   `json:"taskFamilySource"`
 	ProjectRoot             string   `json:"projectRoot"`
@@ -452,6 +453,7 @@ func buildWorkflow(
 	return Workflow{
 		TaskID:                  taskID,
 		TaskType:                requestValue.TaskType,
+		ValidationProfile:       requestValue.ValidationProfile,
 		TaskFamily:              requestValue.TaskType,
 		TaskFamilySource:        "task_type",
 		ProjectRoot:             projectRoot,

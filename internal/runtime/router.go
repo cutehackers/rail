@@ -1222,6 +1222,9 @@ func terminalSummaryPresent(artifactDirectory string) bool {
 }
 
 func buildActorProfilesUsedReport(workflow Workflow, state State) ([]map[string]any, error) {
+	if workflow.ValidationProfile == "smoke" && len(state.ActorProfilesUsed) == 0 {
+		return []map[string]any{}, nil
+	}
 	if err := validateActorProfilesSnapshot(workflow, state.ActorProfilesUsed); err != nil {
 		return nil, err
 	}

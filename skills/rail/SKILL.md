@@ -103,6 +103,7 @@ rail auth doctor
 rail compose-request --stdin
 rail compose-request --input /absolute/path/to/request-draft.json
 rail supervise --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>
+rail result --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id> --json
 rail status --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>
 ```
 
@@ -135,11 +136,13 @@ After bootstrapping, report:
 
 Keep `compose-request` as the focus of this skill. `rail validate-request` and `rail run` are available once request materialization is complete, but they belong to the later workflow steps rather than the initial draft-composition step.
 
-For later execution steps, prefer `rail supervise --artifact ...` over plain `rail execute --artifact ...` when the user expects Rail to continue the actor loop to a terminal result in one session. `supervise` reruns retryable actor/session interruptions within its retry budget and stops only on terminal status or a non-retryable blocker.
+For later execution steps, run `rail auth doctor` before standard actor execution, then run `rail supervise --artifact ...` for the artifact. `supervise` reruns retryable actor/session interruptions within its retry budget and stops only on terminal status or a non-retryable blocker.
 
-If `rail auth doctor` is not ready, do not start `supervise` or `execute`. Run `rail auth login` first, complete browser login, then report that actor auth is ready before continuing. This prevents the actor loop from stopping later with `blocked_environment` due to missing sealed actor credentials.
+If `rail auth doctor` is not ready, do not start `supervise`. Run `rail auth login` first, complete browser login, then report that actor auth is ready before continuing. This prevents the actor loop from stopping later with `blocked_environment` due to missing sealed actor credentials.
 
-If a later execution run still stops unexpectedly, read or print `run_status.yaml` with `rail status --artifact ...` and include that summary in the chat response. The status summary tells the user the latest phase, current actor, interruption kind, evidence files, and next step.
+Whenever the artifact exists after `supervise`, always run `rail result --artifact ... --json`. Use that result JSON as the reporting contract for the chat response: report outcome, evidence, residual risk, and the recommended next step from the projected result.
+
+If a later execution run still stops unexpectedly and `rail result --artifact ... --json` is not available, read or print `run_status.yaml` with `rail status --artifact ...` and include that summary in the chat response. The status summary tells the user the latest phase, current actor, interruption kind, evidence files, and next step.
 
 ## Guardrails
 
@@ -148,6 +151,7 @@ If a later execution run still stops unexpectedly, read or print `run_status.yam
 - Keep `definition_of_done` testable.
 - Keep `constraints` short and concrete.
 - Do not assume a source checkout is the runtime root.
+- Do not report harness success from `supervise` process output alone. Use `rail result --artifact ... --json` as the reporting contract.
 
 For examples, see:
 

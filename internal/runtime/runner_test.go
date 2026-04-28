@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -498,6 +499,73 @@ actors:
 		if !strings.Contains(string(criticReport), fragment) {
 			t.Fatalf("expected real-mode critic_report.yaml to contain %q, got:\n%s", fragment, string(criticReport))
 		}
+	}
+}
+
+func TestExecuteRunsStandardActorsThroughInjectedExecutor(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	fakeExecutor := &recordingActorExecutor{}
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+	runner.actorExecutor = fakeExecutor
+
+	artifactPath, err := runner.Run(requestPath, "go-real-fake-executor")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") {
+		t.Fatalf("expected execution summary to contain passed status, got %q", summary)
+	}
+
+	if got, want := fakeExecutor.actorNames, []string{"planner", "context_builder", "critic", "generator", "evaluator"}; !slices.Equal(got, want) {
+		t.Fatalf("unexpected actor executor calls: got %#v want %#v", got, want)
+	}
+	if len(fakeExecutor.policies) != len(fakeExecutor.actorNames) {
+		t.Fatalf("expected policy snapshot for each executor call, got %#v", fakeExecutor.policies)
+	}
+	for index, policy := range fakeExecutor.policies {
+		if policy.Sandbox != "workspace-write" || !policy.CaptureJSONEvents {
+			t.Fatalf("unexpected executor policy for %s: %#v", fakeExecutor.actorNames[index], policy)
+		}
+	}
+}
+
+func TestExecuteSmokeSkipsStandardActorRuntimeConfig(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProject(t)
+	supervisorDirectory := filepath.Join(projectRoot, ".harness", "supervisor")
+	if err := os.MkdirAll(supervisorDirectory, 0o755); err != nil {
+		t.Fatalf("failed to create supervisor directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(supervisorDirectory, "actor_backend.yaml"), []byte("version: 1\nexecution_environment: isolated_ci\n"), 0o644); err != nil {
+		t.Fatalf("failed to write invalid actor backend policy: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(supervisorDirectory, "actor_profiles.yaml"), []byte("version: 1\nactors:\n  planner: { model: '', reasoning: impossible }\n"), 0o644); err != nil {
+		t.Fatalf("failed to write invalid actor profiles: %v", err)
+	}
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-smoke-skip-standard-runtime")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	summary, err := runner.Execute(artifactPath)
+	if err != nil {
+		t.Fatalf("Execute returned error despite smoke runtime not using standard executor: %v", err)
+	}
+	if !strings.Contains(summary, "status=passed") {
+		t.Fatalf("expected smoke execution summary to contain passed status, got %q", summary)
 	}
 }
 
@@ -1370,6 +1438,69 @@ with open(output_path, "w", encoding="utf-8") as handle:
 		_ = os.Setenv("PATH", originalPath)
 	})
 	return actorLogPath
+}
+
+type recordingActorExecutor struct {
+	actorNames []string
+	policies   []ActorBackendConfig
+}
+
+func (b *recordingActorExecutor) RunActor(_ context.Context, invocation ActorInvocation) (ActorResult, error) {
+	b.actorNames = append(b.actorNames, invocation.ActorName)
+	b.policies = append(b.policies, invocation.Policy)
+	return ActorResult{
+		StructuredOutput: fakeActorExecutorOutput(invocation.ActorName),
+		LastMessagePath:  invocation.LastMessagePath,
+		EventsPath:       invocation.EventsPath,
+	}, nil
+}
+
+func fakeActorExecutorOutput(actorName string) map[string]any {
+	switch actorName {
+	case "planner":
+		return map[string]any{
+			"summary":                     "Fake executor plan.",
+			"likely_files":                []string{"feature/ready.go"},
+			"assumptions":                 []string{"Fake executor keeps execution local."},
+			"substeps":                    []string{"Return schema-valid outputs."},
+			"risks":                       []string{},
+			"acceptance_criteria_refined": []string{"Execute completes through the actor executor port."},
+		}
+	case "context_builder":
+		return map[string]any{
+			"relevant_files":       []map[string]any{{"path": "feature/ready.go", "why": "Target fixture file."}},
+			"repo_patterns":        []string{"Use narrow Go package validation."},
+			"test_patterns":        []string{"Run package tests."},
+			"forbidden_changes":    []string{"Do not invoke Codex directly."},
+			"implementation_hints": []string{"No source change is required for this fake executor test."},
+		}
+	case "critic":
+		return map[string]any{
+			"priority_focus":          []string{"Keep actor execution behind the actor executor port."},
+			"missing_requirements":    []string{},
+			"risk_hypotheses":         []string{"Direct Codex invocation would bypass injected executor tests."},
+			"validation_expectations": []string{"Execute reaches terminal routing."},
+			"generator_guardrails":    []string{"Return schema-valid implementation output."},
+			"blocked_assumptions":     []string{},
+		}
+	case "generator":
+		return map[string]any{
+			"changed_files":          []string{},
+			"patch_summary":          []string{"Fake executor did not edit the target repository."},
+			"tests_added_or_updated": []string{},
+			"known_limits":           []string{"This test covers runtime routing, not downstream code generation."},
+		}
+	case "evaluator":
+		return map[string]any{
+			"decision":           "pass",
+			"scores":             map[string]any{"requirements": 1.0, "architecture": 1.0, "regression_risk": 1.0},
+			"findings":           []string{"Fake executor actor flow completed."},
+			"reason_codes":       []string{},
+			"quality_confidence": "high",
+		}
+	default:
+		return map[string]any{"summary": "unexpected actor"}
+	}
 }
 
 type stubCommandRunner struct {

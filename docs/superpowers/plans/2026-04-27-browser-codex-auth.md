@@ -1116,7 +1116,7 @@ If `rail auth doctor` is not ready, do not start `supervise` or `execute`. Run `
 Run:
 
 ```bash
-rg -n '/Users/|~/' README.md docs/ skills/Rail/SKILL.md assets/skill/Rail/SKILL.md
+rg -n '(/U[s]ers/|~[/])' README.md docs/ skills/Rail/SKILL.md assets/skill/Rail/SKILL.md
 ```
 
 Expected: no new home-directory path examples from this task. Existing unrelated historical archive hits should not be edited unless they are in the touched sections.
@@ -1255,7 +1255,7 @@ Run:
 git status --short
 go test ./...
 go build -o build/rail ./cmd/rail
-rg -n '/Users/|~/' README.md docs/ skills/Rail/SKILL.md assets/skill/Rail/SKILL.md
+rg -n '(/U[s]ers/|~[/])' README.md docs/ skills/Rail/SKILL.md assets/skill/Rail/SKILL.md
 ```
 
 Expected:

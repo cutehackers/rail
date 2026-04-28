@@ -1,7 +1,9 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -618,6 +620,375 @@ func TestBuildCodexCLIArgsUsesBackendPolicy(t *testing.T) {
 	}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("unexpected codex args:\ngot  %#v\nwant %#v", args, want)
+	}
+}
+
+func TestCodexCLIExecutorBuildsExpectedArgs(t *testing.T) {
+	workingDirectory := t.TempDir()
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+	eventsPath := filepath.Join(workingDirectory, "events.jsonl")
+	backend := defaultTestActorBackend()
+	backend.CaptureJSONEvents = true
+
+	args := buildCodexCLIArgsForInvocation(ActorInvocation{
+		ActorName:         "planner",
+		ActorRunID:        "01_planner",
+		WorkingDirectory:  workingDirectory,
+		ArtifactDirectory: workingDirectory,
+		Prompt:            "prompt",
+		OutputSchemaPath:  schemaPath,
+		LastMessagePath:   logPath,
+		EventsPath:        eventsPath,
+		Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		Policy:            backend,
+	})
+
+	want := []string{
+		"exec",
+		"-m", "gpt-5.4-mini",
+		"--cd", workingDirectory,
+		"--ephemeral",
+		"--color", "never",
+		"-s", "workspace-write",
+		"--skip-git-repo-check",
+		"--ignore-user-config",
+		"--ignore-rules",
+		"-c", `model_reasoning_effort="high"`,
+		"-c", `approval_policy="never"`,
+		"-c", `shell_environment_policy.inherit="none"`,
+		"-c", `shell_environment_policy.include_only=["PATH","HOME","TMPDIR","TMP","TEMP","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_CACHE_HOME"]`,
+		"--output-schema", schemaPath,
+		"--output-last-message", logPath,
+		"--json",
+		"prompt",
+	}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("unexpected codex backend args:\ngot  %#v\nwant %#v", args, want)
+	}
+}
+
+func TestCodexCLIExecutorPreservesCallerCancellation(t *testing.T) {
+	workingDirectory := t.TempDir()
+	fakeBin := t.TempDir()
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+	eventsPath := filepath.Join(workingDirectory, "events.jsonl")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env python3
+import time
+
+print("not-json", flush=True)
+time.sleep(5)
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	allowFakeCodexForTest(t, fakeCodexPath)
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
+
+	backend := defaultTestActorBackend()
+	backend.CaptureJSONEvents = true
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := (CodexCLIExecutor{}).RunActor(ctx, ActorInvocation{
+		ActorName:         "planner",
+		ActorRunID:        "01_planner",
+		WorkingDirectory:  workingDirectory,
+		ArtifactDirectory: workingDirectory,
+		Prompt:            "prompt",
+		OutputSchemaPath:  schemaPath,
+		LastMessagePath:   logPath,
+		EventsPath:        eventsPath,
+		Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		Policy:            backend,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected caller cancellation to win over event audit errors, got %v", err)
+	}
+}
+
+func TestCodexCLIExecutorWritesRuntimeEvidence(t *testing.T) {
+	artifactDirectory := t.TempDir()
+	workingDirectory := t.TempDir()
+	runsDirectory := filepath.Join(artifactDirectory, "runs")
+	if err := os.MkdirAll(runsDirectory, 0o755); err != nil {
+		t.Fatalf("failed to create runs directory: %v", err)
+	}
+	fakeBin := t.TempDir()
+	logPath := filepath.Join(runsDirectory, "01_planner-last-message.txt")
+	schemaPath := filepath.Join(runsDirectory, "01_planner-output-schema.json")
+	eventsPath := filepath.Join(runsDirectory, "01_planner-events.jsonl")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env python3
+import json
+import sys
+
+output_path = None
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+        break
+
+print('{"event":"started"}')
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump({"summary": "ok"}, handle)
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	allowFakeCodexForTest(t, fakeCodexPath)
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
+
+	backend := defaultTestActorBackend()
+	backend.CaptureJSONEvents = true
+	result, err := (CodexCLIExecutor{}).RunActor(context.Background(), ActorInvocation{
+		ActorName:         "planner",
+		ActorRunID:        "01_planner",
+		WorkingDirectory:  workingDirectory,
+		ArtifactDirectory: artifactDirectory,
+		Prompt:            "prompt",
+		OutputSchemaPath:  schemaPath,
+		LastMessagePath:   logPath,
+		EventsPath:        eventsPath,
+		Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		Policy:            backend,
+	})
+	if err != nil {
+		t.Fatalf("RunActor returned error: %v", err)
+	}
+
+	evidencePath := filepath.Join(runsDirectory, "01_planner-runtime-evidence.yaml")
+	if result.RuntimeEvidencePath != evidencePath {
+		t.Fatalf("RuntimeEvidencePath: got %q want %q", result.RuntimeEvidencePath, evidencePath)
+	}
+	eventsInfo, err := os.Stat(eventsPath)
+	if err != nil {
+		t.Fatalf("failed to stat events log: %v", err)
+	}
+	if got, want := eventsInfo.Mode().Perm(), os.FileMode(0o600); got != want {
+		t.Fatalf("events log permissions: got %v want %v", got, want)
+	}
+	data, err := os.ReadFile(evidencePath)
+	if err != nil {
+		t.Fatalf("failed to read runtime evidence: %v", err)
+	}
+
+	var evidence struct {
+		SchemaVersion int      `yaml:"schema_version"`
+		BackendType   string   `yaml:"backend_type"`
+		Actor         string   `yaml:"actor"`
+		ActorRunID    string   `yaml:"actor_run_id"`
+		Status        string   `yaml:"status"`
+		RawEventLog   string   `yaml:"raw_event_log"`
+		Provenance    string   `yaml:"provenance"`
+		Violations    []string `yaml:"policy_violations"`
+		Policy        struct {
+			Sandbox string `yaml:"sandbox"`
+		} `yaml:"policy"`
+		Redaction struct {
+			SecretValuesWritten bool `yaml:"secret_values_written"`
+		} `yaml:"redaction"`
+	}
+	if err := yaml.Unmarshal(data, &evidence); err != nil {
+		t.Fatalf("failed to decode runtime evidence: %v\n%s", err, data)
+	}
+	if evidence.SchemaVersion != 1 {
+		t.Fatalf("schema_version: got %d want 1", evidence.SchemaVersion)
+	}
+	if evidence.BackendType != "codex_cli" {
+		t.Fatalf("backend_type: got %q want codex_cli", evidence.BackendType)
+	}
+	if evidence.Actor != "planner" {
+		t.Fatalf("actor: got %q want planner", evidence.Actor)
+	}
+	if evidence.ActorRunID != "01_planner" {
+		t.Fatalf("actor_run_id: got %q want 01_planner", evidence.ActorRunID)
+	}
+	if evidence.Status != "passed" {
+		t.Fatalf("status: got %q want passed", evidence.Status)
+	}
+	if evidence.RawEventLog != "runs/01_planner-events.jsonl" {
+		t.Fatalf("raw_event_log: got %q", evidence.RawEventLog)
+	}
+	if evidence.Provenance != "runtime/01_planner/actor_environment.yaml" {
+		t.Fatalf("provenance: got %q", evidence.Provenance)
+	}
+	if evidence.Policy.Sandbox != "workspace-write" {
+		t.Fatalf("policy.sandbox: got %q want workspace-write", evidence.Policy.Sandbox)
+	}
+	if evidence.Redaction.SecretValuesWritten {
+		t.Fatalf("redaction.secret_values_written: got true want false")
+	}
+	if evidence.Violations == nil || len(evidence.Violations) != 0 {
+		t.Fatalf("policy_violations: got %#v want empty list", evidence.Violations)
+	}
+}
+
+func TestCodexCLIExecutorRejectsEscapedInvocationPaths(t *testing.T) {
+	artifactDirectory := t.TempDir()
+	runsDirectory := filepath.Join(artifactDirectory, "runs")
+	if err := os.MkdirAll(runsDirectory, 0o755); err != nil {
+		t.Fatalf("failed to create runs directory: %v", err)
+	}
+	backend := defaultTestActorBackend()
+	backend.CaptureJSONEvents = true
+
+	baseInvocation := ActorInvocation{
+		ActorName:         "planner",
+		ActorRunID:        "01_planner",
+		WorkingDirectory:  t.TempDir(),
+		ArtifactDirectory: artifactDirectory,
+		Prompt:            "prompt",
+		OutputSchemaPath:  filepath.Join(runsDirectory, "01_planner-output-schema.json"),
+		LastMessagePath:   filepath.Join(runsDirectory, "01_planner-last-message.txt"),
+		EventsPath:        filepath.Join(runsDirectory, "01_planner-events.jsonl"),
+		Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		Policy:            backend,
+	}
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(*ActorInvocation, string)
+	}{
+		{
+			name: "output_schema",
+			mutate: func(invocation *ActorInvocation, outsidePath string) {
+				invocation.OutputSchemaPath = outsidePath
+			},
+		},
+		{
+			name: "last_message",
+			mutate: func(invocation *ActorInvocation, outsidePath string) {
+				invocation.LastMessagePath = outsidePath
+			},
+		},
+		{
+			name: "events",
+			mutate: func(invocation *ActorInvocation, outsidePath string) {
+				invocation.EventsPath = outsidePath
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			outsidePath := filepath.Join(t.TempDir(), "escaped")
+			invocation := baseInvocation
+			tc.mutate(&invocation, outsidePath)
+
+			_, err := (CodexCLIExecutor{}).RunActor(context.Background(), invocation)
+			if err == nil {
+				t.Fatalf("expected escaped %s path to be rejected", tc.name)
+			}
+			if !strings.Contains(err.Error(), "escapes artifact directory") {
+				t.Fatalf("expected containment error, got %v", err)
+			}
+			if _, statErr := os.Stat(outsidePath); !os.IsNotExist(statErr) {
+				t.Fatalf("expected escaped path not to be created, stat err=%v", statErr)
+			}
+		})
+	}
+}
+
+func TestCodexCLIExecutorRejectsSymlinkEscapedInvocationPaths(t *testing.T) {
+	artifactDirectory := t.TempDir()
+	outsideRunsDirectory := t.TempDir()
+	runsDirectory := filepath.Join(artifactDirectory, "runs")
+	if err := os.Symlink(outsideRunsDirectory, runsDirectory); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	backend := defaultTestActorBackend()
+	backend.CaptureJSONEvents = true
+
+	_, err := (CodexCLIExecutor{}).RunActor(context.Background(), ActorInvocation{
+		ActorName:         "planner",
+		ActorRunID:        "01_planner",
+		WorkingDirectory:  t.TempDir(),
+		ArtifactDirectory: artifactDirectory,
+		Prompt:            "prompt",
+		OutputSchemaPath:  filepath.Join(runsDirectory, "01_planner-output-schema.json"),
+		LastMessagePath:   filepath.Join(runsDirectory, "01_planner-last-message.txt"),
+		EventsPath:        filepath.Join(runsDirectory, "01_planner-events.jsonl"),
+		Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		Policy:            backend,
+	})
+	if err == nil {
+		t.Fatalf("expected symlink-escaped runs directory to be rejected")
+	}
+	if !strings.Contains(err.Error(), "escapes artifact directory") {
+		t.Fatalf("expected containment error, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(outsideRunsDirectory, "01_planner-events.jsonl")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected outside events log not to be created, stat err=%v", statErr)
+	}
+}
+
+func TestCodexCLIExecutorDoesNotWritePassedEvidenceForMalformedOutput(t *testing.T) {
+	artifactDirectory := t.TempDir()
+	workingDirectory := t.TempDir()
+	runsDirectory := filepath.Join(artifactDirectory, "runs")
+	if err := os.MkdirAll(runsDirectory, 0o755); err != nil {
+		t.Fatalf("failed to create runs directory: %v", err)
+	}
+	fakeBin := t.TempDir()
+	logPath := filepath.Join(runsDirectory, "01_planner-last-message.txt")
+	schemaPath := filepath.Join(runsDirectory, "01_planner-output-schema.json")
+	eventsPath := filepath.Join(runsDirectory, "01_planner-events.jsonl")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env python3
+import sys
+
+output_path = None
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+        break
+
+print('{"event":"started"}')
+with open(output_path, "w", encoding="utf-8") as handle:
+    handle.write("not-json")
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	allowFakeCodexForTest(t, fakeCodexPath)
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
+
+	backend := defaultTestActorBackend()
+	backend.CaptureJSONEvents = true
+	_, err := (CodexCLIExecutor{}).RunActor(context.Background(), ActorInvocation{
+		ActorName:         "planner",
+		ActorRunID:        "01_planner",
+		WorkingDirectory:  workingDirectory,
+		ArtifactDirectory: artifactDirectory,
+		Prompt:            "prompt",
+		OutputSchemaPath:  schemaPath,
+		LastMessagePath:   logPath,
+		EventsPath:        eventsPath,
+		Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		Policy:            backend,
+	})
+	if err == nil {
+		t.Fatalf("expected malformed actor output to fail")
+	}
+	if !strings.Contains(err.Error(), "decode planner actor response") {
+		t.Fatalf("expected decode error, got %v", err)
+	}
+	evidencePath := filepath.Join(runsDirectory, "01_planner-runtime-evidence.yaml")
+	if _, statErr := os.Stat(evidencePath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected passed runtime evidence not to be written, stat err=%v", statErr)
 	}
 }
 

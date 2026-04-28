@@ -7,11 +7,12 @@ export GIT_TERMINAL_PROMPT="${GIT_TERMINAL_PROMPT:-0}"
 export GIT_PAGER="${GIT_PAGER:-cat}"
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 start_branch=""
+PUBLISH_TOTAL_STEPS=09
 
 log_step() {
   local step="$1"
   local message="$2"
-  printf 'publish: step %s - %s\n' "$step" "$message" >&2
+  printf 'publish [%s/%s] %s\n' "$step" "$PUBLISH_TOTAL_STEPS" "$message" >&2
 }
 
 usage() {

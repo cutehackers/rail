@@ -64,6 +64,8 @@ func TestV1ReleaseGateScriptIsGoFirst(t *testing.T) {
 func TestReleaseGateWorkflowProvisionsGoInsteadOfDart(t *testing.T) {
 	workflow := readRepoFile(t, ".github", "workflows", "release-gate.yml")
 	for _, expected := range []string{
+		"pull_request:",
+		"- main",
 		"matrix:",
 		"run: ./tool/release_gate.sh",
 		"actions/setup-go@v5",
@@ -75,6 +77,9 @@ func TestReleaseGateWorkflowProvisionsGoInsteadOfDart(t *testing.T) {
 	}
 	if strings.Contains(workflow, "d"+"art-lang/setup-"+("d"+"art")+"@v1") {
 		t.Fatalf("release-gate workflow still provisions Dart")
+	}
+	if strings.Contains(workflow, "\n  push:") {
+		t.Fatalf("release-gate workflow should not rerun v1/v2 gates on main pushes")
 	}
 }
 

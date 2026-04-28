@@ -35,6 +35,10 @@ Recommended local gate:
 ./tool/v2_release_gate.sh
 ```
 
+CI runs this gate through `.github/workflows/release-gate.yml` for pull requests
+targeting `main`. Merges to `main` do not rerun the `v2` release gate because
+the required PR gate already covered the merge candidate.
+
 The gate should ensure:
 
 - Go test and build complete cleanly

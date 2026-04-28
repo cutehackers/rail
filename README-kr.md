@@ -161,12 +161,16 @@ override 규칙은 단순합니다.
 Rail 자체를 다루는 기여자 기준:
 
 - 자동 smoke gate: `./tool/v2_release_gate.sh`
+- release gate workflow: `.github/workflows/release-gate.yml` (`main` 대상 PR에서 실행)
 - 릴리즈 workflow: `.github/workflows/release.yml`
 
 smoke gate는 request 생성, 실행, 통합, artifact 검증, learning-state 검증을
 포함한 빠른 control-plane 경로를 증명합니다. Real actor command wiring은
 profile에서 선택된 model과 reasoning 인자를 검증하는 runtime test로
 확인하며, live helper script에 의존하지 않습니다.
+
+`main` merge 시점에는 `v1` 또는 `v2` release gate를 다시 실행하지 않습니다.
+해당 gate는 PR에서 이미 실행됩니다.
 
 ## 배포
 

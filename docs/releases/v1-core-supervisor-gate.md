@@ -79,8 +79,11 @@ Production release requires all of the following:
 Repository verification remains explicit and automated through:
 
 - `./tool/v1_release_gate.sh`
-- `.github/workflows/v1-release-gate.yml`
+- `.github/workflows/release-gate.yml` for pull requests targeting `main`
 - `.github/workflows/go-release-gate.yml`
+
+Merges to `main` do not rerun the `v1` release gate because the required PR
+gate already covered the merge candidate.
 
 Additional release-ready confirmation should include:
 

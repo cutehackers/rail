@@ -22,7 +22,7 @@ Current baseline:
 ## Must
 
 - [x] Add a `v2` CI workflow that runs `./tool/v2_release_gate.sh`
-  Done when pull requests and pushes to `main` fail on broken `v2` operational state in the same way `v1` already does.
+  Done when pull requests targeting `main` fail on broken `v2` operational state in the same way `v1` already does. Merges to `main` do not rerun the `v1` or `v2` release gates because the PR gate already covered them.
 
 - [x] Write the `Quality Improvement Operating Model`
   Define the retained quality signals, operator review flow, promotion rules, and the line between meaningful improvement and noise.

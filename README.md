@@ -239,6 +239,7 @@ public release cadence and package-manager notability.
 For contributors working on Rail itself:
 
 - automated smoke gate: `./tool/v2_release_gate.sh`
+- release gate workflow: `.github/workflows/release-gate.yml` for pull requests targeting `main`
 - release workflow: `.github/workflows/release.yml`
 
 The smoke gate proves the fast control-plane path, including request
@@ -246,6 +247,9 @@ materialization, execution, integration, artifact validation, and learning-state
 verification. Real actor command wiring is covered by runtime tests that assert
 profile-selected model and reasoning arguments without relying on live helper
 scripts.
+
+Merges to `main` do not rerun the `v1` or `v2` release gates because those gates
+already run for the pull request.
 
 ## More Detail
 

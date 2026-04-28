@@ -4,9 +4,6 @@ on:
   pull_request:
     branches:
       - main
-  push:
-    branches:
-      - main
 
 jobs:
   release-gate:
@@ -28,4 +25,3 @@ jobs:
 
       - name: Run release gate
         run: ./tool/release_gate.sh "${{ matrix.gate }}"
-

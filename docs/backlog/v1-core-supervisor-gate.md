@@ -7,7 +7,7 @@
 The `v1` release gate is codified in:
 
 - `./tool/v1_release_gate.sh`
-- `.github/workflows/v1-release-gate.yml`
+- `.github/workflows/release-gate.yml` for pull requests targeting `main`
 - `.github/workflows/go-release-gate.yml`
 
 ## Verification Gaps

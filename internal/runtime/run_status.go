@@ -94,7 +94,8 @@ func runStatusAfterEvaluation(artifactDirectory string, state State) RunStatus {
 }
 
 func runStatusForCompletedState(artifactDirectory string, state State, message string) RunStatus {
-	if state.Status == "blocked_environment" && state.BlockedActor != nil {
+	if isBackendPolicyBlockedState(state, message) {
+		state = hydrateBackendPolicyBlockedState(artifactDirectory, state, message)
 		return backendPolicyRunStatus(artifactDirectory, state, message)
 	}
 	return runStatusAfterEvaluation(artifactDirectory, state)
@@ -115,7 +116,7 @@ func backendPolicyRunStatus(artifactDirectory string, state State, message strin
 		Status:              status,
 		Phase:               phase,
 		CurrentActor:        actorLabel(state.BlockedActor),
-		LastSuccessfulActor: lastSuccessfulActor(state),
+		LastSuccessfulActor: lastSuccessfulActorBeforeBlocked(state),
 		InterruptionKind:    interruptionKind,
 		Message:             strings.TrimSpace(message),
 		ArtifactDir:         artifactDirectory,
@@ -191,15 +192,22 @@ func synthesizeRunStatusFromState(artifactDirectory string) (RunStatus, error) {
 		return RunStatus{}, fmt.Errorf("read %s or synthesize status from state.json: %w", runStatusFileName, err)
 	}
 
+	updatedAt := ""
+	if info, statErr := os.Stat(statePath); statErr == nil {
+		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
+	}
+	if shouldTerminate(state) {
+		status := runStatusForCompletedState(artifactDirectory, state, "")
+		status.UpdatedAt = updatedAt
+		return status, nil
+	}
+
 	status := state.Status
 	phase := "actor_execution"
 	nextStep := "Continue with next_action.yaml and the selected actor brief."
 	if state.Status == "initialized" && len(state.CompletedActors) == 0 {
 		phase = "bootstrap"
 		nextStep = "Run rail supervise --artifact " + artifactDirectory + " to continue the harness workflow."
-	} else if shouldTerminate(state) {
-		phase = "terminal"
-		nextStep = "Read terminal_summary.md before reporting the result to the user."
 	}
 
 	evidence := []string{"state.json", workLedgerFileName, nextActionFileName}
@@ -210,10 +218,6 @@ func synthesizeRunStatusFromState(artifactDirectory string) (RunStatus, error) {
 		evidence = append(evidence, "terminal_summary.md")
 	}
 
-	updatedAt := ""
-	if info, statErr := os.Stat(statePath); statErr == nil {
-		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
-	}
 	return RunStatus{
 		Status:              status,
 		Phase:               phase,
@@ -284,4 +288,132 @@ func lastSuccessfulActor(state State) string {
 		return ""
 	}
 	return state.CompletedActors[len(state.CompletedActors)-1]
+}
+
+func lastSuccessfulActorBeforeBlocked(state State) string {
+	if state.BlockedActor == nil {
+		return lastSuccessfulActor(state)
+	}
+	blockedActor := strings.TrimSpace(*state.BlockedActor)
+	if blockedActor == "" {
+		return lastSuccessfulActor(state)
+	}
+	if len(state.CompletedActors) == 0 {
+		return ""
+	}
+	lastCompleted := strings.TrimSpace(state.CompletedActors[len(state.CompletedActors)-1])
+	if lastCompleted != blockedActor {
+		return lastCompleted
+	}
+	if len(state.CompletedActors) == 1 {
+		return ""
+	}
+	return strings.TrimSpace(state.CompletedActors[len(state.CompletedActors)-2])
+}
+
+func isBackendPolicyBlockedState(state State, message string) bool {
+	if state.Status != "blocked_environment" {
+		return false
+	}
+	if state.BlockedActor != nil {
+		return true
+	}
+	if strings.Contains(strings.ToLower(message), "backend_policy_violation") {
+		return true
+	}
+	for _, reasonCode := range state.LastReasonCodes {
+		if strings.EqualFold(strings.TrimSpace(reasonCode), "backend_policy_violation") {
+			return true
+		}
+	}
+	return false
+}
+
+func hydrateBackendPolicyBlockedState(artifactDirectory string, state State, message string) State {
+	if state.BlockedActor != nil {
+		return state
+	}
+	if actor := inferBackendPolicyBlockedActor(artifactDirectory, message); actor != "" {
+		state.BlockedActor = stringPtr(actor)
+	}
+	return state
+}
+
+func inferBackendPolicyBlockedActor(artifactDirectory string, message string) string {
+	for _, text := range []string{
+		message,
+		readArtifactText(filepath.Join(artifactDirectory, "execution_report.yaml")),
+		readArtifactText(filepath.Join(artifactDirectory, "terminal_summary.md")),
+	} {
+		if actor := inferActorFromEventsPath(text); actor != "" {
+			return actor
+		}
+	}
+	return ""
+}
+
+func readArtifactText(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func inferActorFromEventsPath(text string) string {
+	normalized := filepathLikeSlash(text)
+	marker := "-events.jsonl"
+	offset := 0
+	for {
+		index := strings.Index(normalized[offset:], marker)
+		if index == -1 {
+			return ""
+		}
+		index += offset
+		prefix := normalized[:index]
+		slash := strings.LastIndex(prefix, "/")
+		base := prefix
+		if slash != -1 {
+			base = prefix[slash+1:]
+		}
+		if actor := actorFromRunEventsBase(base); actor != "" {
+			return actor
+		}
+		offset = index + len(marker)
+	}
+}
+
+func actorFromRunEventsBase(base string) string {
+	underscore := strings.Index(base, "_")
+	if underscore <= 0 || underscore+1 >= len(base) {
+		return ""
+	}
+	for _, digit := range base[:underscore] {
+		if digit < '0' || digit > '9' {
+			return ""
+		}
+	}
+	actor := strings.TrimSpace(base[underscore+1:])
+	if visitIndex := strings.LastIndex(actor, "-visit-"); visitIndex > 0 {
+		visitSuffix := actor[visitIndex+len("-visit-"):]
+		if visitSuffix == "" {
+			return ""
+		}
+		for _, digit := range visitSuffix {
+			if digit < '0' || digit > '9' {
+				return ""
+			}
+		}
+		actor = strings.TrimSpace(actor[:visitIndex])
+	}
+	for _, r := range actor {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '_':
+		default:
+			return ""
+		}
+	}
+	return actor
 }

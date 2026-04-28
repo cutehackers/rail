@@ -143,6 +143,11 @@ func (r *Runner) Integrate(artifactPath string, projectRootOverride string) (str
 	}
 	responseObject, err := runIntegratorActor(backend, workingDirectory, integratorProfile, briefPath, artifactDirectory, outputPath, logPath, eventsPath, schemaPath)
 	if err != nil {
+		if isBackendPolicyViolation(err) {
+			if statusErr := recordIntegratorBackendPolicyViolation(artifactDirectory, state, err); statusErr != nil {
+				return "", fmt.Errorf("%w; additionally failed to record integrator backend policy violation: %v", err, statusErr)
+			}
+		}
 		return "", err
 	}
 
@@ -263,6 +268,39 @@ func materializeOutputSchema(runsDirectory string, actorIndex int) (string, erro
 		return "", fmt.Errorf("write output schema: %w", err)
 	}
 	return targetPath, nil
+}
+
+func recordIntegratorBackendPolicyViolation(artifactDirectory string, state State, violation error) error {
+	status := RunStatus{
+		Status:              "interrupted",
+		Phase:               "backend_policy",
+		CurrentActor:        "integrator",
+		LastSuccessfulActor: lastSuccessfulActor(state),
+		InterruptionKind:    "backend_policy_violation",
+		Message:             strings.TrimSpace(violation.Error()),
+		ArtifactDir:         artifactDirectory,
+		Evidence: []string{
+			"evaluation_result.yaml",
+			"execution_report.yaml",
+			"state.json",
+			workLedgerFileName,
+			"runs/",
+		},
+		NextStep: "Fix backend policy isolation, then rerun rail integrate --artifact " + artifactDirectory + ".",
+	}
+	if err := writeRunStatus(artifactDirectory, status); err != nil {
+		return err
+	}
+	return appendWorkLedgerEntry(
+		filepath.Join(artifactDirectory, workLedgerFileName),
+		"Integration interrupted",
+		[]string{
+			"phase: backend_policy",
+			"actor: integrator",
+			"interruption: backend_policy_violation",
+			"message: " + violation.Error(),
+		},
+	)
 }
 
 func runIntegratorActor(

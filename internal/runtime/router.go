@@ -55,14 +55,14 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 	if refreshed, err := r.refreshPersistedOutputsIfNeeded(artifactDirectory, workflow, state, activeEvaluatorRouting); err != nil {
 		return "", err
 	} else if refreshed && !activeEvaluatorRouting {
-		if err := writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, state)); err != nil {
+		if err := writeRunStatus(artifactDirectory, runStatusForCompletedState(artifactDirectory, state, "")); err != nil {
 			return "", err
 		}
 		return formatExecutionSummary(artifactDirectory, state, "Harness evaluation refreshed persisted outputs"), nil
 	}
 	if state.CurrentActor == nil || *state.CurrentActor != "evaluator" || shouldTerminate(state) {
 		if shouldTerminate(state) {
-			if err := writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, state)); err != nil {
+			if err := writeRunStatus(artifactDirectory, runStatusForCompletedState(artifactDirectory, state, "")); err != nil {
 				return "", err
 			}
 		}
@@ -101,7 +101,7 @@ func (r *Router) RouteEvaluation(artifactPath string) (string, error) {
 			return "", err
 		}
 	}
-	if err := writeRunStatus(artifactDirectory, runStatusAfterEvaluation(artifactDirectory, nextState)); err != nil {
+	if err := writeRunStatus(artifactDirectory, runStatusForCompletedState(artifactDirectory, nextState, "")); err != nil {
 		return "", err
 	}
 

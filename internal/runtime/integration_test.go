@@ -115,6 +115,71 @@ with open(output_path, "w", encoding="utf-8") as handle:
 	}
 }
 
+func TestIntegrateRejectsUnexpectedSkillInjection(t *testing.T) {
+	projectRoot, requestPath := prepareRealProject(t)
+	installFakeCodexForRealMode(t, projectRoot)
+	t.Setenv("RAIL_TEST_CODEX_VIOLATION_ACTOR", "integrator")
+
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "go-real-integrator-skill-injection")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if _, err := runner.Execute(artifactPath); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	_, err = runner.Integrate(artifactPath, projectRoot)
+	if err == nil {
+		t.Fatalf("expected Integrate to reject unexpected skill injection")
+	}
+	for _, fragment := range []string{"backend_policy_violation", "unexpected_skill_injection", "integrator-events.jsonl"} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Fatalf("expected integrate error to contain %q, got %v", fragment, err)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(artifactPath, "integration_result.yaml")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected integration_result.yaml not to be written after policy violation, stat err=%v", statErr)
+	}
+
+	runStatus, err := ReadRunStatus(artifactPath)
+	if err != nil {
+		t.Fatalf("expected run_status.yaml to be readable after integrator policy violation: %v", err)
+	}
+	if runStatus.Status != "interrupted" || runStatus.Phase != "backend_policy" || runStatus.CurrentActor != "integrator" {
+		t.Fatalf("expected integrator policy violation to overwrite pass status, got %#v", runStatus)
+	}
+	if runStatus.LastSuccessfulActor != "evaluator" {
+		t.Fatalf("expected evaluator to remain last successful actor, got %#v", runStatus)
+	}
+	if runStatus.InterruptionKind != "backend_policy_violation" {
+		t.Fatalf("expected backend policy interruption, got %#v", runStatus)
+	}
+	for _, fragment := range []string{"backend_policy_violation", "unexpected_skill_injection", "integrator-events.jsonl"} {
+		if !strings.Contains(runStatus.Message, fragment) {
+			t.Fatalf("expected run status message to contain %q, got %#v", fragment, runStatus)
+		}
+	}
+
+	result, err := ProjectHarnessResultForArtifact(projectRoot, artifactPath)
+	if err != nil {
+		t.Fatalf("expected harness result projection after integrator policy violation: %v", err)
+	}
+	if result.Status != "interrupted" || result.Phase != "backend_policy" || result.CurrentActor != "integrator" {
+		t.Fatalf("expected result projection to show integrator interruption, got %#v", result)
+	}
+	if result.InterruptionKind != "backend_policy_violation" {
+		t.Fatalf("expected result projection backend policy interruption, got %#v", result)
+	}
+	if result.Terminal {
+		t.Fatalf("expected integrator interruption not to reuse stale terminal pass summary, got %#v", result)
+	}
+}
+
 func TestIntegrateFailsForInvalidIntegratorProfile(t *testing.T) {
 	projectRoot, requestPath := prepareRealProject(t)
 	_ = installFakeCodexForRealMode(t, projectRoot)

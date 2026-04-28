@@ -673,6 +673,81 @@ func TestExecuteRoutesAuditViolationToTerminalSummary(t *testing.T) {
 	}
 }
 
+func TestExecuteRoutesUnexpectedSkillInjectionForEveryCodexActor(t *testing.T) {
+	tests := []struct {
+		actor               string
+		lastSuccessfulActor string
+	}{
+		{actor: "planner", lastSuccessfulActor: ""},
+		{actor: "context_builder", lastSuccessfulActor: "planner"},
+		{actor: "critic", lastSuccessfulActor: "context_builder"},
+		{actor: "generator", lastSuccessfulActor: "critic"},
+		{actor: "evaluator", lastSuccessfulActor: "executor"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.actor, func(t *testing.T) {
+			projectRoot, requestPath := prepareRealProject(t)
+			installFakeCodexForRealMode(t, projectRoot)
+			t.Setenv("RAIL_TEST_CODEX_VIOLATION_ACTOR", tc.actor)
+
+			runner, err := NewRunner(projectRoot)
+			if err != nil {
+				t.Fatalf("NewRunner returned error: %v", err)
+			}
+
+			artifactPath, err := runner.Run(requestPath, "go-real-skill-injection-"+tc.actor)
+			if err != nil {
+				t.Fatalf("Run returned error: %v", err)
+			}
+
+			summary, err := runner.Execute(artifactPath)
+			if err != nil {
+				t.Fatalf("expected Execute to route %s skill injection to terminal summary, got error: %v", tc.actor, err)
+			}
+			if !strings.Contains(summary, "status=blocked_environment") {
+				t.Fatalf("expected blocked_environment summary for %s, got %q", tc.actor, summary)
+			}
+
+			state, err := readState(filepath.Join(artifactPath, "state.json"))
+			if err != nil {
+				t.Fatalf("expected state.json to remain readable: %v", err)
+			}
+			if state.BlockedActor == nil || *state.BlockedActor != tc.actor || !state.BlockedRetryable {
+				t.Fatalf("expected %s backend policy block to persist retryable blocked actor, got blockedActor=%v blockedRetryable=%v", tc.actor, state.BlockedActor, state.BlockedRetryable)
+			}
+
+			runStatus, err := ReadRunStatus(artifactPath)
+			if err != nil {
+				t.Fatalf("expected run_status.yaml to remain readable: %v", err)
+			}
+			if runStatus.Status != "retrying" || runStatus.Phase != "blocked_actor_retry_available" || runStatus.CurrentActor != tc.actor {
+				t.Fatalf("expected %s block to project retry availability, got %#v", tc.actor, runStatus)
+			}
+			if runStatus.LastSuccessfulActor != tc.lastSuccessfulActor {
+				t.Fatalf("expected last successful actor before %s to be %q, got %#v", tc.actor, tc.lastSuccessfulActor, runStatus)
+			}
+			if runStatus.InterruptionKind != "blocked_actor_retry_available" {
+				t.Fatalf("expected retry availability interruption for %s, got %#v", tc.actor, runStatus)
+			}
+
+			terminalSummary, err := os.ReadFile(filepath.Join(artifactPath, "terminal_summary.md"))
+			if err != nil {
+				t.Fatalf("expected terminal_summary.md to exist: %v", err)
+			}
+			for _, fragment := range []string{
+				"backend_policy_violation",
+				"unexpected_skill_injection",
+				tc.actor + "-events.jsonl",
+			} {
+				if !strings.Contains(string(terminalSummary), fragment) {
+					t.Fatalf("expected %s terminal summary to contain %q, got:\n%s", tc.actor, fragment, string(terminalSummary))
+				}
+			}
+		})
+	}
+}
+
 func TestExecuteRetriesBlockedActorWithCurrentSealedRuntime(t *testing.T) {
 	projectRoot, requestPath := prepareRealProject(t)
 	actorLogPath := installFakeCodexForRealMode(t, projectRoot)

@@ -382,6 +382,110 @@ func TestRunRejectsNonEmptyExistingArtifactDirectory(t *testing.T) {
 	}
 }
 
+func TestRunAllocatesImplicitTaskID(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectWithDefaultRequestName(t)
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if filepath.Base(artifactPath) != "request" {
+		t.Fatalf("expected implicit allocation to use request, got %s", artifactPath)
+	}
+
+	assertArtifactTaskID(t, artifactPath, "request")
+}
+
+func TestRunAllocatesNextImplicitTaskIDSuffix(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectWithDefaultRequestName(t)
+	seedOccupiedArtifact(t, projectRoot, "request")
+	seedOccupiedArtifact(t, projectRoot, "request-2")
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if filepath.Base(artifactPath) != "request-3" {
+		t.Fatalf("expected implicit allocation to use request-3, got %s", artifactPath)
+	}
+
+	assertArtifactTaskID(t, artifactPath, "request-3")
+	assertArtifactFileContains(t, filepath.Join(projectRoot, ".harness", "artifacts", "request", "occupied.txt"), "occupied: request\n")
+	assertArtifactFileContains(t, filepath.Join(projectRoot, ".harness", "artifacts", "request-2", "occupied.txt"), "occupied: request-2\n")
+}
+
+func TestRunTreatsExistingEmptyImplicitArtifactAsReserved(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectWithDefaultRequestName(t)
+	if err := os.MkdirAll(filepath.Join(projectRoot, ".harness", "artifacts", "request"), 0o755); err != nil {
+		t.Fatalf("failed to create empty reserved artifact directory: %v", err)
+	}
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	artifactPath, err := runner.Run(requestPath, "")
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if filepath.Base(artifactPath) != "request-2" {
+		t.Fatalf("expected implicit allocation to skip existing empty request directory, got %s", artifactPath)
+	}
+
+	assertArtifactTaskID(t, artifactPath, "request-2")
+	entries, err := os.ReadDir(filepath.Join(projectRoot, ".harness", "artifacts", "request"))
+	if err != nil {
+		t.Fatalf("expected reserved request directory to remain readable: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected reserved request directory to remain empty, got %d entries", len(entries))
+	}
+}
+
+func TestRunRejectsExplicitTaskIDCollision(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectWithDefaultRequestName(t)
+	seedOccupiedArtifact(t, projectRoot, "request")
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	_, err = runner.Run(requestPath, "request")
+	if err == nil {
+		t.Fatalf("expected explicit task id collision to fail")
+	}
+	if !strings.Contains(err.Error(), "artifact directory already exists and is not empty") {
+		t.Fatalf("expected non-empty artifact directory error, got %v", err)
+	}
+}
+
+func TestRunRejectsBlankExplicitTaskID(t *testing.T) {
+	projectRoot, requestPath := prepareSmokeProjectWithDefaultRequestName(t)
+	runner, err := NewRunner(projectRoot)
+	if err != nil {
+		t.Fatalf("NewRunner returned error: %v", err)
+	}
+
+	_, err = runner.Run(requestPath, "   ")
+	if err == nil {
+		t.Fatalf("expected blank explicit task id to fail")
+	}
+	if !strings.Contains(err.Error(), "task id must not be blank") {
+		t.Fatalf("expected blank task id error, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(projectRoot, ".harness", "artifacts", "request")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected blank explicit task id not to create request artifact, stat err=%v", statErr)
+	}
+}
+
 func TestBuildSmokeEvaluationResultRejectsFormatFailure(t *testing.T) {
 	artifactDirectory := t.TempDir()
 	executionReport := map[string]any{
@@ -1642,6 +1746,64 @@ func prepareSmokeProject(t *testing.T) (string, string) {
 	}
 
 	return projectRoot, requestPath
+}
+
+func prepareSmokeProjectWithDefaultRequestName(t *testing.T) (string, string) {
+	t.Helper()
+
+	projectRoot, requestPath := prepareSmokeProject(t)
+	requestBody, err := os.ReadFile(requestPath)
+	if err != nil {
+		t.Fatalf("failed to read smoke request: %v", err)
+	}
+	defaultRequestPath := filepath.Join(projectRoot, ".harness", "requests", "request.yaml")
+	if err := os.WriteFile(defaultRequestPath, requestBody, 0o644); err != nil {
+		t.Fatalf("failed to write default request: %v", err)
+	}
+	return projectRoot, defaultRequestPath
+}
+
+func seedOccupiedArtifact(t *testing.T, projectRoot string, taskID string) {
+	t.Helper()
+
+	artifactPath := filepath.Join(projectRoot, ".harness", "artifacts", taskID)
+	if err := os.MkdirAll(artifactPath, 0o755); err != nil {
+		t.Fatalf("failed to create occupied artifact %q: %v", taskID, err)
+	}
+	if err := os.WriteFile(filepath.Join(artifactPath, "occupied.txt"), []byte("occupied: "+taskID+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to seed occupied artifact %q: %v", taskID, err)
+	}
+}
+
+func assertArtifactTaskID(t *testing.T, artifactPath string, want string) {
+	t.Helper()
+
+	workflow, err := readWorkflow(filepath.Join(artifactPath, workflowArtifactFileName))
+	if err != nil {
+		t.Fatalf("failed to read workflow: %v", err)
+	}
+	if workflow.TaskID != want {
+		t.Fatalf("unexpected workflow task id: got %q want %q", workflow.TaskID, want)
+	}
+	state, err := readState(filepath.Join(artifactPath, "state.json"))
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	if state.TaskID != want {
+		t.Fatalf("unexpected state task id: got %q want %q", state.TaskID, want)
+	}
+}
+
+func assertArtifactFileContains(t *testing.T, path string, want string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", path, err)
+	}
+	if string(data) != want {
+		t.Fatalf("unexpected file contents for %s: got %q want %q", path, string(data), want)
+	}
 }
 
 func prepareRealProject(t *testing.T) (string, string) {

@@ -102,9 +102,10 @@ Use the installed binary:
 rail auth doctor
 rail compose-request --stdin
 rail compose-request --input /absolute/path/to/request-draft.json
-rail supervise --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>
-rail result --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id> --json
-rail status --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>
+rail run --request /absolute/path/to/target-repo/.harness/requests/request.yaml --project-root /absolute/path/to/target-repo
+rail supervise --artifact /absolute/path/to/target-repo/.harness/artifacts/<allocated-task-id>
+rail result --artifact /absolute/path/to/target-repo/.harness/artifacts/<allocated-task-id> --json
+rail status --artifact /absolute/path/to/target-repo/.harness/artifacts/<allocated-task-id>
 ```
 
 Before any standard actor execution, run `rail auth doctor`. If it fails because actor auth is not configured, run `rail auth login` once, complete the Codex browser login flow, then retry `rail auth doctor`. Do not run `rail auth login` on every skill trigger. Do not ask users to pass API keys in task prompts; Rail stores Codex login state in a Rail-owned auth home outside the request and does not print secret values. The login persists for the local machine account across target repositories unless the user runs `rail auth logout`, the credential expires, or the Rail auth home is removed.
@@ -132,11 +133,23 @@ After bootstrapping, report:
 - created request file
 - target project root
 - defaults that were applied
-- that validation and execution follow in later workflow steps
+- artifact path printed by `rail run`, if a fresh run was started
+- that validation and execution follow in later workflow steps, if only request composition was requested
 
 Keep `compose-request` as the focus of this skill. `rail validate-request` and `rail run` are available once request materialization is complete, but they belong to the later workflow steps rather than the initial draft-composition step.
 
-For later execution steps, run `rail auth doctor` before standard actor execution, then run `rail supervise --artifact ...` for the artifact. `supervise` reruns retryable actor/session interruptions within its retry budget and stops only on terminal status or a non-retryable blocker.
+When the user asks to start or execute a fresh natural-language task, use this sequence:
+
+1. run `rail compose-request --stdin`
+2. run `rail run --request <printed-request-path> --project-root <target-repo>` without `--task-id`
+3. capture the artifact path printed by `rail run`
+4. run `rail auth doctor`
+5. run `rail supervise --artifact <printed-artifact-path>`
+6. run `rail result --artifact <printed-artifact-path> --json`
+
+Do not ask users to choose task ids. Do not reconstruct the artifact path from the request filename; Rail may allocate a suffix such as `request-2` when an earlier artifact exists. The printed artifact directory is the durable run identity, and the artifact-local `request.yaml` snapshot is the source of truth for that run because `.harness/requests/request.yaml` may be overwritten by the next natural-language task.
+
+For later execution steps on an existing artifact, run `rail auth doctor` before standard actor execution, then run `rail supervise --artifact ...` for the artifact. `supervise` reruns retryable actor/session interruptions within its retry budget and stops only on terminal status or a non-retryable blocker.
 
 If `rail auth doctor` is not ready, do not start `supervise`. Run `rail auth login` first, complete browser login, then report that actor auth is ready before continuing. This prevents the actor loop from stopping later with `blocked_environment` due to missing sealed actor credentials.
 

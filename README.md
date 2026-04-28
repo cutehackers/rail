@@ -191,10 +191,14 @@ Advanced users should also know:
 - local users can run `rail auth login` once to configure Rail actor auth
 - standard actor Codex runs use artifact-local `CODEX_HOME`, `HOME`, `XDG_*`, and temp directories; they use explicit Rail actor auth rather than the user's normal Codex login state
 - Rail treats actor events and artifacts as governance evidence, not as conversational memory
+- when `rail run` is called without `--task-id`, Rail derives a base id from the request filename and atomically allocates the first unused artifact directory
+- the artifact path printed by `rail run` is the durable run identity; the artifact-local `request.yaml` snapshot is the source of truth because `.harness/requests/request.yaml` may be overwritten by the next natural-language task
+- explicit `--task-id` remains strict and fails when the chosen artifact directory already exists and is non-empty
 - each run writes `.harness/artifacts/<task-id>/run_status.yaml` so the latest phase, actor, interruption reason, and next step are visible without reading raw logs
 - `rail status --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>` prints that status for operators and Codex chat sessions
 - when `rail execute --artifact ...` is interrupted after an artifact exists, it prints the same status summary before returning the error
 - `rail supervise --artifact /absolute/path/to/target-repo/.harness/artifacts/<task-id>` is the preferred operator command for continuing the actor loop to a terminal result because it retries retryable actor/session interruptions before surfacing a blocker
+- after upgrading Rail, existing local Codex installs may need `rail install-codex-skill --repair` or `rail init` in the target repository to refresh the copied Rail skill
 - environment variables are not the default actor-quality contract
 - actor command runs do not use actor-level timeouts
 - `ActorWatchdog` monitors command progress and reports `actor_watchdog_expired` when an actor stops producing observable progress

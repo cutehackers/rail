@@ -41,9 +41,24 @@ func NewRunner(projectRoot string) (*Runner, error) {
 }
 
 func (r *Runner) Run(requestPath, taskID string) (string, error) {
-	effectiveTaskID := strings.TrimSpace(taskID)
+	trimmedTaskID := strings.TrimSpace(taskID)
+	if taskID != "" && trimmedTaskID == "" {
+		return "", fmt.Errorf("task id must not be blank")
+	}
+	explicitTaskID := trimmedTaskID != ""
+	effectiveTaskID := trimmedTaskID
 	if effectiveTaskID == "" {
 		effectiveTaskID = defaultTaskID(requestPath)
+	}
+
+	reservedImplicitArtifact := false
+	if !explicitTaskID {
+		allocatedTaskID, err := r.reserveImplicitTaskID(effectiveTaskID)
+		if err != nil {
+			return "", err
+		}
+		effectiveTaskID = allocatedTaskID
+		reservedImplicitArtifact = true
 	}
 
 	artifactDirectory, err := r.resolveArtifactDirectory(effectiveTaskID)
@@ -54,7 +69,14 @@ func (r *Runner) Run(requestPath, taskID string) (string, error) {
 		return "", err
 	}
 
-	return r.bootstrapper.Bootstrap(requestPath, effectiveTaskID)
+	artifactPath, err := r.bootstrapper.Bootstrap(requestPath, effectiveTaskID)
+	if err != nil {
+		if reservedImplicitArtifact {
+			_ = removeArtifactDirectoryIfEmpty(artifactDirectory)
+		}
+		return "", err
+	}
+	return artifactPath, nil
 }
 
 func (r *Runner) Execute(artifactPath string) (string, error) {
@@ -619,6 +641,34 @@ func defaultTaskID(requestPath string) string {
 	return base
 }
 
+func (r *Runner) reserveImplicitTaskID(base string) (string, error) {
+	candidate := strings.TrimSpace(base)
+	if candidate == "" {
+		candidate = "rail-task"
+	}
+	for index := 1; index <= 1000; index++ {
+		taskID := candidate
+		if index > 1 {
+			taskID = fmt.Sprintf("%s-%d", candidate, index)
+		}
+		artifactDirectory, err := r.resolveArtifactDirectory(taskID)
+		if err != nil {
+			return "", err
+		}
+		if err := os.MkdirAll(filepath.Dir(artifactDirectory), 0o755); err != nil {
+			return "", fmt.Errorf("create artifact root: %w", err)
+		}
+		if err := os.Mkdir(artifactDirectory, 0o755); err == nil {
+			return taskID, nil
+		} else if os.IsExist(err) {
+			continue
+		} else {
+			return "", fmt.Errorf("reserve artifact directory: %w", err)
+		}
+	}
+	return "", fmt.Errorf("could not allocate available artifact id for %s", candidate)
+}
+
 func (r *Runner) resolveArtifactDirectory(taskID string) (string, error) {
 	executionPolicyMap, err := r.bootstrapper.loadMap(".harness/supervisor/execution_policy.yaml")
 	if err != nil {
@@ -629,6 +679,20 @@ func (r *Runner) resolveArtifactDirectory(taskID string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(r.projectRoot, filepath.FromSlash(executionPolicy.ArtifactRoot), taskID), nil
+}
+
+func removeArtifactDirectoryIfEmpty(path string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if len(entries) > 0 {
+		return nil
+	}
+	return os.Remove(path)
 }
 
 func ensureArtifactDirectoryAvailable(path string) error {

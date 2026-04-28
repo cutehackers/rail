@@ -2,6 +2,30 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.5.5 - 2026-04-28
+
+### Added
+
+- Added validation-target normalization and tests for request handling.
+- Added runtime, bootstrap, auth, install, and contract validator test coverage.
+- Added Rail skill examples in both source and bundled skill references.
+- Added task recovery documentation for runtime and task identity behavior.
+
+### Changed
+
+- Updated README and Rail skill guidance to match the hardened runtime behavior.
+- Expanded CLI auth handling and request validation support.
+
+### Fixed
+
+- Hardened Rail actor readiness checks in the runtime, including sealed actor runtime paths.
+- Improved request normalization around validation targets.
+
+### Verification
+
+- `tool/prepare_release.sh v0.5.5`
+
+
 ## v0.5.4 - 2026-04-28
 
 ### Fixed

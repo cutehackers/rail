@@ -1,6 +1,7 @@
 package request
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -182,6 +183,80 @@ func TestComposeRequestRejectsUnsupportedValidationProfile(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unsupported validation_profile") {
 		t.Fatalf("expected invalid validation_profile error, got %v", err)
+	}
+}
+
+func TestValidateValidationTargetsRejectsCommandLikeValues(t *testing.T) {
+	for _, target := range []string{
+		"flutter analyze",
+		"dart format --line-length 120",
+		"go test ./...",
+		"make test",
+		"python",
+		"python3",
+		"bundle",
+		"bun",
+		"./gradlew test",
+		"python -m pytest",
+		"npx jest",
+		"bundle exec rspec",
+		"mvn test",
+		"dotnet test",
+		"swift test",
+		"test/foo_test.dart && echo done",
+	} {
+		err := ValidateValidationTargets([]string{target})
+		if err == nil {
+			t.Fatalf("expected validation target rejection for %q", target)
+		}
+		if !strings.Contains(err.Error(), "validation_targets") {
+			t.Fatalf("expected validation_targets error for %q, got %v", target, err)
+		}
+	}
+}
+
+func TestValidateValidationTargetsAcceptsFilePaths(t *testing.T) {
+	for _, target := range []string{
+		"test/features/battle/battle_rules_test.dart",
+		"lib/src/features/battle/domain/battle_engine.dart",
+	} {
+		if err := ValidateValidationTargets([]string{target}); err != nil {
+			t.Fatalf("expected validation target %q to be accepted, got %v", target, err)
+		}
+	}
+}
+
+func TestComposeRequestRejectsCommandLikeValidationTargets(t *testing.T) {
+	for _, target := range []string{
+		"flutter analyze",
+		"dart format --line-length 120",
+		"go test ./...",
+		"make test",
+		"python",
+		"bundle",
+		"./gradlew test",
+		"python -m pytest",
+		"npx jest",
+		"test/foo_test.dart && echo done",
+	} {
+		draft, decodeErr := DecodeDraft(strings.NewReader(`{
+			"request_version": "1",
+			"project_root": "/tmp/target-app",
+			"task_type": "test_repair",
+			"goal": "validate target rejection",
+			"context": {"validation_targets": [` + strconv.Quote(target) + `]},
+			"definition_of_done": ["reject command-looking validation target"]
+		}`))
+		if decodeErr != nil {
+			t.Fatalf("DecodeDraft returned error: %v", decodeErr)
+		}
+		_, err := NormalizeDraft(draft)
+		if err == nil {
+			t.Fatalf("expected validation target rejection for %q", target)
+		}
+		if !strings.Contains(err.Error(), "validation_targets") {
+			t.Fatalf("expected validation_targets error for %q, got %v", target, err)
+		}
 	}
 }
 

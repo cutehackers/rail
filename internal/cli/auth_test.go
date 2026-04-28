@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +46,21 @@ exit 64
 	return path
 }
 
+func stubActorRuntimeReadiness(t *testing.T, fn func(string) error) {
+	t.Helper()
+	previous := actorRuntimeReadinessCheck
+	actorRuntimeReadinessCheck = fn
+	t.Cleanup(func() {
+		actorRuntimeReadinessCheck = previous
+	})
+}
+
 func TestRunAuthLoginStatusDoctorAndLogoutUseRailCodexHome(t *testing.T) {
+	var readinessProjectRoot string
+	stubActorRuntimeReadiness(t, func(projectRoot string) error {
+		readinessProjectRoot = projectRoot
+		return nil
+	})
 	fakeBin := t.TempDir()
 	writeFakeCodex(t, fakeBin)
 	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
@@ -72,6 +87,9 @@ func TestRunAuthLoginStatusDoctorAndLogoutUseRailCodexHome(t *testing.T) {
 	}
 	if !strings.Contains(doctorOut.String(), "ready") {
 		t.Fatalf("expected ready doctor output, got %q", doctorOut.String())
+	}
+	if readinessProjectRoot == "" {
+		t.Fatalf("expected doctor to check actor runtime readiness")
 	}
 
 	var statusOut bytes.Buffer
@@ -106,6 +124,161 @@ func TestRunAuthLoginStatusDoctorAndLogoutUseRailCodexHome(t *testing.T) {
 	for _, line := range strings.Split(strings.TrimSpace(string(railAuthHomeData)), "\n") {
 		if line != "" {
 			t.Fatalf("expected fake codex not to inherit RAIL_CODEX_AUTH_HOME, got log %q", string(railAuthHomeData))
+		}
+	}
+}
+
+func TestRunAuthDoctorChecksProjectRootRuntimeReadiness(t *testing.T) {
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	projectRoot := t.TempDir()
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+	t.Setenv("RAIL_FAKE_CODEX_LOG", filepath.Join(t.TempDir(), "args.log"))
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", filepath.Join(t.TempDir(), "rail-auth-home.log"))
+	stubActorRuntimeReadiness(t, func(actual string) error {
+		if filepath.Clean(actual) != filepath.Clean(projectRoot) {
+			t.Fatalf("expected project root %q, got %q", projectRoot, actual)
+		}
+		return nil
+	})
+
+	var loginOut bytes.Buffer
+	if err := RunAuth([]string{"login"}, strings.NewReader(""), &loginOut); err != nil {
+		t.Fatalf("RunAuth login returned error: %v", err)
+	}
+
+	var doctorOut bytes.Buffer
+	if err := RunAuth([]string{"doctor", "--project-root", projectRoot}, strings.NewReader(""), &doctorOut); err != nil {
+		t.Fatalf("RunAuth doctor returned error: %v", err)
+	}
+	for _, want := range []string{
+		"Rail actor auth ready",
+		"Rail actor runtime ready",
+		"Secret values are not printed.",
+	} {
+		if !strings.Contains(doctorOut.String(), want) {
+			t.Fatalf("expected doctor output to contain %q, got %q", want, doctorOut.String())
+		}
+	}
+}
+
+func TestRunAuthDoctorSanitizesRuntimeReadinessFailure(t *testing.T) {
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	projectRoot := t.TempDir()
+	rawPath := filepath.Join(t.TempDir(), "raw-path")
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+	t.Setenv("RAIL_FAKE_CODEX_LOG", filepath.Join(t.TempDir(), "args.log"))
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", filepath.Join(t.TempDir(), "rail-auth-home.log"))
+	stubActorRuntimeReadiness(t, func(string) error {
+		return fmt.Errorf("backend_policy_violation: unsafe_codex_path: %s %s %s", authHome, projectRoot, rawPath)
+	})
+
+	var loginOut bytes.Buffer
+	if err := RunAuth([]string{"login"}, strings.NewReader(""), &loginOut); err != nil {
+		t.Fatalf("RunAuth login returned error: %v", err)
+	}
+
+	var doctorOut bytes.Buffer
+	err := RunAuth([]string{"doctor", "--project-root", projectRoot}, strings.NewReader(""), &doctorOut)
+	if err == nil {
+		t.Fatalf("expected doctor to fail when actor runtime readiness fails")
+	}
+	if got, want := err.Error(), actorRuntimeNotReadyError; got != want {
+		t.Fatalf("unexpected sanitized doctor error: got %q want %q", got, want)
+	}
+	for _, leaked := range []string{authHome, projectRoot, rawPath} {
+		if strings.Contains(err.Error(), leaked) || strings.Contains(doctorOut.String(), leaked) {
+			t.Fatalf("doctor exposed sensitive path %q: err=%v stdout=%q", leaked, err, doctorOut.String())
+		}
+	}
+	if !strings.Contains(doctorOut.String(), "Rail actor runtime not ready") {
+		t.Fatalf("expected runtime readiness failure output, got %q", doctorOut.String())
+	}
+}
+
+func TestRunAuthDoctorRejectsTargetLocalUnsafeBackendPolicy(t *testing.T) {
+	fakeBin := t.TempDir()
+	writeFakeCodex(t, fakeBin)
+	authHome := filepath.Join(t.TempDir(), "rail-codex-auth")
+	projectRoot := t.TempDir()
+	supervisorDir := filepath.Join(projectRoot, ".harness", "supervisor")
+	if err := os.MkdirAll(supervisorDir, 0o755); err != nil {
+		t.Fatalf("create supervisor dir: %v", err)
+	}
+	policy := []byte(`version: 1
+execution_environment: local
+default_backend: codex_cli
+backends:
+  codex_cli:
+    command: /absolute/path/to/codex
+    subcommand: exec
+    sandbox: workspace-write
+    approval_policy: never
+    session_mode: per_actor
+    ephemeral: true
+    capture_json_events: true
+    skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - workspace-write
+`)
+	if err := os.WriteFile(filepath.Join(supervisorDir, "actor_backend.yaml"), policy, 0o644); err != nil {
+		t.Fatalf("write actor backend policy: %v", err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RAIL_CODEX_AUTH_HOME", authHome)
+	t.Setenv("RAIL_FAKE_CODEX_LOG", filepath.Join(t.TempDir(), "args.log"))
+	t.Setenv("RAIL_FAKE_CODEX_HOME_LOG", filepath.Join(t.TempDir(), "home.log"))
+	t.Setenv("RAIL_FAKE_RAIL_CODEX_AUTH_HOME_LOG", filepath.Join(t.TempDir(), "rail-auth-home.log"))
+
+	var loginOut bytes.Buffer
+	if err := RunAuth([]string{"login"}, strings.NewReader(""), &loginOut); err != nil {
+		t.Fatalf("RunAuth login returned error: %v", err)
+	}
+
+	var doctorOut bytes.Buffer
+	err := RunAuth([]string{"doctor", "--project-root", projectRoot}, strings.NewReader(""), &doctorOut)
+	if err == nil {
+		t.Fatalf("expected doctor to reject target-local unsafe actor backend policy")
+	}
+	if got, want := err.Error(), actorRuntimeNotReadyError; got != want {
+		t.Fatalf("unexpected sanitized doctor error: got %q want %q", got, want)
+	}
+	if strings.Contains(doctorOut.String(), projectRoot) || strings.Contains(err.Error(), projectRoot) {
+		t.Fatalf("doctor exposed project root in unsafe backend failure: err=%v stdout=%q", err, doctorOut.String())
+	}
+	if !strings.Contains(doctorOut.String(), "Rail actor runtime not ready") {
+		t.Fatalf("expected runtime readiness failure output, got %q", doctorOut.String())
+	}
+}
+
+func TestRunAuthRejectsProjectRootOutsideDoctor(t *testing.T) {
+	var stdout bytes.Buffer
+	for _, subcommand := range []string{"login", "status", "logout"} {
+		err := RunAuth([]string{subcommand, "--project-root", t.TempDir()}, strings.NewReader(""), &stdout)
+		if err == nil {
+			t.Fatalf("expected %s to reject --project-root", subcommand)
+		}
+		if !strings.Contains(err.Error(), "only supported for auth doctor") {
+			t.Fatalf("expected project-root rejection for %s, got %v", subcommand, err)
 		}
 	}
 }

@@ -513,6 +513,9 @@ func buildExecutionPlan(
 		analyzeRoots = inferPackageRoots(fileHints)
 	}
 
+	if err := request.ValidateValidationTargets(requestValue.Context.ValidationTargets); err != nil {
+		return ExecutionPlan{}, err
+	}
 	testTargets, err := normalizeProjectRelativeFiles(projectRoot, requestValue.Context.ValidationTargets)
 	if err != nil {
 		return ExecutionPlan{}, fmt.Errorf("normalize context.validation_targets: %w", err)

@@ -141,13 +141,16 @@ user's normal Codex home. For local use, configure Rail actor auth once:
 
 ```bash
 rail auth login
-rail auth doctor
+rail auth doctor --project-root /absolute/path/to/target-repo
 ```
 
 `rail auth login` uses Codex's browser login flow in a Rail-owned auth home.
 That login persists for the local machine account across terminal sessions and
 target repositories. Actor runs still use artifact-local sealed `CODEX_HOME`
 directories and receive only the minimum Codex auth material needed to run.
+`rail auth doctor --project-root ...` checks both login state and the target
+repository's actor runtime policy before standard actor execution. Plain
+`rail auth doctor` checks the current directory.
 
 To remove the local Rail actor auth state:
 
@@ -189,6 +192,7 @@ Advanced users should also know:
 - actor model and reasoning come from checked-in `.harness/supervisor/actor_profiles.yaml`
 - actor Codex runs are isolated from the user's normal Codex skill/rule surface by default
 - local users can run `rail auth login` once to configure Rail actor auth
+- run `rail auth doctor --project-root /absolute/path/to/target-repo` before standard actor execution to verify both auth state and sealed actor runtime readiness
 - standard actor Codex runs use artifact-local `CODEX_HOME`, `HOME`, `XDG_*`, and temp directories; they use explicit Rail actor auth rather than the user's normal Codex login state
 - Rail treats actor events and artifacts as governance evidence, not as conversational memory
 - when `rail run` is called without `--task-id`, Rail derives a base id from the request filename and atomically allocates the first unused artifact directory

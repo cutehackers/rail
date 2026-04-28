@@ -100,6 +100,108 @@ func TestPrepareSealedActorRuntimeDropsUserCodexSurface(t *testing.T) {
 	}
 }
 
+func TestActorRuntimeReadinessRejectsMissingCodexOnSealedPath(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	withDefaultTrustedPATHEntriesForTest(t, nil)
+
+	err := CheckActorRuntimeReadinessForDoctor(t.TempDir())
+	if err == nil {
+		t.Fatalf("expected actor runtime readiness to fail without trusted codex")
+	}
+	if !strings.Contains(err.Error(), "unsafe_codex_path") {
+		t.Fatalf("expected unsafe_codex_path failure, got %v", err)
+	}
+}
+
+func TestActorRuntimeReadinessAcceptsInternalTestCodex(t *testing.T) {
+	fakeBin := t.TempDir()
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+	if err := os.WriteFile(fakeCodexPath, []byte("#!/bin/sh\nprintf '%s\\n' '--disable <FEATURE>'\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+	allowFakeCodexForTest(t, fakeCodexPath)
+	t.Setenv("PATH", fakeBin)
+
+	if err := CheckActorRuntimeReadinessForDoctor(t.TempDir()); err != nil {
+		t.Fatalf("expected actor runtime readiness, got %v", err)
+	}
+}
+
+func TestActorRuntimeReadinessRejectsCodexWithoutActorFlagSupport(t *testing.T) {
+	fakeBin := t.TempDir()
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+	script := `#!/usr/bin/env bash
+set -euo pipefail
+for arg in "$@"; do
+  if [[ "$arg" == "--disable" ]]; then
+    printf 'unknown option: --disable\n' >&2
+    exit 64
+  fi
+done
+printf 'legacy codex help\n'
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+	allowFakeCodexForTest(t, fakeCodexPath)
+	t.Setenv("PATH", fakeBin)
+
+	err := CheckActorRuntimeReadinessForDoctor(t.TempDir())
+	if err == nil {
+		t.Fatalf("expected actor runtime readiness to reject unsupported codex CLI")
+	}
+	if !strings.Contains(err.Error(), "unsupported_codex_cli") {
+		t.Fatalf("expected unsupported_codex_cli failure, got %v", err)
+	}
+}
+
+func TestActorRuntimeReadinessRejectsUnsafeBackendPolicy(t *testing.T) {
+	projectRoot := t.TempDir()
+	supervisorDirectory := filepath.Join(projectRoot, ".harness", "supervisor")
+	if err := os.MkdirAll(supervisorDirectory, 0o755); err != nil {
+		t.Fatalf("failed to create supervisor directory: %v", err)
+	}
+	policy := []byte(`version: 1
+execution_environment: local
+default_backend: codex_cli
+backends:
+  codex_cli:
+    command: /opt/homebrew/bin/codex
+    subcommand: exec
+    sandbox: workspace-write
+    approval_policy: never
+    session_mode: per_actor
+    ephemeral: true
+    capture_json_events: true
+    skip_git_repo_check: true
+    ignore_user_config: true
+    ignore_rules: true
+    capabilities:
+      user_skills: disabled
+      user_rules: disabled
+      plugins: disabled
+      mcp: disabled
+      hooks: disabled
+      shell: allowed
+      file_editing: allowed
+execution_environments:
+  local:
+    allowed_sandboxes:
+      - workspace-write
+`)
+	if err := os.WriteFile(filepath.Join(supervisorDirectory, "actor_backend.yaml"), policy, 0o644); err != nil {
+		t.Fatalf("failed to write actor backend policy: %v", err)
+	}
+
+	err := CheckActorRuntimeReadinessForDoctor(projectRoot)
+	if err == nil {
+		t.Fatalf("expected actor runtime readiness to reject unsafe backend policy")
+	}
+	if !strings.Contains(err.Error(), "actor backend command must be codex") {
+		t.Fatalf("expected unsafe backend command error, got %v", err)
+	}
+}
+
 func envMap(env []string) map[string]string {
 	values := make(map[string]string, len(env))
 	for _, entry := range env {
@@ -155,6 +257,17 @@ func allowFakeCodexForTest(t *testing.T, fakeCodexPath string) {
 	writeInternalTestCodexMarker(t, fakeCodexPath)
 	t.Setenv("RAIL_INTERNAL_TEST_ALLOW_UNTRUSTED_CODEX_PATH", internalTestCodexOverrideValue)
 	t.Setenv("RAIL_INTERNAL_TEST_CODEX_PATH", fakeCodexPath)
+}
+
+func withDefaultTrustedPATHEntriesForTest(t *testing.T, entries []string) {
+	t.Helper()
+	previous := defaultTrustedPATHEntriesForSealedActor
+	defaultTrustedPATHEntriesForSealedActor = func() []string {
+		return append([]string(nil), entries...)
+	}
+	t.Cleanup(func() {
+		defaultTrustedPATHEntriesForSealedActor = previous
+	})
 }
 
 func writeInternalTestCodexMarker(t *testing.T, fakeCodexPath string) {
@@ -614,6 +727,8 @@ func TestBuildCodexCLIArgsUsesBackendPolicy(t *testing.T) {
 		"-c", `approval_policy="never"`,
 		"-c", `shell_environment_policy.inherit="none"`,
 		"-c", `shell_environment_policy.include_only=["PATH","HOME","TMPDIR","TMP","TEMP","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_CACHE_HOME"]`,
+		"--disable", "plugins",
+		"--disable", "codex_hooks",
 		"--output-schema", schemaPath,
 		"--output-last-message", logPath,
 		"prompt",
@@ -658,6 +773,8 @@ func TestCodexCLIExecutorBuildsExpectedArgs(t *testing.T) {
 		"-c", `approval_policy="never"`,
 		"-c", `shell_environment_policy.inherit="none"`,
 		"-c", `shell_environment_policy.include_only=["PATH","HOME","TMPDIR","TMP","TEMP","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_CACHE_HOME"]`,
+		"--disable", "plugins",
+		"--disable", "codex_hooks",
 		"--output-schema", schemaPath,
 		"--output-last-message", logPath,
 		"--json",
@@ -1013,6 +1130,24 @@ func TestBuildCodexCLIArgsBlocksSecretEnvFromActorShell(t *testing.T) {
 	}
 }
 
+func TestBuildCodexCLIArgsDisablesConfiguredCapabilities(t *testing.T) {
+	workingDirectory := t.TempDir()
+	args := buildCodexCLIArgs(defaultTestActorBackend(), ActorCommandSpec{
+		ActorName:        "planner",
+		Profile:          ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		WorkingDirectory: workingDirectory,
+		Prompt:           "prompt",
+		LastMessagePath:  filepath.Join(workingDirectory, "response.json"),
+		SchemaPath:       filepath.Join(workingDirectory, "schema.json"),
+	})
+	joined := strings.Join(args, "\n")
+	for _, want := range []string{"--disable\nplugins", "--disable\ncodex_hooks"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("expected disabled capability flag %q, got %#v", want, args)
+		}
+	}
+}
+
 func TestRunCommandRequiresBackendSpecSignature(t *testing.T) {
 	runCommandType := reflect.TypeOf(runCommand)
 	if runCommandType.IsVariadic() {
@@ -1111,6 +1246,8 @@ with open(output_path, "w", encoding="utf-8") as handle:
 		"-c", `approval_policy="never"`,
 		"-c", `shell_environment_policy.inherit="none"`,
 		"-c", `shell_environment_policy.include_only=["PATH","HOME","TMPDIR","TMP","TEMP","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_CACHE_HOME"]`,
+		"--disable", "plugins",
+		"--disable", "codex_hooks",
 		"--output-schema", schemaPath,
 		"--output-last-message", logPath,
 		"--json",
@@ -1233,6 +1370,329 @@ with open(output_path, "w", encoding="utf-8") as handle:
 	}
 }
 
+func TestRunCommandAllowsMarkedSystemSkillMaterialization(t *testing.T) {
+	for _, actorName := range []string{"planner", "context_builder", "critic", "generator", "executor", "evaluator"} {
+		t.Run(actorName, func(t *testing.T) {
+			workingDirectory := t.TempDir()
+			fakeBin := t.TempDir()
+			logPath := filepath.Join(workingDirectory, "response.json")
+			schemaPath := filepath.Join(workingDirectory, "schema.json")
+			fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+			script := `#!/usr/bin/env python3
+import json
+import os
+import sys
+
+output_path = None
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+        break
+
+system_dir = os.path.join(os.environ["CODEX_HOME"], "skills", ".system")
+skill_dir = os.path.join(system_dir, "openai-docs")
+os.makedirs(skill_dir, exist_ok=True)
+with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as handle:
+    handle.write("system skill")
+
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump({"summary": "ok"}, handle)
+`
+			if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+				t.Fatalf("failed to write fake codex: %v", err)
+			}
+
+			t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			allowFakeCodexForTest(t, fakeCodexPath)
+			t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
+
+			response, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
+				ActorName:         actorName,
+				Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+				WorkingDirectory:  workingDirectory,
+				Prompt:            "prompt",
+				LastMessagePath:   logPath,
+				SchemaPath:        schemaPath,
+				ArtifactDirectory: workingDirectory,
+				ActorRunID:        "01_" + actorName,
+			})
+			if err != nil {
+				t.Fatalf("runCommand returned error: %v", err)
+			}
+			if got, want := response["summary"], "ok"; got != want {
+				t.Fatalf("unexpected actor response summary: got %#v want %#v", got, want)
+			}
+		})
+	}
+}
+
+func TestRunCommandRejectsUnmarkedSystemSkillMaterialization(t *testing.T) {
+	workingDirectory := t.TempDir()
+	fakeBin := t.TempDir()
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env python3
+import json
+import os
+import sys
+
+output_path = None
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+        break
+
+system_dir = os.path.join(os.environ["CODEX_HOME"], "skills", ".system")
+try:
+    os.remove(os.path.join(system_dir, ".rail-system-skills.marker"))
+except FileNotFoundError:
+    pass
+skill_dir = os.path.join(system_dir, "openai-docs")
+os.makedirs(skill_dir, exist_ok=True)
+with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as handle:
+    handle.write("system skill without marker")
+
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump({"summary": "should not be trusted"}, handle)
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	allowFakeCodexForTest(t, fakeCodexPath)
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
+
+	_, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
+		ActorName:         "planner",
+		Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		WorkingDirectory:  workingDirectory,
+		Prompt:            "prompt",
+		LastMessagePath:   logPath,
+		SchemaPath:        schemaPath,
+		ArtifactDirectory: workingDirectory,
+		ActorRunID:        "01_planner",
+	})
+	if err == nil {
+		t.Fatalf("expected runCommand to reject unmarked system skill materialization")
+	}
+	if !strings.Contains(err.Error(), "unexpected_skill_materialization") {
+		t.Fatalf("expected unexpected_skill_materialization violation, got %v", err)
+	}
+}
+
+func TestRunCommandRejectsSealedCodexHomePluginCreation(t *testing.T) {
+	workingDirectory := t.TempDir()
+	fakeBin := t.TempDir()
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env python3
+import json
+import os
+import sys
+
+output_path = None
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+        break
+
+plugin_dir = os.path.join(os.environ["CODEX_HOME"], ".tmp", "plugins", "plugins", "github")
+os.makedirs(plugin_dir, exist_ok=True)
+with open(os.path.join(plugin_dir, "plugin.json"), "w", encoding="utf-8") as handle:
+    handle.write("{}")
+
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump({"summary": "should not be trusted"}, handle)
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	allowFakeCodexForTest(t, fakeCodexPath)
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
+
+	_, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
+		ActorName:         "planner",
+		Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		WorkingDirectory:  workingDirectory,
+		Prompt:            "prompt",
+		LastMessagePath:   logPath,
+		SchemaPath:        schemaPath,
+		ArtifactDirectory: workingDirectory,
+		ActorRunID:        "01_planner",
+	})
+	if err == nil {
+		t.Fatalf("expected runCommand to reject plugin materialization inside sealed CODEX_HOME")
+	}
+	if !strings.Contains(err.Error(), "unexpected_plugin_materialization") {
+		t.Fatalf("expected unexpected_plugin_materialization violation, got %v", err)
+	}
+}
+
+func TestRunCommandPreventsPluginMaterializationWhenBackendDisablesPlugins(t *testing.T) {
+	workingDirectory := t.TempDir()
+	fakeBin := t.TempDir()
+	logPath := filepath.Join(workingDirectory, "response.json")
+	schemaPath := filepath.Join(workingDirectory, "schema.json")
+	fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+	script := `#!/usr/bin/env python3
+import json
+import os
+import sys
+
+output_path = None
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+        break
+
+plugins_disabled = any(
+    value == "--disable" and index + 1 < len(sys.argv) and sys.argv[index + 1] == "plugins"
+    for index, value in enumerate(sys.argv)
+)
+if not plugins_disabled:
+    plugin_dir = os.path.join(os.environ["CODEX_HOME"], ".tmp", "plugins", "plugins", "github")
+    os.makedirs(plugin_dir, exist_ok=True)
+    with open(os.path.join(plugin_dir, "plugin.json"), "w", encoding="utf-8") as handle:
+        handle.write("{}")
+
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump({"summary": "ok"}, handle)
+`
+	if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake codex: %v", err)
+	}
+
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	allowFakeCodexForTest(t, fakeCodexPath)
+	t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
+
+	response, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
+		ActorName:         "planner",
+		Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+		WorkingDirectory:  workingDirectory,
+		Prompt:            "prompt",
+		LastMessagePath:   logPath,
+		SchemaPath:        schemaPath,
+		ArtifactDirectory: workingDirectory,
+		ActorRunID:        "01_planner",
+	})
+	if err != nil {
+		t.Fatalf("runCommand returned error: %v", err)
+	}
+	if got, want := response["summary"], "ok"; got != want {
+		t.Fatalf("unexpected actor response summary: got %#v want %#v", got, want)
+	}
+}
+
+func TestRunCommandRejectsForbiddenSealedRuntimeSurfaces(t *testing.T) {
+	cases := []struct {
+		name      string
+		code      string
+		wantError string
+	}{
+		{
+			name: "user_home_skill",
+			code: `target_dir = os.path.join(os.environ["HOME"], ".codex", "skills", "injected")
+os.makedirs(target_dir, exist_ok=True)
+with open(os.path.join(target_dir, "SKILL.md"), "w", encoding="utf-8") as handle:
+    handle.write("user skill")`,
+			wantError: "unexpected_skill_materialization",
+		},
+		{
+			name: "user_home_plugin",
+			code: `target_dir = os.path.join(os.environ["HOME"], ".codex", "plugins", "github")
+os.makedirs(target_dir, exist_ok=True)
+with open(os.path.join(target_dir, "plugin.json"), "w", encoding="utf-8") as handle:
+    handle.write("{}")`,
+			wantError: "unexpected_plugin_materialization",
+		},
+		{
+			name: "actor_local_hook",
+			code: `target_dir = os.path.join(os.environ["CODEX_HOME"], "hooks")
+os.makedirs(target_dir, exist_ok=True)
+with open(os.path.join(target_dir, "hook.json"), "w", encoding="utf-8") as handle:
+    handle.write("{}")`,
+			wantError: "unexpected_hook_materialization",
+		},
+		{
+			name: "actor_local_mcp",
+			code: `target_dir = os.path.join(os.environ["CODEX_HOME"], "mcp")
+os.makedirs(target_dir, exist_ok=True)
+with open(os.path.join(target_dir, "config.json"), "w", encoding="utf-8") as handle:
+    handle.write("{}")`,
+			wantError: "unexpected_mcp_materialization",
+		},
+		{
+			name: "actor_local_superpowers",
+			code: `target_dir = os.path.join(os.environ["CODEX_HOME"], "superpowers", "skills")
+os.makedirs(target_dir, exist_ok=True)
+with open(os.path.join(target_dir, "using-superpowers.md"), "w", encoding="utf-8") as handle:
+    handle.write("skill")`,
+			wantError: "unexpected_skill_materialization",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			workingDirectory := t.TempDir()
+			fakeBin := t.TempDir()
+			logPath := filepath.Join(workingDirectory, "response.json")
+			schemaPath := filepath.Join(workingDirectory, "schema.json")
+			fakeCodexPath := filepath.Join(fakeBin, "codex")
+
+			script := `#!/usr/bin/env python3
+import json
+import os
+import sys
+
+output_path = None
+for index, value in enumerate(sys.argv):
+    if value == "--output-last-message" and index + 1 < len(sys.argv):
+        output_path = sys.argv[index + 1]
+        break
+
+` + tc.code + `
+
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump({"summary": "should not be trusted"}, handle)
+`
+			if err := os.WriteFile(fakeCodexPath, []byte(script), 0o755); err != nil {
+				t.Fatalf("failed to write fake codex: %v", err)
+			}
+
+			t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			allowFakeCodexForTest(t, fakeCodexPath)
+			t.Setenv("RAIL_CODEX_AUTH_HOME", testRailCodexAuthHome(t))
+
+			_, err := runCommand(defaultTestActorBackend(), ActorCommandSpec{
+				ActorName:         "planner",
+				Profile:           ActorProfile{Model: "gpt-5.4-mini", Reasoning: "high"},
+				WorkingDirectory:  workingDirectory,
+				Prompt:            "prompt",
+				LastMessagePath:   logPath,
+				SchemaPath:        schemaPath,
+				ArtifactDirectory: workingDirectory,
+				ActorRunID:        "01_planner",
+			})
+			if err == nil {
+				t.Fatalf("expected runCommand to reject forbidden sealed runtime surface")
+			}
+			if !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("expected %s violation, got %v", tc.wantError, err)
+			}
+		})
+	}
+}
+
 func TestRunCommandRedactsAuthSecretFromActorFailure(t *testing.T) {
 	workingDirectory := t.TempDir()
 	fakeBin := t.TempDir()
@@ -1311,6 +1771,15 @@ func defaultTestActorBackend() ActorBackendConfig {
 		SkipGitRepoCheck:  true,
 		IgnoreUserConfig:  true,
 		IgnoreRules:       true,
+		Capabilities: ActorBackendCapabilities{
+			UserSkills:  "disabled",
+			UserRules:   "disabled",
+			Plugins:     "disabled",
+			MCP:         "disabled",
+			Hooks:       "disabled",
+			Shell:       "allowed",
+			FileEditing: "allowed",
+		},
 	}
 }
 

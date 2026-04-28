@@ -33,6 +33,42 @@ func TestValidateRequestRejectsPathOutsideProjectRoot(t *testing.T) {
 	}
 }
 
+func TestValidateRequestRejectsCommandLikeValidationTargets(t *testing.T) {
+	projectRoot := t.TempDir()
+	requestDir := filepath.Join(projectRoot, ".harness", "requests")
+	if err := os.MkdirAll(requestDir, 0o755); err != nil {
+		t.Fatalf("failed to create request directory: %v", err)
+	}
+	requestPath := filepath.Join(requestDir, "request.yaml")
+	requestBody := `task_type: test_repair
+goal: reject command-like validation targets
+context:
+  validation_targets:
+    - go test ./...
+constraints: []
+definition_of_done:
+  - reject command-like validation target
+priority: medium
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write request: %v", err)
+	}
+	validator, err := NewValidator(projectRoot)
+	if err != nil {
+		t.Fatalf("NewValidator returned error: %v", err)
+	}
+
+	_, err = validator.ValidateRequestFile(requestPath)
+	if err == nil {
+		t.Fatalf("expected ValidateRequestFile to reject command-like validation_targets")
+	}
+	if !strings.Contains(err.Error(), "validation_targets") {
+		t.Fatalf("expected validation_targets error, got %v", err)
+	}
+}
+
 func TestResolvePathWithinRootCanonicalizesSymlinkedPaths(t *testing.T) {
 	projectRoot := t.TempDir()
 	requestDir := filepath.Join(projectRoot, ".harness", "requests")

@@ -64,6 +64,10 @@ func NormalizeDraft(draft Draft) (MaterializedRequest, error) {
 	if _, ok := allowedRiskTolerance[riskTolerance]; !ok {
 		return MaterializedRequest{}, fmt.Errorf("unsupported risk_tolerance: %s", riskTolerance)
 	}
+	validationTargets := normalizeStrings(draft.Context.ValidationTargets)
+	if err := ValidateValidationTargets(validationTargets); err != nil {
+		return MaterializedRequest{}, err
+	}
 
 	validationProfile, ok := canonicalValidationProfiles[strings.ToLower(strings.TrimSpace(draft.ValidationProfile))]
 	if !ok {
@@ -80,7 +84,7 @@ func NormalizeDraft(draft Draft) (MaterializedRequest, error) {
 				SuspectedFiles:    normalizeStrings(draft.Context.SuspectedFiles),
 				RelatedFiles:      normalizeStrings(draft.Context.RelatedFiles),
 				ValidationRoots:   normalizeStrings(draft.Context.ValidationRoots),
-				ValidationTargets: normalizeStrings(draft.Context.ValidationTargets),
+				ValidationTargets: validationTargets,
 			},
 			Constraints:       normalizeStrings(draft.Constraints),
 			DefinitionOfDone:  normalizeStrings(draft.DefinitionOfDone),

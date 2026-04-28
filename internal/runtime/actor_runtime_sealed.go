@@ -1,12 +1,17 @@
 package runtime
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"rail/internal/auth"
@@ -17,24 +22,27 @@ import (
 const sealedActorRuntimeVersion = 1
 const internalTestCodexOverrideValue = "rail-internal-tests-only"
 const internalTestCodexMarker = ".rail-internal-test-codex"
+const railSystemSkillsMarker = ".rail-system-skills.marker"
 
 var internalTestCodexOverrideEnabled string
+var defaultTrustedPATHEntriesForSealedActor = defaultTrustedPATHEntries
 
 type sealedActorRuntime struct {
-	Root              string
-	CodexHome         string
-	Home              string
-	XDGConfigHome     string
-	XDGDataHome       string
-	XDGCacheHome      string
-	Temp              string
-	ProvenancePath    string
-	CommandPath       string
-	Env               []string
-	SanitizedPath     string
-	AuthSource        string
-	AuthMaterialized  bool
-	AuthMaterialFiles []string
+	Root               string
+	CodexHome          string
+	Home               string
+	XDGConfigHome      string
+	XDGDataHome        string
+	XDGCacheHome       string
+	Temp               string
+	ProvenancePath     string
+	CommandPath        string
+	Env                []string
+	SanitizedPath      string
+	AuthSource         string
+	AuthMaterialized   bool
+	AuthMaterialFiles  []string
+	SystemSkillsMarker string
 }
 
 func prepareSealedActorRuntime(backend ActorBackendConfig, spec ActorCommandSpec, parent []string) (sealedActorRuntime, error) {
@@ -108,6 +116,11 @@ func prepareSealedActorRuntime(backend ActorBackendConfig, spec ActorCommandSpec
 	sealed.AuthSource = materialized.Source
 	sealed.AuthMaterialized = true
 	sealed.AuthMaterialFiles = append([]string(nil), materialized.CopiedFiles...)
+	marker, err := materializeSealedSystemSkillsMarker(sealed.CodexHome)
+	if err != nil {
+		return sealedActorRuntime{}, err
+	}
+	sealed.SystemSkillsMarker = marker
 	sealed.Env = buildSealedActorEnvironment(sealed, parentMap)
 	if err := writeSealedActorProvenance(sealed, spec, backend); err != nil {
 		return sealedActorRuntime{}, err
@@ -246,12 +259,71 @@ func sanitizeActorPATH(pathValue string, forbiddenRoots []string) ([]string, err
 		safeEntries = append(safeEntries, resolvedEntry)
 	}
 	if len(safeEntries) == 0 {
-		safeEntries = defaultTrustedPATHEntries()
+		safeEntries = defaultTrustedPATHEntriesForSealedActor()
 	}
 	if len(safeEntries) == 0 {
 		return nil, backendPolicyViolation("unsafe_codex_path: no trusted PATH entries for sealed actor")
 	}
 	return safeEntries, nil
+}
+
+func CheckActorRuntimeReadinessForDoctor(projectRoot string) error {
+	root, err := filepath.Abs(strings.TrimSpace(projectRoot))
+	if err != nil {
+		return fmt.Errorf("resolve project root for actor runtime readiness: %w", err)
+	}
+	if strings.TrimSpace(root) == "" {
+		return backendPolicyViolation("actor_runtime_readiness_requires_project_root")
+	}
+	policy, err := loadActorBackendPolicy(root)
+	if err != nil {
+		return fmt.Errorf("load actor backend policy: %w", err)
+	}
+	backend, err := policy.DefaultBackend()
+	if err != nil {
+		return err
+	}
+	parentMap := envSliceMap(os.Environ())
+	pathValue := strings.TrimSpace(parentMap["PATH"])
+	if pathValue == "" {
+		return backendPolicyViolation("unsafe_codex_path: missing PATH for sealed actor")
+	}
+	forbiddenRoots := actorForbiddenRoots(parentMap, root, root)
+	pathEntries, err := sanitizeActorPATH(pathValue, forbiddenRoots)
+	if err != nil {
+		return err
+	}
+	commandPath, err := resolveSealedCodexCommand(backend.Command, pathEntries, forbiddenRoots, parentMap)
+	if err != nil {
+		return err
+	}
+	return verifyCodexCLIActorFlagSupport(commandPath, backend)
+}
+
+func verifyCodexCLIActorFlagSupport(commandPath string, backend ActorBackendConfig) error {
+	args := []string{backend.Subcommand}
+	if backend.Capabilities.Plugins == "disabled" {
+		args = append(args, "--disable", "plugins")
+	}
+	if backend.Capabilities.Hooks == "disabled" {
+		args = append(args, "--disable", "codex_hooks")
+	}
+	args = append(args, "--help")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, commandPath, args...)
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return backendPolicyViolation("unsupported_codex_cli: actor flag compatibility check timed out")
+	}
+	if err != nil {
+		return backendPolicyViolation("unsupported_codex_cli: codex exec does not support required actor flags")
+	}
+	if !strings.Contains(string(output), "--disable") && (backend.Capabilities.Plugins == "disabled" || backend.Capabilities.Hooks == "disabled") {
+		return backendPolicyViolation("unsupported_codex_cli: codex exec help does not advertise feature disable flags")
+	}
+	return nil
 }
 
 func resolveSealedCodexCommand(command string, pathEntries []string, forbiddenRoots []string, parent map[string]string) (string, error) {
@@ -439,6 +511,22 @@ func buildSealedActorEnvironment(sealed sealedActorRuntime, parent map[string]st
 	return env
 }
 
+func materializeSealedSystemSkillsMarker(codexHome string) (string, error) {
+	markerBytes := make([]byte, 16)
+	if _, err := rand.Read(markerBytes); err != nil {
+		return "", fmt.Errorf("generate sealed system skills marker: %w", err)
+	}
+	marker := hex.EncodeToString(markerBytes)
+	systemDir := filepath.Join(codexHome, "skills", ".system")
+	if err := os.MkdirAll(systemDir, 0o700); err != nil {
+		return "", fmt.Errorf("create sealed system skills marker directory: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(systemDir, railSystemSkillsMarker), []byte(marker+"\n"), 0o600); err != nil {
+		return "", fmt.Errorf("write sealed system skills marker: %w", err)
+	}
+	return marker, nil
+}
+
 func sealedActorRedactionSecrets(sealed sealedActorRuntime) []string {
 	seen := map[string]struct{}{}
 	secrets := []string{}
@@ -562,11 +650,13 @@ func writeSealedActorProvenance(sealed sealedActorRuntime, spec ActorCommandSpec
 }
 
 func postflightSealedActorRuntime(sealed sealedActorRuntime) error {
+	if err := inspectSealedCodexHomeSkills(filepath.Join(sealed.CodexHome, "skills"), sealed.SystemSkillsMarker); err != nil {
+		return err
+	}
 	checks := []struct {
 		path string
 		code string
 	}{
-		{filepath.Join(sealed.CodexHome, "skills"), "unexpected_skill_materialization"},
 		{filepath.Join(sealed.CodexHome, "superpowers"), "unexpected_skill_materialization"},
 		{filepath.Join(sealed.CodexHome, "plugins"), "unexpected_plugin_materialization"},
 		{filepath.Join(sealed.CodexHome, ".tmp", "plugins"), "unexpected_plugin_materialization"},
@@ -584,6 +674,37 @@ func postflightSealedActorRuntime(sealed sealedActorRuntime) error {
 		}
 		if hasEntries {
 			return backendPolicyViolation(check.code + " in " + check.path)
+		}
+	}
+	return nil
+}
+
+func inspectSealedCodexHomeSkills(path string, expectedMarker string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if os.IsPermission(err) {
+			return backendPolicyViolation("unexpected_skill_materialization in " + path)
+		}
+		return fmt.Errorf("inspect sealed runtime path %s: %w", path, err)
+	}
+	for _, entry := range entries {
+		entryPath := filepath.Join(path, entry.Name())
+		if entry.Name() != ".system" {
+			return backendPolicyViolation("unexpected_skill_materialization in " + entryPath)
+		}
+		markerPath := filepath.Join(entryPath, railSystemSkillsMarker)
+		marker, err := os.ReadFile(markerPath)
+		if err != nil {
+			if os.IsNotExist(err) || os.IsPermission(err) {
+				return backendPolicyViolation("unexpected_skill_materialization in " + entryPath)
+			}
+			return fmt.Errorf("inspect sealed runtime path %s: %w", markerPath, err)
+		}
+		if strings.TrimSpace(expectedMarker) == "" || strings.TrimSpace(string(marker)) != strings.TrimSpace(expectedMarker) {
+			return backendPolicyViolation("unexpected_skill_materialization in " + entryPath)
 		}
 	}
 	return nil

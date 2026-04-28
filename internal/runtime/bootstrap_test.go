@@ -617,6 +617,42 @@ validation_profile: standard
 	}
 }
 
+func TestBootstrapRejectsCommandLikeValidationTargets(t *testing.T) {
+	projectRoot := t.TempDir()
+	bootstrapper, err := NewBootstrapper(projectRoot)
+	if err != nil {
+		t.Fatalf("NewBootstrapper returned error: %v", err)
+	}
+	requestDir := filepath.Join(projectRoot, ".harness", "requests")
+	if err := os.MkdirAll(requestDir, 0o755); err != nil {
+		t.Fatalf("failed to create request directory: %v", err)
+	}
+	requestPath := filepath.Join(requestDir, "request.yaml")
+	requestBody := `task_type: test_repair
+goal: reject command-like validation targets
+context:
+  validation_targets:
+    - go test ./...
+constraints: []
+definition_of_done:
+  - reject command-like validation target
+priority: medium
+risk_tolerance: low
+validation_profile: standard
+`
+	if err := os.WriteFile(requestPath, []byte(requestBody), 0o644); err != nil {
+		t.Fatalf("failed to write request fixture: %v", err)
+	}
+
+	_, err = bootstrapper.Bootstrap(requestPath, "bootstrap-rejects-command-validation-target")
+	if err == nil {
+		t.Fatalf("expected Bootstrap to reject command-like validation_targets")
+	}
+	if !strings.Contains(err.Error(), "validation_targets") {
+		t.Fatalf("expected validation_targets error context, got %v", err)
+	}
+}
+
 func TestBootstrapReturnsErrorForMalformedSupervisorConfig(t *testing.T) {
 	projectRoot := t.TempDir()
 	bootstrapper, err := NewBootstrapper(projectRoot)

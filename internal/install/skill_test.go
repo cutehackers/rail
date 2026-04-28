@@ -183,6 +183,30 @@ func TestBundledSkillMatchesCurrentCLIWorkflow(t *testing.T) {
 	if strings.Contains(skillDoc, "local Rail checkout") {
 		t.Fatalf("expected skill doc to avoid checkout-era runtime guidance, got %q", skillDoc)
 	}
+	for _, want := range []string{
+		"## Task Identity Decision",
+		"Start a fresh task when the user gives a new goal",
+		"Continue an existing artifact only when the user asks to continue",
+		"do not run `compose-request` or `rail run`",
+		"Do not ask users to choose task ids",
+		"Do not derive an artifact path from `.harness/requests/request.yaml`",
+		"rail auth doctor --project-root <target-repo>",
+		"`context.validation_roots` and `context.validation_targets` are path hints",
+	} {
+		if !strings.Contains(skillDoc, want) {
+			t.Fatalf("expected skill doc to include %q, got %q", want, skillDoc)
+		}
+	}
+	for _, rejected := range []string{
+		"ask the user for a task id",
+		"reconstruct the artifact path from the request filename",
+		"edit actor_backend.yaml to use an absolute codex path",
+		"create a symlink to codex",
+	} {
+		if strings.Contains(skillDoc, rejected) {
+			t.Fatalf("expected skill doc to avoid %q, got %q", rejected, skillDoc)
+		}
+	}
 
 	examples := indexed["references/examples.md"]
 	if !strings.Contains(examples, "rail compose-request --stdin") {
@@ -194,6 +218,9 @@ func TestBundledSkillMatchesCurrentCLIWorkflow(t *testing.T) {
 		"Inferred task_type: `feature_addition`",
 		"Inferred task_type: `safe_refactor`",
 		"Inferred task_type: `test_repair`",
+		"## Task Identity Examples",
+		"Existing artifact prompt:",
+		"do not run `compose-request`",
 	} {
 		if !strings.Contains(examples, want) {
 			t.Fatalf("expected bundled examples to include %q, got %q", want, examples)

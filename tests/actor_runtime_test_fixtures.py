@@ -8,9 +8,55 @@ import yaml
 from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.agents import AgentsActorRuntime, SDKRunResult
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
-from rail.actor_runtime.schemas import fake_actor_output
 from rail.policy import load_effective_policy
 from rail.workspace.isolation import tree_digest
+
+
+def fake_actor_output(actor: str) -> dict[str, object]:
+    outputs: dict[str, dict[str, object]] = {
+        "planner": {
+            "summary": "Plan one bounded step.",
+            "likely_files": ["src/rail/api.py"],
+            "substeps": ["Inspect", "Implement", "Verify"],
+            "risks": ["Incomplete validation"],
+            "acceptance_criteria_refined": ["Tests pass"],
+        },
+        "context_builder": {
+            "relevant_files": [{"path": "src/rail/api.py", "why": "Public API"}],
+            "repo_patterns": ["Python package under src"],
+            "forbidden_changes": ["Do not mutate target directly"],
+        },
+        "critic": {
+            "priority_focus": ["Policy boundary"],
+            "missing_requirements": [],
+            "risk_hypotheses": [],
+            "validation_expectations": ["pytest"],
+            "generator_guardrails": ["patch only"],
+            "blocked_assumptions": [],
+        },
+        "generator": {
+            "changed_files": ["src/rail/api.py"],
+            "patch_summary": ["Added API"],
+            "tests_added_or_updated": ["tests/test_api_smoke.py"],
+            "known_limits": [],
+            "patch_bundle_ref": "patches/generator.patch.yaml",
+        },
+        "executor": {
+            "format": "pass",
+            "analyze": "pass",
+            "tests": {"total": 1, "passed": 1, "failed": 0},
+            "failure_details": [],
+            "logs": ["pytest passed"],
+        },
+        "evaluator": {
+            "decision": "pass",
+            "evaluated_input_digest": "sha256:evaluator-input-not-bound",
+            "findings": [],
+            "reason_codes": [],
+            "quality_confidence": "high",
+        },
+    }
+    return outputs[actor]
 
 
 def scripted_agents_runtime(

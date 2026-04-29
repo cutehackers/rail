@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
+import rail.workspace.apply as apply_module
 from rail.workspace.apply import apply_patch_bundle
+from rail.workspace.isolation import tree_digest
 from pydantic import ValidationError
 
 from rail.workspace.patch_bundle import (
@@ -105,6 +108,209 @@ def test_apply_rejects_stale_target_tree(tmp_path):
 
     with pytest.raises(ValueError, match="base tree"):
         apply_patch_bundle(bundle, target)
+
+
+def test_apply_rejects_hardlink_targets_without_mutating_outside_file(tmp_path):
+    target = _target(tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside\n", encoding="utf-8")
+    linked = target / "linked.txt"
+    try:
+        os.link(outside, linked)
+    except OSError:
+        pytest.skip("hardlinks are not supported on this filesystem")
+    bundle = PatchBundle(
+        base_tree_digest=tree_digest(target),
+        operations=[PatchOperation(path="linked.txt", content="changed\n")],
+    )
+
+    with pytest.raises(ValueError, match="hardlink"):
+        apply_patch_bundle(bundle, target)
+
+    assert outside.read_text(encoding="utf-8") == "outside\n"
+
+
+def test_apply_rejects_symlink_targets_without_mutating_link_destination(tmp_path):
+    target = _target(tmp_path)
+    destination = target / "real.txt"
+    destination.write_text("real\n", encoding="utf-8")
+    link = target / "link.txt"
+    link.symlink_to(destination)
+    bundle = PatchBundle(
+        base_tree_digest=tree_digest(target),
+        operations=[PatchOperation(path="link.txt", content="changed\n")],
+    )
+
+    with pytest.raises(ValueError, match="symlink"):
+        apply_patch_bundle(bundle, target)
+
+    assert destination.read_text(encoding="utf-8") == "real\n"
+
+
+def test_apply_rechecks_link_safety_at_write_time(tmp_path, monkeypatch):
+    target = _target(tmp_path)
+    app = target / "app.txt"
+    outside = tmp_path / "outside.txt"
+    app.write_text("old\n", encoding="utf-8")
+    outside.write_text("outside\n", encoding="utf-8")
+    base_digest = tree_digest(target)
+    bundle = PatchBundle(
+        base_tree_digest=base_digest,
+        operations=[PatchOperation(path="app.txt", content="changed\n")],
+    )
+    calls = 0
+
+    def swapping_tree_digest(root: Path) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            app.unlink()
+            app.symlink_to(outside)
+        return base_digest
+
+    monkeypatch.setattr(apply_module, "tree_digest", swapping_tree_digest)
+
+    with pytest.raises(ValueError, match="symlink"):
+        apply_patch_bundle(bundle, target)
+
+    assert outside.read_text(encoding="utf-8") == "outside\n"
+
+
+def test_apply_replaces_existing_file_instead_of_mutating_late_hardlink(tmp_path, monkeypatch):
+    target = _target(tmp_path)
+    app = target / "app.txt"
+    outside_link = tmp_path / "outside-link.txt"
+    app.write_text("old\n", encoding="utf-8")
+    bundle = PatchBundle(
+        base_tree_digest=tree_digest(target),
+        operations=[PatchOperation(path="app.txt", content="new\n")],
+    )
+    original_assert = apply_module._assert_regular_unlinked_file
+    checks = 0
+
+    def create_hardlink_after_second_check(fd: int) -> os.stat_result:
+        nonlocal checks
+        file_stat = original_assert(fd)
+        checks += 1
+        if checks == 2:
+            os.link(app, outside_link)
+        return file_stat
+
+    monkeypatch.setattr(apply_module, "_assert_regular_unlinked_file", create_hardlink_after_second_check)
+
+    apply_patch_bundle(bundle, target)
+
+    assert app.read_text(encoding="utf-8") == "new\n"
+    assert outside_link.read_text(encoding="utf-8") == "old\n"
+
+
+def test_apply_preserves_existing_file_mode_when_replacing(tmp_path):
+    target = _target(tmp_path)
+    private = target / "private.conf"
+    script = target / "tool.sh"
+    private.write_text("old secret\n", encoding="utf-8")
+    script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    private.chmod(0o600)
+    script.chmod(0o755)
+    bundle = PatchBundle(
+        base_tree_digest=tree_digest(target),
+        operations=[
+            PatchOperation(path="private.conf", content="new secret\n"),
+            PatchOperation(path="tool.sh", content="#!/bin/sh\nexit 1\n"),
+        ],
+    )
+
+    apply_patch_bundle(bundle, target)
+
+    assert stat_mode(private) == 0o600
+    assert stat_mode(script) == 0o755
+
+
+def test_apply_removes_partial_new_file_when_write_fails(tmp_path, monkeypatch):
+    target = _target(tmp_path)
+    bundle = PatchBundle(
+        base_tree_digest=tree_digest(target),
+        operations=[PatchOperation(path="new.txt", content="new content\n")],
+    )
+    real_fdopen = apply_module.os.fdopen
+
+    class FailingWriteStream:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            self.stream.close()
+            return False
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def write(self, payload: bytes) -> int:
+            self.stream.write(payload[:1])
+            raise OSError("simulated disk full")
+
+        def __getattr__(self, name: str):
+            return getattr(self.stream, name)
+
+    def failing_fdopen(fd: int, mode: str = "r", *args, **kwargs):
+        stream = real_fdopen(fd, mode, *args, **kwargs)
+        if "w" in mode and "b" in mode:
+            return FailingWriteStream(stream)
+        return stream
+
+    monkeypatch.setattr(apply_module.os, "fdopen", failing_fdopen)
+
+    with pytest.raises(OSError, match="simulated disk full"):
+        apply_patch_bundle(bundle, target)
+
+    assert not (target / "new.txt").exists()
+    assert not list(target.glob(".rail-tmp-*"))
+
+
+def test_apply_creates_executable_file_when_policy_allows(tmp_path):
+    target = _target(tmp_path)
+    bundle = PatchBundle(
+        base_tree_digest=tree_digest(target),
+        operations=[PatchOperation(path="tool.sh", content="#!/bin/sh\nexit 0\n", executable=True)],
+    )
+
+    apply_patch_bundle(bundle, target, policy=PatchValidationPolicy(allow_executable=True))
+
+    assert stat_mode(target / "tool.sh") == 0o755
+
+
+def test_apply_removes_created_parent_directories_on_later_failure(tmp_path, monkeypatch):
+    target = _target(tmp_path)
+    bundle = PatchBundle(
+        base_tree_digest=tree_digest(target),
+        operations=[
+            PatchOperation(path="newdir/file.txt", content="created\n"),
+            PatchOperation(path="other.txt", content="fail\n"),
+        ],
+    )
+    real_write = apply_module._write_text_without_following_links
+    calls = 0
+
+    def fail_second_write(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated second write failure")
+        return real_write(*args, **kwargs)
+
+    monkeypatch.setattr(apply_module, "_write_text_without_following_links", fail_second_write)
+
+    with pytest.raises(OSError, match="simulated second write failure"):
+        apply_patch_bundle(bundle, target)
+
+    assert not (target / "newdir").exists()
+
+
+def stat_mode(path: Path) -> int:
+    return path.stat().st_mode & 0o777
 
 
 def _target(tmp_path: Path) -> Path:

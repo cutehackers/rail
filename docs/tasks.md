@@ -27,7 +27,18 @@ blocked result projections distinguish runtime, validation, policy, and
 environment categories, evaluator pass is bound to a supervisor-provided
 evaluator input digest and validation evidence digest, repo `.harness` defaults
 stay aligned with packaged defaults, and the canonical gate is
-`scripts/python_release_gate.sh`.
+`scripts/python_release_gate.sh`. The final critical-review blockers are also
+closed: the release gate directly runs the asset alignment checker, fake actor
+outputs and inline integration flow helpers live only in tests, patch apply
+rejects hardlink targets, policy load failures persist policy-blocked artifacts,
+terminal pass rejects validation evidence whose network mode does not match the
+effective policy, disabled-network validation ignores target-controlled
+`sandbox-exec` shims and fails closed when the trusted OS sandbox is
+unavailable, patch apply uses no-follow file descriptors and atomic replacement
+to avoid symlink/hardlink escapes, and existing file permissions are preserved
+when accepted patch bundles replace files. Artifact handle validation rejects
+raw path-traversed `artifact_dir` and `project_root` values before
+canonicalizing them for use.
 
 Local verification:
 

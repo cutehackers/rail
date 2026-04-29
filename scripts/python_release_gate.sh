@@ -7,6 +7,7 @@ cleanup() {
 trap cleanup EXIT
 
 rm -rf dist src/rail_harness.egg-info
+uv run --python 3.12 python scripts/check_package_asset_alignment.py
 uv build
 uv run --python 3.12 python scripts/check_python_package_assets.py dist
 uv run --python 3.12 python scripts/check_installed_wheel.py dist

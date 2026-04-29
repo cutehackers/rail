@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import rail
-from rail.integration.flow import run_runtime_flow_slices
+from tests.integration_flow_fixtures import run_runtime_flow_slices
 
 
 def test_runtime_flow_slices_wire_actor_patch_validation_evaluator_and_projection(tmp_path):

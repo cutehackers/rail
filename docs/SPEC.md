@@ -287,7 +287,9 @@ The mandatory local release gate is:
 scripts/python_release_gate.sh
 ```
 
-The gate removes stale build artifacts, runs `uv build`, verifies required
+The gate removes stale build artifacts, verifies repo `.harness`,
+`assets/defaults`, and packaged default/skill assets stay aligned with
+`scripts/check_package_asset_alignment.py`, runs `uv build`, verifies required
 wheel and sdist assets with `scripts/check_python_package_assets.py`, smokes the
 installed wheel with `scripts/check_installed_wheel.py`, runs the Python test
 suite excluding the optional live smoke, runs lint and typing, and preserves

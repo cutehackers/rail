@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from rail.actor_runtime.prompts import SUPERVISOR_ACTORS, load_actor_catalog
-from rail.actor_runtime.schemas import fake_actor_output
+from tests.actor_runtime_test_fixtures import fake_actor_output
 
 
 def test_every_supervisor_actor_has_prompt_and_schema_source():

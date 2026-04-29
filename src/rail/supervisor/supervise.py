@@ -27,11 +27,24 @@ from rail.workspace.validation_runner import run_validation_commands
 
 def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None = None) -> SupervisorState:
     handle = validate_artifact_handle(handle)
-    policy = load_effective_policy(handle.project_root)
+    state = SupervisorState.created(handle.artifact_id)
+    try:
+        policy = load_effective_policy(handle.project_root)
+    except Exception:
+        state = state.finish("blocked")
+        _write_run_status(
+            handle,
+            state,
+            [],
+            reason="effective policy rejected; inspect target policy configuration",
+            blocked_category="policy",
+            current_actor="policy",
+        )
+        write_terminal_summary(handle)
+        return state
     handle = bind_effective_policy(handle, policy)
     effective_policy_digest = handle.effective_policy_digest or digest_policy(policy)
     runtime = runtime or AgentsActorRuntime(project_root=_rail_root(), policy=policy)
-    state = SupervisorState.created(handle.artifact_id)
     visited: list[str] = []
     patch_digest = "sha256:no-patch"
     actor_invocation_digest = "sha256:no-actor"
@@ -103,6 +116,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
                     request_digest=handle.request_snapshot_digest,
                     effective_policy_digest=effective_policy_digest,
                     actor_invocation_digest=validation_actor_invocation_digest,
+                    network_mode=policy.workspace.network_mode,
                 )
             except (ValueError, yaml.YAMLError) as exc:
                 terminal_reason = str(redact_secrets(str(exc)))
@@ -127,6 +141,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
                     validation_ref=validation_ref,
                     validation_evidence_digest=validation_evidence_digest,
                     evaluator_input_digest=evaluator_input_digest or "sha256:no-evaluator-input",
+                    expected_validation_network_mode=policy.workspace.network_mode,
                 ),
             )
             if gate.outcome == "pass":

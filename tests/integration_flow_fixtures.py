@@ -7,10 +7,10 @@ from pydantic import BaseModel, ConfigDict
 import rail
 from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
-from rail.actor_runtime.schemas import fake_actor_output
 from rail.artifacts.models import ArtifactHandle
 from rail.workspace.isolation import tree_digest
 from rail.workspace.validation import load_validation_evidence
+from tests.actor_runtime_test_fixtures import fake_actor_output
 
 
 class RuntimeFlowSliceReport(BaseModel):

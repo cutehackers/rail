@@ -11,11 +11,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from rail.policy.schema import NetworkMode
 from rail.workspace.isolation import tree_digest
 from rail.workspace.validation import ValidationEvidence, record_validation_evidence
 
 ValidationCommandSource = Literal["request", "policy", "actor"]
 _VALIDATION_ENV_ALLOWLIST = {"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "PYTHONPATH", "VIRTUAL_ENV", "UV_CACHE_DIR"}
+_DISABLED_NETWORK_PROFILE = "(version 1)\n(allow default)\n(deny network*)\n"
+_TRUSTED_SANDBOX_EXEC = Path("/usr/bin/sandbox-exec")
 
 
 class ValidationCommand(BaseModel):
@@ -35,6 +38,7 @@ def run_validation_command(
     request_digest: str,
     effective_policy_digest: str,
     actor_invocation_digest: str,
+    network_mode: NetworkMode = "disabled",
 ) -> ValidationEvidence:
     return run_validation_commands(
         artifact_dir=artifact_dir,
@@ -44,6 +48,7 @@ def run_validation_command(
         request_digest=request_digest,
         effective_policy_digest=effective_policy_digest,
         actor_invocation_digest=actor_invocation_digest,
+        network_mode=network_mode,
     )
 
 
@@ -56,6 +61,7 @@ def run_validation_commands(
     request_digest: str,
     effective_policy_digest: str,
     actor_invocation_digest: str,
+    network_mode: NetworkMode = "disabled",
 ) -> ValidationEvidence:
     if not commands:
         raise ValueError("validation commands are not configured")
@@ -69,8 +75,10 @@ def run_validation_commands(
     stderr_parts: list[str] = []
     exit_code = 0
 
+    applied_network_mode = _applied_network_mode(network_mode)
+
     for command in commands:
-        result = _run_one(command, target_root)
+        result = _run_one(command, target_root, network_mode=applied_network_mode)
         stdout_parts.append(result.stdout)
         stderr_parts.append(result.stderr)
         exit_code = result.exit_code
@@ -99,7 +107,7 @@ def run_validation_commands(
         mutation_status=mutation_status,
         duration_ms=duration_ms,
         credential_mode="scrubbed",
-        network_mode="inherited",
+        network_mode=applied_network_mode,
         sandbox_ref="target-root-subprocess",
     )
 
@@ -119,10 +127,17 @@ def _validate_command(command: ValidationCommand) -> None:
         raise ValueError("validation command argv must not be empty")
 
 
-def _run_one(command: ValidationCommand, target_root: Path) -> _CommandResult:
+def _run_one(command: ValidationCommand, target_root: Path, *, network_mode: str) -> _CommandResult:
+    argv = _validation_argv(command.argv, network_mode=network_mode)
+    if argv is None:
+        return _CommandResult(
+            exit_code=127,
+            stdout="",
+            stderr="disabled network validation is unavailable on this platform",
+        )
     try:
         completed = subprocess.run(
-            command.argv,
+            argv,
             cwd=target_root,
             timeout=command.timeout_seconds,
             capture_output=True,
@@ -130,7 +145,10 @@ def _run_one(command: ValidationCommand, target_root: Path) -> _CommandResult:
             check=False,
             env=_validation_environment(os.environ),
         )
-        return _CommandResult(exit_code=completed.returncode, stdout=completed.stdout, stderr=completed.stderr)
+        exit_code = completed.returncode
+        if network_mode == "disabled" and exit_code == 71 and "execvp()" in completed.stderr:
+            exit_code = 127
+        return _CommandResult(exit_code=exit_code, stdout=completed.stdout, stderr=completed.stderr)
     except subprocess.TimeoutExpired as exc:
         stdout = _decode_timeout_output(exc.stdout)
         stderr = _decode_timeout_output(exc.stderr)
@@ -150,6 +168,27 @@ def _decode_timeout_output(output: str | bytes | None) -> str:
 
 def _validation_environment(environ: Mapping[str, str]) -> dict[str, str]:
     return {key: value for key, value in environ.items() if key in _VALIDATION_ENV_ALLOWLIST}
+
+
+def _applied_network_mode(network_mode: NetworkMode) -> str:
+    return "unavailable" if network_mode == "disabled" and _sandbox_exec_path() is None else network_mode
+
+
+def _validation_argv(argv: list[str], *, network_mode: str) -> list[str] | None:
+    if network_mode == "unavailable":
+        return None
+    if network_mode == "disabled":
+        sandbox_exec = _sandbox_exec_path()
+        if sandbox_exec is None:
+            return None
+        return [sandbox_exec.as_posix(), "-p", _DISABLED_NETWORK_PROFILE, *argv]
+    return argv
+
+
+def _sandbox_exec_path() -> Path | None:
+    if _TRUSTED_SANDBOX_EXEC.is_file() and os.access(_TRUSTED_SANDBOX_EXEC, os.X_OK):
+        return _TRUSTED_SANDBOX_EXEC
+    return None
 
 
 def _protected_digest(root: Path) -> str:

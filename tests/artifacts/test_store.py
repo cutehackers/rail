@@ -93,6 +93,27 @@ def test_validate_handle_rejects_artifact_dir_outside_project_store(tmp_path):
         validate_artifact_handle(forged)
 
 
+def test_validate_handle_rejects_path_traversed_artifact_dir(tmp_path):
+    from rail.artifacts.store import validate_artifact_handle
+
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    forged = handle.model_copy(update={"artifact_dir": handle.artifact_dir / ".." / handle.artifact_dir.name})
+
+    with pytest.raises(ValueError, match="path traversal"):
+        validate_artifact_handle(forged)
+
+
+def test_validate_handle_rejects_path_traversed_project_root(tmp_path):
+    from rail.artifacts.store import validate_artifact_handle
+
+    target = _target_repo(tmp_path)
+    handle = rail.start_task(_draft(target))
+    forged = handle.model_copy(update={"project_root": target / ".." / target.name})
+
+    with pytest.raises(ValueError, match="path traversal"):
+        validate_artifact_handle(forged)
+
+
 def test_validate_handle_rejects_tampered_artifact_identity_files(tmp_path):
     from rail.artifacts.store import validate_artifact_handle
 

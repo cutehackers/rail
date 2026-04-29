@@ -11,9 +11,12 @@ from tests.actor_runtime_test_fixtures import FakeActorRuntime
 
 def test_fake_runtime_is_not_exported_from_production_runtime():
     import rail.actor_runtime.runtime as runtime
+    import rail.actor_runtime.schemas as schemas
 
     assert not hasattr(runtime, "FakeActorRuntime")
+    assert not hasattr(schemas, "fake_actor_output")
     assert importlib.util.find_spec("rail.actor_runtime.testing") is None
+    assert importlib.util.find_spec("rail.integration.flow") is None
 
 
 def test_fake_actor_runtime_returns_contract_result(tmp_path):

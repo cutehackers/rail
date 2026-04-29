@@ -68,6 +68,7 @@ class ArtifactStore:
 def validate_artifact_handle(handle: ArtifactHandle) -> ArtifactHandle:
     project_root = _canonical_project_root(handle.project_root)
     artifact_dir_input = Path(handle.artifact_dir)
+    _reject_path_traversal(artifact_dir_input, "artifact_dir")
     if artifact_dir_input.is_symlink():
         raise ValueError("artifact_dir must not be a symlink")
     if not artifact_dir_input.exists():
@@ -121,11 +122,17 @@ def digest_request(request: HarnessRequest) -> str:
 
 def _canonical_project_root(project_root: str | Path) -> Path:
     path = Path(project_root)
+    _reject_path_traversal(path, "project_root")
     if path.is_symlink():
         raise ValueError("project_root must not be a symlink")
     if not path.exists():
         raise ValueError("project_root does not exist")
     return path.resolve(strict=True)
+
+
+def _reject_path_traversal(path: Path, field_name: str) -> None:
+    if ".." in path.parts:
+        raise ValueError(f"{field_name} must not contain path traversal")
 
 
 def _artifact_owner_project_root(artifact_dir: Path) -> Path | None:

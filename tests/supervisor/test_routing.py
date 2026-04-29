@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 
 import rail
+from rail.resources import load_default_asset_yaml
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
 from rail.supervisor.graph import SUPERVISOR_GRAPH
 from rail.supervisor.router import route_next
@@ -118,6 +119,44 @@ def test_default_supervise_blocks_environment_when_runtime_not_ready(tmp_path, m
     assert projection.terminal_decision == "blocked"
     assert projection.blocked_category == "environment"
     assert rail.status(handle).current_actor == "planner"
+
+
+def test_supervise_records_policy_blocked_when_effective_policy_invalid(tmp_path):
+    target = _target_repo(tmp_path)
+    policy = load_default_asset_yaml("defaults/supervisor/actor_runtime.yaml")
+    policy["workspace"]["network_mode"] = "enabled"
+    (target / ".harness" / "supervisor" / "actor_runtime.yaml").write_text(
+        yaml.safe_dump(policy, sort_keys=True),
+        encoding="utf-8",
+    )
+    handle = rail.start_task(_draft(target))
+
+    result = rail.supervise(handle, runtime=ExplodingRuntime())
+
+    assert result.outcome == "blocked"
+    run_status = yaml.safe_load((handle.artifact_dir / "run_status.yaml").read_text(encoding="utf-8"))
+    assert run_status["blocked_category"] == "policy"
+    assert "effective policy rejected" in run_status["reason"]
+    projection = rail.result(handle)
+    assert projection.outcome_label == "policy_blocked"
+
+
+def test_supervise_policy_block_does_not_persist_policy_file_payload(tmp_path):
+    target = _target_repo(tmp_path)
+    secret_policy_payload = "secret-policy-payload-should-not-persist"
+    secret_file = tmp_path / "secret-policy.txt"
+    secret_file.write_text(secret_policy_payload, encoding="utf-8")
+    policy_path = target / ".harness" / "supervisor" / "actor_runtime.yaml"
+    policy_path.symlink_to(secret_file)
+    handle = rail.start_task(_draft(target))
+
+    result = rail.supervise(handle, runtime=ExplodingRuntime())
+
+    assert result.outcome == "blocked"
+    run_status = (handle.artifact_dir / "run_status.yaml").read_text(encoding="utf-8")
+    terminal_summary = (handle.artifact_dir / "terminal_summary.yaml").read_text(encoding="utf-8")
+    assert secret_policy_payload not in run_status
+    assert secret_policy_payload not in terminal_summary
 
 
 def test_supervise_api_updates_artifact_run_status(tmp_path):
@@ -237,7 +276,7 @@ class ExplodingRuntime:
 
 class PassingRuntime:
     def run(self, invocation: ActorInvocation) -> ActorResult:
-        from rail.actor_runtime.schemas import fake_actor_output
+        from tests.actor_runtime_test_fixtures import fake_actor_output
 
         output = fake_actor_output(invocation.actor)
         if invocation.actor == "evaluator":

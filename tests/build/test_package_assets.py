@@ -5,7 +5,34 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
+from scripts.check_package_asset_alignment import find_alignment_drift
+from scripts.check_package_asset_alignment import default_alignment_pairs
 from scripts.check_python_package_assets import find_missing_assets
+
+
+def test_release_gate_runs_asset_alignment_checker():
+    gate = Path("scripts/python_release_gate.sh").read_text(encoding="utf-8")
+
+    assert "scripts/check_package_asset_alignment.py" in gate
+
+
+def test_release_gate_alignment_includes_repo_owned_skill_tree():
+    pairs = default_alignment_pairs(Path("."))
+
+    assert (Path("skills/rail"), Path("assets/skill/Rail")) in pairs
+
+
+def test_asset_alignment_checker_reports_content_drift(tmp_path: Path):
+    source = tmp_path / "source"
+    packaged = tmp_path / "packaged"
+    source.mkdir()
+    packaged.mkdir()
+    (source / "prompt.md").write_text("source\n", encoding="utf-8")
+    (packaged / "prompt.md").write_text("packaged\n", encoding="utf-8")
+
+    drift = find_alignment_drift([(source, packaged)])
+
+    assert drift == [f"{source} != {packaged}: content drift prompt.md"]
 
 
 def test_packaged_assets_match_repo_sources():

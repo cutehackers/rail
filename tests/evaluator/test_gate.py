@@ -97,6 +97,26 @@ def test_terminal_pass_accepts_current_clean_validation(tmp_path):
     assert result.outcome == "pass"
 
 
+def test_terminal_pass_rejects_policy_inconsistent_network_mode(tmp_path):
+    evidence = record_validation_evidence(
+        tmp_path,
+        command="pytest",
+        exit_code=0,
+        source="request",
+        patch_digest="sha256:patch",
+        tree_digest="sha256:tree",
+        request_digest="sha256:request",
+        effective_policy_digest="sha256:policy",
+        actor_invocation_digest="sha256:actor",
+        network_mode="inherited",
+    )
+
+    result = evaluate_gate(_pass_output(), _gate_input(tmp_path, evidence.ref))
+
+    assert result.outcome == "blocked"
+    assert "network mode" in result.reason
+
+
 def test_terminal_pass_rejects_mismatched_request_policy_actor_or_evaluator_digest(tmp_path):
     evidence = record_validation_evidence(
         tmp_path,

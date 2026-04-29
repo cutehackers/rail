@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from rail.artifacts.digests import digest_payload
+from rail.policy.schema import NetworkMode
 from rail.workspace.validation import load_validation_evidence
 
 
@@ -21,6 +22,7 @@ class EvaluatorGateInput(BaseModel):
     validation_ref: Path | None
     validation_evidence_digest: str
     evaluator_input_digest: str
+    expected_validation_network_mode: NetworkMode = "disabled"
 
 
 class EvaluatorGateResult(BaseModel):
@@ -63,6 +65,8 @@ def evaluate_gate(evaluator_output: dict[str, object], gate_input: EvaluatorGate
         return EvaluatorGateResult(outcome="blocked", reason="validation evidence actor digest does not match")
     if digest_payload(evidence.model_dump(mode="json")) != gate_input.validation_evidence_digest:
         return EvaluatorGateResult(outcome="blocked", reason="validation evidence digest does not match")
+    if evidence.network_mode != gate_input.expected_validation_network_mode:
+        return EvaluatorGateResult(outcome="blocked", reason="validation evidence network mode does not match policy")
     if evidence.mutation_status != "clean":
         return EvaluatorGateResult(outcome="blocked", reason="validation mutated the target")
 

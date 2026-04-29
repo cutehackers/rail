@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from rail.artifacts import ArtifactHandle, ArtifactStore, TaskIdentityDecision, decide_identity
 from rail.request import HarnessRequest, normalize_draft
 
 
@@ -9,8 +10,13 @@ def normalize_request(draft: Any) -> HarnessRequest:
     return normalize_draft(draft)
 
 
-def start_task(draft: Any) -> Any:
-    raise NotImplementedError("Task artifact allocation is implemented in Task 3.")
+def start_task(draft: Any) -> ArtifactHandle:
+    request = normalize_request(draft)
+    return ArtifactStore.for_project(request.project_root).allocate(request)
+
+
+def decide_task_identity(user_intent: str, known_handle: ArtifactHandle | None = None) -> TaskIdentityDecision:
+    return decide_identity(user_intent=user_intent, known_handle=known_handle)
 
 
 def supervise(handle: Any) -> Any:

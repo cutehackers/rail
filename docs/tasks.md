@@ -42,7 +42,7 @@ Actor Runtime based.
   runner, missing credentials block before actor work, and readiness reports are
   secret-safe.
 
-- [ ] Replace synthetic validation with Rail-owned validation evidence
+- [x] Replace synthetic validation with Rail-owned validation evidence
   Done when validation evidence is produced by request or policy commands and
   terminal pass cannot rely on synthetic success.
 

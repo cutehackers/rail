@@ -5,6 +5,7 @@ from pathlib import Path
 
 import rail
 from tests.runtime_helpers import scripted_agents_runtime
+from rail.workspace.validation import load_validation_evidence
 
 
 def test_python_harness_direct_api_smoke_allocates_supervises_and_projects(tmp_path):
@@ -14,9 +15,12 @@ def test_python_harness_direct_api_smoke_allocates_supervises_and_projects(tmp_p
     first = rail.start_task(_draft(target, "Fix the sample greeting."))
     rail.supervise(first, runtime=scripted_agents_runtime(target))
     first_result = rail.result(first)
+    validation = load_validation_evidence(first.artifact_dir, Path("validation/evidence.yaml"))
 
     assert first_result.outcome == "pass"
     assert first_result.evidence_refs
+    assert validation.command != "policy:validation"
+    assert validation.duration_ms >= 0
 
     before_status_artifacts = set((target / ".harness" / "artifacts").iterdir())
     status = rail.status(first)

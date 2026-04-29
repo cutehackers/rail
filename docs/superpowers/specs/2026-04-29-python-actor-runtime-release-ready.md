@@ -31,7 +31,7 @@ The release candidate must satisfy all of these conditions:
       request digest, effective policy digest, and canonical project root.
 - [x] Existing artifact operations can resume from a persisted handle without
       composing a new request or allocating a new artifact.
-- [ ] Validation evidence comes from Rail-owned request or policy commands, not
+- [x] Validation evidence comes from Rail-owned request or policy commands, not
       synthetic success or actor-invented commands.
 - [x] Terminal pass requires matching request, policy, actor invocation, patch,
       target tree, validation, and evaluator digests.

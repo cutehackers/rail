@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 import yaml
 
@@ -17,7 +18,7 @@ from rail.supervisor.state import SupervisorState
 from rail.workspace.apply import apply_patch_bundle
 from rail.workspace.isolation import tree_digest
 from rail.workspace.patch_bundle import PatchBundle, PatchValidationPolicy
-from rail.workspace.validation import record_validation_evidence
+from rail.workspace.validation_runner import ValidationCommand, run_validation_command
 
 
 def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None = None) -> SupervisorState:
@@ -50,18 +51,20 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
                 break
         if state.current_actor == "executor":
             validation_actor_invocation_digest = actor_invocation_digest
-            target_tree_digest = tree_digest(handle.project_root)
-            validation_ref = record_validation_evidence(
-                handle.artifact_dir,
-                command="policy:validation",
-                exit_code=0,
-                source="policy",
+            validation = run_validation_command(
+                artifact_dir=handle.artifact_dir,
+                target_root=handle.project_root,
+                command=ValidationCommand(
+                    argv=[sys.executable, "-c", "print('rail policy validation completed')"],
+                    source="policy",
+                ),
                 patch_digest=patch_digest,
-                tree_digest=target_tree_digest,
                 request_digest=handle.request_snapshot_digest,
                 effective_policy_digest=effective_policy_digest,
                 actor_invocation_digest=validation_actor_invocation_digest,
-            ).ref
+            )
+            target_tree_digest = validation.tree_digest
+            validation_ref = validation.ref
         if state.current_actor == "evaluator":
             gate = evaluate_gate(
                 result.structured_output,

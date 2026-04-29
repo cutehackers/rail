@@ -246,7 +246,7 @@ git commit -m "feat: add actor runtime readiness"
 - Test: `tests/workspace/test_validation_runner.py`
 - Test: `tests/evaluator/test_gate.py`
 
-- [ ] **Step 1: Write failing validation runner tests**
+- [x] **Step 1: Write failing validation runner tests**
 
 Create `tests/workspace/test_validation_runner.py`:
 
@@ -276,7 +276,7 @@ def test_validation_runner_records_pass_with_redacted_logs(tmp_path):
     assert "sk-test-secret" not in (artifact / evidence.stdout_ref).read_text(encoding="utf-8")
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run:
 
@@ -286,7 +286,7 @@ uv run --python 3.12 pytest tests/workspace/test_validation_runner.py -q
 
 Expected: fail because `validation_runner.py` does not exist.
 
-- [ ] **Step 3: Implement validation runner**
+- [x] **Step 3: Implement validation runner**
 
 Create `ValidationCommand` and `run_validation_command`. Use `subprocess.run` with:
 
@@ -298,11 +298,11 @@ Create `ValidationCommand` and `run_validation_command`. Use `subprocess.run` wi
 
 Record pre/post tree digests and set `mutation_status="mutated"` when they differ.
 
-- [ ] **Step 4: Wire supervisor executor phase**
+- [x] **Step 4: Wire supervisor executor phase**
 
 Replace the synthetic `record_validation_evidence(..., command="policy:validation", exit_code=0)` call in `src/rail/supervisor/supervise.py` with the validation runner. Start with a deterministic no-op policy validation command that records real evidence, then extend request/policy command selection in a later task if needed.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -312,7 +312,7 @@ uv run --python 3.12 pytest tests/workspace/test_validation_runner.py tests/eval
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/rail/workspace src/rail/supervisor tests/workspace tests/evaluator tests/supervisor

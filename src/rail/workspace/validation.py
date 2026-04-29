@@ -29,6 +29,7 @@ class ValidationEvidence(BaseModel):
     network_mode: str
     sandbox_ref: str
     mutation_status: Literal["clean", "mutated"]
+    duration_ms: int = 0
     ref: Path
 
 
@@ -45,6 +46,8 @@ def record_validation_evidence(
     actor_invocation_digest: str | None = None,
     stdout: str = "",
     stderr: str = "",
+    mutation_status: Literal["clean", "mutated"] = "clean",
+    duration_ms: int = 0,
 ) -> ValidationEvidence:
     validation_dir = artifact_dir / "validation"
     validation_dir.mkdir(parents=True, exist_ok=True)
@@ -68,7 +71,8 @@ def record_validation_evidence(
         credential_mode="minimum",
         network_mode="disabled",
         sandbox_ref="sandbox",
-        mutation_status="clean",
+        mutation_status=mutation_status,
+        duration_ms=duration_ms,
         ref=evidence_ref,
     )
     (artifact_dir / evidence_ref).write_text(yaml.safe_dump(evidence.model_dump(mode="json"), sort_keys=True), encoding="utf-8")

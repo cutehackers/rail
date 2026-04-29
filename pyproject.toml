@@ -1,0 +1,19 @@
+[project]
+name = "rail-harness"
+version = "0.1.0"
+description = "Rail harness control plane with a Python Actor Runtime."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openai-agents==0.8.4",
+    "pydantic>=2.12,<3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

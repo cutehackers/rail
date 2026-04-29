@@ -3,6 +3,10 @@ build/
 pubspec.lock
 .worktrees/
 /rail
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
 
 .harness/artifacts/
 **/.harness/artifacts/

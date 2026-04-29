@@ -119,3 +119,9 @@ scripts/python_release_gate.sh
 ```
 
 The gate proves the Rail runtime, docs guards, removed-surface guards, lint, and typing checks for this repository. It is not a downstream target application success proof.
+
+Optional live SDK smoke is operator-gated. Set `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` with an operator-controlled `OPENAI_API_KEY`; the release gate then enables `RAIL_ACTOR_RUNTIME_LIVE=1` for the live smoke only.
+
+## Distribution
+
+The experimental distribution decision is a Python package exposing the Rail Python API and bundled Rail skill assets. There is no command surface as the product contract; wrapper UX may exist later only as a thin layer over the same API.

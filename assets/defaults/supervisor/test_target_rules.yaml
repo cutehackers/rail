@@ -1,21 +1,10 @@
 version: 1
 
 naming:
-  source_suffix: .go
-  test_suffix: _test.go
+  source_suffix: ""
+  test_suffix: ""
 
-path_rules:
-  - source_root: cmd
-    source_segment: cmd
-    test_segment: cmd
-
-  - source_root: internal
-    source_segment: internal
-    test_segment: internal
-
-  - source_root: pkg
-    source_segment: pkg
-    test_segment: pkg
+path_rules: []
 
 fallback:
   feature_test_root: .

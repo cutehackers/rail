@@ -44,9 +44,9 @@ The release candidate must satisfy all of these conditions:
       do not instruct users to manage request YAML, task IDs, or wrapper flags.
 - [x] Active docs and release checklist point to this Python release-ready
       boundary.
-- [ ] The release gate runs the full Python test suite, lint, typing, docs
+- [x] The release gate runs the full Python test suite, lint, typing, docs
       guard, no-legacy guard, deterministic SDK-adapter smoke, and an optional
-      live SDK smoke when credentials are present.
+      live SDK smoke when explicitly enabled with operator credentials.
 
 ## Product Boundary
 
@@ -119,9 +119,9 @@ The docs and legacy-surface guards must be part of the test suite:
 - `tests/docs/test_removed_runtime_surfaces.py`
 - `tests/test_no_legacy_runtime_calls.py`
 
-The optional live smoke is gated by operator credentials. It must be skipped
-when credentials are absent and must never run in default CI without an explicit
-operator signal.
+The optional live smoke is gated by `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` and
+operator credentials. It must be skipped when the explicit operator signal is
+absent and must never run in default CI.
 
 ## Non-Goals
 

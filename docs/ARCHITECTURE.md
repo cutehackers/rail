@@ -73,6 +73,12 @@ Status and result projection read artifacts only. They do not call the SDK or in
 
 `scripts/python_release_gate.sh` is the local release gate for the Rail control plane. It runs the Python test suite, docs guards, removed-surface guards, lint, and typing checks. It does not prove that an arbitrary downstream target repository task succeeded.
 
+When `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` and an operator-controlled SDK credential is present, the gate also runs the optional live SDK smoke. That smoke is skipped by default and is not part of normal CI.
+
+## Distribution Boundary
+
+The experimental release artifact is a Python package with the Rail Python API and bundled Rail skill assets. There is no command-line product contract; any future wrapper must remain a thin caller of the Python API.
+
 ## `.harness`
 
 `.harness` remains a first-class product surface:

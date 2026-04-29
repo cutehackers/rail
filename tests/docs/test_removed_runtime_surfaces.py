@@ -26,6 +26,7 @@ ACTIVE_TEXT_ROOTS = [
     Path("docs/ARCHITECTURE-kr.md"),
     Path("skills/rail"),
     Path("assets/skill/Rail"),
+    Path("assets/defaults/rules"),
     Path("assets/defaults/supervisor"),
     Path(".github/workflows"),
 ]
@@ -49,11 +50,14 @@ FORBIDDEN_RUNTIME_TEXT = (
     "rail integrate",
     "cmd/rail",
     "internal/",
+    "Go control-plane",
     "Go CLI",
     "Go runtime",
+    "gofmt",
     "goreleaser",
     ".goreleaser",
     "install_skill",
+    "_test.go",
 )
 
 
@@ -89,5 +93,15 @@ def test_python_release_gate_exists_and_uses_python_runtime_only():
     assert "uv run --python 3.12 pytest -q" in text
     assert "uv run --python 3.12 ruff check src tests" in text
     assert "uv run --python 3.12 mypy src/rail" in text
+    assert "RAIL_ACTOR_RUNTIME_LIVE_SMOKE" in text
     for forbidden in FORBIDDEN_RUNTIME_TEXT:
         assert forbidden not in text
+
+
+def test_optional_live_smoke_and_distribution_are_documented():
+    readme = Path("README.md").read_text(encoding="utf-8")
+    architecture = Path("docs/ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    assert "RAIL_ACTOR_RUNTIME_LIVE_SMOKE" in readme
+    assert "Python package" in readme
+    assert "no command-line product contract" in architecture

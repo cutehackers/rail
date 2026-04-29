@@ -68,11 +68,11 @@ Actor Runtime based.
 
 ## Later
 
-- [ ] Define optional live SDK smoke criteria
+- [x] Define optional live SDK smoke criteria
   Done when operators can opt into a real SDK smoke with configured credentials
   and the smoke is skipped by default when credentials are absent.
 
-- [ ] Decide external distribution packaging
+- [x] Decide external distribution packaging
   Done when the release owner chooses whether this experimental product ships as
   a Python package, API service, app connector, or another wrapper over the same
   Python API.

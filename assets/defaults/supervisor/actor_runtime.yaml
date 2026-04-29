@@ -1,0 +1,38 @@
+runtime:
+  provider: openai_agents_sdk
+  model: gpt-5.2
+  timeout_seconds: 180
+
+actor_runtime:
+  max_actor_turns: 3
+  direct_target_mutation: false
+
+workspace:
+  mutation_mode: patch_bundle
+  network_mode: disabled
+  sandbox_mode: external_worktree
+
+tools:
+  shell:
+    enabled: false
+    allowlist: []
+    timeout_seconds: 30
+    max_output_bytes: 4000
+  filesystem:
+    enabled: false
+    allowlist: []
+    max_file_bytes: 100000
+  network:
+    enabled: false
+    allowlist: []
+  mcp:
+    enabled: false
+    allowlist: []
+
+capabilities:
+  patch_apply: true
+  validation: true
+  binary_files: false
+
+approval_policy:
+  mode: never

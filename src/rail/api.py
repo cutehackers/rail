@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from rail.artifacts import ArtifactHandle, ArtifactStore, TaskIdentityDecision, decide_identity
+from rail.artifacts.projection import project_result, project_status
 from rail.request import HarnessRequest, normalize_draft
 from rail.supervisor import supervise_artifact
 
@@ -25,8 +26,8 @@ def supervise(handle: Any, *, runtime: Any | None = None) -> Any:
 
 
 def status(handle: Any) -> Any:
-    raise NotImplementedError("Status projection is implemented in Task 10.")
+    return project_status(handle)
 
 
 def result(handle: Any) -> Any:
-    raise NotImplementedError("Result projection is implemented in Task 10.")
+    return project_result(handle)

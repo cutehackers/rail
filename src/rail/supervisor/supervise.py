@@ -7,6 +7,7 @@ import yaml
 
 from rail.artifacts import ArtifactHandle, bind_effective_policy, validate_artifact_handle
 from rail.artifacts.digests import digest_payload
+from rail.artifacts.terminal_summary import write_terminal_summary
 from rail.actor_runtime.agents import AgentsActorRuntime
 from rail.actor_runtime.runtime import ActorResult, ActorRuntime, build_invocation
 from rail.evaluator.gate import EvaluatorGateInput, evaluate_gate
@@ -34,6 +35,8 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
     validation_actor_invocation_digest = "sha256:no-actor"
     validation_ref = None
     target_tree_digest = tree_digest(handle.project_root)
+    terminal_reason: str | None = None
+    blocked_category: str | None = None
 
     while not state.terminal:
         visited.append(state.current_actor)
@@ -41,12 +44,16 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
         actor_invocation_digest = digest_payload(invocation.model_dump(mode="json"))
         result = runtime.run(invocation)
         if result.status != "succeeded":
+            terminal_reason = _actor_blocked_reason(state.current_actor, result)
+            blocked_category = "runtime"
             state = state.finish("blocked")
             break
         if state.current_actor == "generator":
             try:
                 patch_digest, target_tree_digest = _apply_generator_patch(handle, policy, result)
-            except (ValueError, yaml.YAMLError):
+            except (ValueError, yaml.YAMLError) as exc:
+                terminal_reason = str(exc)
+                blocked_category = "policy"
                 state = state.finish("blocked")
                 break
         if state.current_actor == "executor":
@@ -80,19 +87,31 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
                 ),
             )
             if gate.outcome == "pass":
+                terminal_reason = gate.reason
                 state = state.finish("pass")
             elif gate.outcome == "reject":
+                terminal_reason = gate.reason
                 state = state.finish("reject")
             else:
+                terminal_reason = gate.reason
+                blocked_category = _gate_blocked_category(gate.reason)
                 state = state.finish("blocked")
             break
         state = route_next(state, actor_output=result.structured_output)
 
-    _write_run_status(handle, state, visited)
+    _write_run_status(handle, state, visited, reason=terminal_reason, blocked_category=blocked_category)
+    write_terminal_summary(handle)
     return state
 
 
-def _write_run_status(handle: ArtifactHandle, state: SupervisorState, visited: list[str]) -> None:
+def _write_run_status(
+    handle: ArtifactHandle,
+    state: SupervisorState,
+    visited: list[str],
+    *,
+    reason: str | None = None,
+    blocked_category: str | None = None,
+) -> None:
     payload = {
         "schema_version": "1",
         "artifact_id": handle.artifact_id,
@@ -101,6 +120,10 @@ def _write_run_status(handle: ArtifactHandle, state: SupervisorState, visited: l
         "current_actor": SUPERVISOR_GRAPH[-1],
         "visited": visited,
     }
+    if reason:
+        payload["reason"] = reason
+    if blocked_category:
+        payload["blocked_category"] = blocked_category
     (handle.artifact_dir / "run_status.yaml").write_text(yaml.safe_dump(payload, sort_keys=True), encoding="utf-8")
 
 
@@ -139,6 +162,22 @@ def _load_patch_bundle(handle: ArtifactHandle, result: ActorResult) -> PatchBund
     if not isinstance(payload, dict):
         raise ValueError("patch bundle must be a mapping")
     return PatchBundle.model_validate(payload)
+
+
+def _actor_blocked_reason(actor: str, result: ActorResult) -> str:
+    error = result.structured_output.get("error")
+    if isinstance(error, str) and error:
+        return f"Actor Runtime blocked during {actor}: {error}"
+    return f"Actor Runtime blocked during {actor}"
+
+
+def _gate_blocked_category(reason: str) -> str:
+    lowered = reason.lower()
+    if "validation" in lowered:
+        return "validation"
+    if "policy" in lowered or "patch" in lowered:
+        return "policy"
+    return "runtime"
 
 
 def _rail_root() -> Path:

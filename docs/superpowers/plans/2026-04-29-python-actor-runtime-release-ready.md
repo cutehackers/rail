@@ -327,7 +327,7 @@ git commit -m "feat: run rail-owned validation evidence"
 - Modify: `src/rail/supervisor/supervise.py`
 - Test: `tests/artifacts/test_terminal_summary.py`
 
-- [ ] **Step 1: Write failing terminal summary tests**
+- [x] **Step 1: Write failing terminal summary tests**
 
 Create `tests/artifacts/test_terminal_summary.py`:
 
@@ -358,7 +358,7 @@ def test_terminal_summary_explains_blocked_runtime(tmp_path):
     assert summary.next_step
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run:
 
@@ -368,7 +368,7 @@ uv run --python 3.12 pytest tests/artifacts/test_terminal_summary.py -q
 
 Expected: fail because terminal summary projection does not exist.
 
-- [ ] **Step 3: Implement terminal summary model**
+- [x] **Step 3: Implement terminal summary model**
 
 Create `TerminalSummaryProjection` with:
 
@@ -381,7 +381,7 @@ Create `TerminalSummaryProjection` with:
 
 Write `terminal_summary.yaml` at supervisor completion.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -391,7 +391,7 @@ uv run --python 3.12 pytest tests/artifacts/test_terminal_summary.py tests/artif
 
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/rail/artifacts src/rail/supervisor tests/artifacts

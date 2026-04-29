@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 from rail.artifacts.models import ArtifactHandle
 from rail.artifacts.store import validate_artifact_handle
+from rail.artifacts.terminal_summary import project_terminal_summary
 
 
 class StatusProjection(BaseModel):
@@ -50,15 +51,16 @@ def project_status(handle: ArtifactHandle) -> StatusProjection:
 def project_result(handle: ArtifactHandle) -> ResultProjection:
     handle = validate_artifact_handle(handle)
     status = project_status(handle)
+    summary = project_terminal_summary(handle)
     evidence_refs = sorted(path.relative_to(handle.artifact_dir).as_posix() for path in (handle.artifact_dir / "runs").glob("*"))
     return ResultProjection(
-        outcome=status.terminal_state or "unknown",
+        outcome=summary.outcome,
         current_phase=status.current_phase,
         terminal_decision=status.terminal_state,
         evidence_refs=evidence_refs,
         changed_files=_changed_files(handle.artifact_dir),
-        residual_risk="low" if status.terminal_state == "pass" else "medium",
-        next_step=status.next_step,
+        residual_risk="low" if summary.outcome == "pass" else "medium",
+        next_step=summary.next_step,
     )
 
 

@@ -35,7 +35,7 @@ The release candidate must satisfy all of these conditions:
       synthetic success or actor-invented commands.
 - [x] Terminal pass requires matching request, policy, actor invocation, patch,
       target tree, validation, and evaluator digests.
-- [ ] Result and terminal summaries clearly distinguish pass, reject, blocked
+- [x] Result and terminal summaries clearly distinguish pass, reject, blocked
       runtime, blocked validation, blocked policy, and blocked environment
       outcomes.
 - [ ] Test-only fake actor paths cannot be used accidentally by the public

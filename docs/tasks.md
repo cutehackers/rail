@@ -46,7 +46,7 @@ Actor Runtime based.
   Done when validation evidence is produced by request or policy commands and
   terminal pass cannot rely on synthetic success.
 
-- [ ] Add terminal summary projection
+- [x] Add terminal summary projection
   Done when pass, reject, runtime-blocked, validation-blocked, policy-blocked,
   and environment-blocked outcomes are summarized for users without inspecting
   raw artifacts.

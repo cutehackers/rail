@@ -29,6 +29,7 @@ Prefer changing the smallest set of files that actually own the behavior.
 
 - Do not treat this as a Flutter app repo.
 - Do not implement downstream product code here. Changes here should affect request composition, validation, orchestration, routing, reporting, skills, or harness policy.
+- Before changing Python code, tests, or product-facing docs, read `docs/ARCHITECTURE.md` and `docs/CONVENTIONS.md` and follow their boundaries and naming rules.
 - Treat the Rail skill as a first-class product surface. If a change affects how users express work, verify whether `skills/rail/` and `assets/skill/Rail/` must change with it.
 - Keep the end-user contract skill-first. Normal users should not need to know request YAML or wrapper details.
 - Preserve the `.harness/` layout. It is part of the product, not incidental config.
@@ -53,6 +54,7 @@ Use focused pytest targets while developing, then run the full checks before cla
 ## Editing Guidance
 
 - Keep request and artifact schemas aligned with actor expectations.
+- Follow `docs/CONVENTIONS.md` for Python naming, module boundaries, typed data contracts, validation behavior, and test placement.
 - When changing routing behavior, also update the relevant policy or evaluator guidance under `.harness/`.
 - When changing the repo-owned skill, keep it aligned with the Python API workflow.
 - Prefer extending existing docs in `docs/` when behavior, launch criteria, or operator expectations change.
@@ -71,6 +73,8 @@ Use the lightest validation that proves the change.
 ## Repo Map
 
 - `README.md`: operator-facing overview and quick start
+- `docs/ARCHITECTURE.md`: product architecture and runtime boundaries
+- `docs/CONVENTIONS.md`: Python Rail Harness coding conventions
 - `src/rail/api.py`: public Python API
 - `src/rail/request/`: request normalization and schema
 - `src/rail/artifacts/`: artifact identity, storage, resume policy, and projections
@@ -90,6 +94,7 @@ Use the lightest validation that proves the change.
 ## When In Doubt
 
 - Read `README.md` first for the intended operator workflow.
+- Read `docs/ARCHITECTURE.md` and `docs/CONVENTIONS.md` before changing Rail runtime code or tests.
 - If the change touches request authoring UX, read the Rail skill before editing runtime behavior.
 - Read the nearest schema, actor, or supervisor file before changing behavior.
 - Keep changes conservative: explicit, reviewable, and easy to trace from request to supervisor outcome.

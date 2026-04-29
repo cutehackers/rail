@@ -4,7 +4,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from rail.actor_runtime.agents import RuntimeReadiness
 from rail.auth.credentials import CredentialSource, validate_credential_source
+from rail.auth.redaction import redact_secrets
 
 
 class CredentialDoctorReport(BaseModel):
@@ -32,3 +34,10 @@ def credential_doctor(sources: list[CredentialSource], *, project_root: Path) ->
             errors.append(str(exc))
 
     return CredentialDoctorReport(ready=not errors and bool(sources), categories=categories, errors=errors)
+
+
+def actor_runtime_doctor(readiness: RuntimeReadiness) -> CredentialDoctorReport:
+    categories = [readiness.credential_source] if readiness.credential_source else []
+    errors = [] if readiness.ready else [str(redact_secrets(readiness.reason))]
+
+    return CredentialDoctorReport(ready=readiness.ready, categories=categories, errors=errors)

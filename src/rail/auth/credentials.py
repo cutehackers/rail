@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -36,6 +38,14 @@ def build_actor_environment(sources: list[CredentialSource], project_root: Path)
         if source.value is not None:
             env[source.name] = source.value
     return env
+
+
+def discover_sdk_credential_sources(environ: Mapping[str, str] | None = None) -> list[CredentialSource]:
+    environ = environ or os.environ
+    value = environ.get("OPENAI_API_KEY", "").strip()
+    if not value:
+        return []
+    return [CredentialSource(category="operator_env", name="OPENAI_API_KEY", value=value)]
 
 
 def _is_inside(path: Path, parent: Path) -> bool:

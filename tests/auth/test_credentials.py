@@ -4,8 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from rail.auth.credentials import CredentialSource, build_actor_environment, validate_credential_source
-from rail.cli.doctor import credential_doctor
+from rail.auth.credentials import (
+    CredentialSource,
+    build_actor_environment,
+    discover_sdk_credential_sources,
+    validate_credential_source,
+)
+from rail.actor_runtime.agents import RuntimeReadiness
+from rail.cli.doctor import actor_runtime_doctor, credential_doctor
 
 
 @pytest.mark.parametrize("category", ["operator_env", "operator_keychain", "ci_secret"])
@@ -41,6 +47,20 @@ def test_actor_environment_is_minimum_necessary(tmp_path):
     assert env == {"OPENAI_API_KEY": "sk-test-secret"}
 
 
+def test_discovers_operator_env_sdk_credential(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret")
+
+    sources = discover_sdk_credential_sources()
+
+    assert sources == [CredentialSource(category="operator_env", name="OPENAI_API_KEY", value="sk-test-secret")]
+
+
+def test_ignores_empty_operator_env_sdk_credential(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", " ")
+
+    assert discover_sdk_credential_sources() == []
+
+
 def test_doctor_reports_category_without_secret_or_machine_path(tmp_path):
     report = credential_doctor(
         [
@@ -59,3 +79,19 @@ def test_doctor_reports_category_without_secret_or_machine_path(tmp_path):
     assert "ready" in rendered
     assert "sk-live-secret" not in rendered
     assert "/absolute/path/to/operator-secret" not in rendered
+
+
+def test_actor_runtime_doctor_reports_readiness_without_secret():
+    report = actor_runtime_doctor(
+        RuntimeReadiness(
+            ready=False,
+            reason="operator SDK credential is not configured for OPENAI_API_KEY=sk-live-secret",
+            credential_source=None,
+        )
+    )
+
+    rendered = report.render()
+    assert "blocked" in rendered
+    assert "credential" in rendered
+    assert "sk-live-secret" not in rendered
+    assert "OPENAI_API_KEY=[REDACTED]" in rendered

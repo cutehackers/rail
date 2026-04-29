@@ -23,9 +23,9 @@ request files, task IDs, runtime flags, or SDK traces.
 
 The release candidate must satisfy all of these conditions:
 
-- [ ] The default Actor Runtime can execute through the OpenAI Agents SDK with a
+- [x] The default Actor Runtime can execute through the OpenAI Agents SDK with a
       real runner when credentials are configured.
-- [ ] Missing or invalid credentials fail before actor work starts and produce a
+- [x] Missing or invalid credentials fail before actor work starts and produce a
       secret-safe readiness report.
 - [x] Artifact handles are persisted, reloadable, and bound to artifact id,
       request digest, effective policy digest, and canonical project root.

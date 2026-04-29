@@ -8,6 +8,63 @@ from rail.actor_runtime.runtime import build_invocation
 from rail.policy import load_effective_policy
 
 
+def test_default_runner_requires_ready_credentials(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
+
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path))
+
+    readiness = runtime.readiness()
+    assert readiness.ready is False
+    assert "credential" in readiness.reason
+
+
+def test_injected_runner_is_ready_without_live_credentials(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
+
+    def runner(_agent, _prompt, *, run_config):
+        return SDKRunResult(
+            final_output={
+                "summary": "Plan",
+                "likely_files": ["src/rail/api.py"],
+                "substeps": ["Do work"],
+                "risks": [],
+                "acceptance_criteria_refined": ["Pass tests"],
+            },
+            trace_id="trace-ready",
+        )
+
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path), runner=runner)
+
+    readiness = runtime.readiness()
+    assert readiness.ready is True
+    assert readiness.credential_source == "injected_runner"
+
+
+def test_live_runner_is_ready_when_operator_credential_is_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.setenv("RAIL_ACTOR_RUNTIME_LIVE", "1")
+
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path))
+
+    readiness = runtime.readiness()
+    assert readiness.ready is True
+    assert readiness.credential_source == "operator_env"
+
+
+def test_default_runner_blocks_before_actor_when_credentials_missing(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path))
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert "credential" in result.structured_output["error"]
+
+
 def test_agents_runtime_builds_prompt_schema_and_validates_output(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     calls: list[dict[str, object]] = []

@@ -163,7 +163,7 @@ git commit -m "feat: persist artifact handles"
 - Test: `tests/actor_runtime/test_agents_runtime.py`
 - Test: `tests/auth/test_credentials.py`
 
-- [ ] **Step 1: Write failing readiness and runner tests**
+- [x] **Step 1: Write failing readiness and runner tests**
 
 Add tests asserting:
 
@@ -180,7 +180,7 @@ def test_default_runner_requires_ready_credentials(tmp_path):
 
 Also add a runner injection test that proves configured runners still bypass live network for deterministic tests.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -190,7 +190,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_agents_runtime.py tests/aut
 
 Expected: fail until runtime readiness exists.
 
-- [ ] **Step 3: Implement readiness model**
+- [x] **Step 3: Implement readiness model**
 
 Add a Pydantic readiness model in `src/rail/actor_runtime/agents.py`:
 
@@ -205,7 +205,7 @@ class RuntimeReadiness(BaseModel):
 
 Implement `AgentsActorRuntime.readiness()` so it returns `ready=False` when no explicit runner is injected and no approved SDK credential source is configured.
 
-- [ ] **Step 4: Implement live runner boundary**
+- [x] **Step 4: Implement live runner boundary**
 
 Keep the live runner behind a small function that can be replaced in tests:
 
@@ -219,7 +219,7 @@ def run_agent_live(agent: Agent[Any], prompt: str, *, run_config: dict[str, obje
 
 If the actual SDK return shape differs, adapt inside this function only and update the test to assert Rail's `SDKRunResult` contract.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -230,7 +230,7 @@ uv run --python 3.12 ruff check src tests
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/rail/actor_runtime/agents.py src/rail/auth src/rail/cli tests/actor_runtime tests/auth

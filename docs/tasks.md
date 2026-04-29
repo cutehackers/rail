@@ -37,7 +37,7 @@ Actor Runtime based.
   Done when `handle.yaml` is written, `rail.load_handle(path)` validates it, and
   existing artifact operations can resume without composing a new request.
 
-- [ ] Add live Actor Runtime readiness
+- [x] Add live Actor Runtime readiness
   Done when the default Actor Runtime can use a configured OpenAI Agents SDK
   runner, missing credentials block before actor work, and readiness reports are
   secret-safe.

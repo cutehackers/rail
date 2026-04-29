@@ -1,60 +1,78 @@
 # Active Release-Ready Tasks
 
-This checklist tracks the remaining work to make `rail` release-ready at the
-`v2 integrator and learning gate` boundary.
+This checklist tracks the remaining work to make the Python-first Rail Harness
+Runtime release-ready.
 
-Scope of this checklist:
+Canonical release-ready product spec:
 
-- includes repository-local runtime, CI, docs, packaging, and operator-process work
-- includes installer and distribution alignment for the installed Rail product
-- treats `v1 core supervisor gate` as already shipped and closed
+- `docs/superpowers/specs/2026-04-29-python-actor-runtime-release-ready.md`
 
-Current baseline:
+Canonical execution plan:
 
-- `v1` release blockers: none
-- `v1` verification gaps: none
-- `v2` runtime surface is implemented locally
-- `v2` now has CI coverage and a canonical operating model
-- the installed-product direction is now fixed: packaged `rail`, bundled skill, project-local `.harness`
-- the primary distribution path is the `cutehackers/rail` Homebrew tap backed by GitHub Releases
-- remaining follow-up is release-surface polish, packaging consistency, and migration cleanup
+- `docs/superpowers/plans/2026-04-29-python-actor-runtime-release-ready.md`
+
+The previous release-ready notes for earlier runtime boundaries are historical
+context. The current product boundary is Python API first, Rail skill first, and
+Actor Runtime based.
+
+## Done
+
+- [x] Complete the Python Actor Runtime redesign baseline
+  Done when `docs/superpowers/specs/2026-04-29-python-actor-runtime-rail-redesign.md`
+  marks its validation gates complete and the matching implementation plan is
+  checked off.
+
+- [x] Remove active dependency on the old runtime path
+  Done when active product code and docs no longer depend on the old runtime,
+  legacy command subprocess behavior, trusted path handling, or compatibility
+  flags.
+
+- [x] Establish release-ready target documentation
+  Done when the canonical spec and implementation plan above define the next
+  product boundary.
 
 ## Must
 
-- [x] Add a `v2` CI workflow that runs `./tool/v2_release_gate.sh`
-  Done when pull requests targeting `main` fail on broken `v2` operational state in the same way `v1` already does. Merges to `main` do not rerun the `v1` or `v2` release gates because the PR gate already covered them.
+- [ ] Add persisted artifact handle loading
+  Done when `handle.yaml` is written, `rail.load_handle(path)` validates it, and
+  existing artifact operations can resume without composing a new request.
 
-- [x] Write the `Quality Improvement Operating Model`
-  Define the retained quality signals, operator review flow, promotion rules, and the line between meaningful improvement and noise.
-  Done when the model is documented as the canonical rule set for Workstream 4.
+- [ ] Add live Actor Runtime readiness
+  Done when the default Actor Runtime can use a configured OpenAI Agents SDK
+  runner, missing credentials block before actor work, and readiness reports are
+  secret-safe.
 
-- [x] Turn the `v2` release evidence contract into an operator runbook
-  Cover how to review `integration_result.release_readiness`, `blocking_issues`, `follow_up`, and which artifacts must be preserved for a release candidate.
-  Done when operators can execute the `v2` gate and make a consistent release decision without relying on tribal knowledge.
+- [ ] Replace synthetic validation with Rail-owned validation evidence
+  Done when validation evidence is produced by request or policy commands and
+  terminal pass cannot rely on synthetic success.
 
-- [x] Close the `v2` backlog against its own success criteria
-  Update `docs/backlog/v2-integrator-and-learning.md` so completed workstreams are marked explicitly and the remaining open work is only the unfinished release-ready scope.
-  Done when the backlog and release docs say the same thing about what is still open.
+- [ ] Add terminal summary projection
+  Done when pass, reject, runtime-blocked, validation-blocked, policy-blocked,
+  and environment-blocked outcomes are summarized for users without inspecting
+  raw artifacts.
+
+- [ ] Isolate fake actor runtime to tests
+  Done when production runtime modules no longer export fake actor execution and
+  public supervise cannot accidentally use it.
 
 ## Should
 
-- [x] Decide the lifecycle of `--feedback` and `--decision` compatibility aliases
-  Chosen direction: remove them before official release and standardize the apply commands on `--file` only.
+- [ ] Align Rail skill copies to the release-ready handle workflow
+  Done when repo-owned and bundled skill files describe fresh task, existing
+  artifact, readiness failure, supervision, and result reporting through the
+  Python API handle flow.
 
-- [x] Add a repeatable example for `v2` release evidence capture
-  Keep one representative `integration_result` and its referenced artifacts as a stable example of a passing `v2` release candidate.
-  Done when the evidence shape is easy to inspect and compare during future releases.
-
-- [x] Tighten the `v2` release checklist around operator ownership
-  Make the owner of release decisions explicit for `release_readiness`, blocking issues, and follow-up actions so the handoff contract is operational rather than descriptive only.
+- [ ] Add a Python release gate script
+  Done when a single local script runs the full Python test suite, lint, typing,
+  docs guard, no-legacy guard, and deterministic SDK-adapter smoke.
 
 ## Later
 
-- [x] Retire transitional documentation and tooling that still assumes a checkout-era runtime
-  Active operator and example documentation now follows the installed-product model: packaged `rail`, bundled skill, and project-local `.harness` state in the target repository.
+- [ ] Define optional live SDK smoke criteria
+  Done when operators can opt into a real SDK smoke with configured credentials
+  and the smoke is skipped by default when credentials are absent.
 
-- [x] Retire stale historical documentation that still references the old Dart runtime
-  Remaining Dart references are now explicitly confined to archived evidence and historical planning records. Active product, release, and operator documentation now follows the Go product contract.
-
-- [x] Align the release surface with the Homebrew tap strategy
-  Release packaging now centers on GitHub Releases, GoReleaser artifacts, provenance attestation, and the `cutehackers/rail` Homebrew tap as the initial install channel.
+- [ ] Decide external distribution packaging
+  Done when the release owner chooses whether this experimental product ships as
+  a Python package, API service, app connector, or another wrapper over the same
+  Python API.

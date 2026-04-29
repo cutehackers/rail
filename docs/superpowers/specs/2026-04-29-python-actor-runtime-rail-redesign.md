@@ -27,6 +27,44 @@ legacy behavior.
 - Use **Actor Runtime** as the standard term for the component that executes
   actors. Avoid using "backend" as the primary architecture term.
 
+## Implementation Status
+
+Status as of 2026-04-29: **completed for the redesign baseline**.
+
+This document defines the structural redesign from the previous runtime into a
+Python-first Rail Harness Runtime. It is now implemented as the branch baseline:
+
+- [x] Python package and public API exist.
+- [x] Request drafts normalize without hand-authored harness YAML.
+- [x] Fresh tasks allocate opaque artifact handles.
+- [x] Artifact handles are canonicalized and reject forged identity, mismatched
+      project roots, missing request snapshots, and stale policy evidence.
+- [x] Policy v2 loads from Rail defaults and allows target policy only as a
+      narrowing overlay.
+- [x] Actor prompts and structured output schemas load from Rail-owned catalog
+      data.
+- [x] Supervisor routing is deterministic and no longer treats missing
+      evaluator decisions as pass.
+- [x] The default supervise path uses the Python Actor Runtime path rather than
+      a fake actor runtime.
+- [x] OpenAI Agents SDK objects are constructed and output validation is tested
+      without network access.
+- [x] Patch bundles are validated and applied by Rail inside supervision.
+- [x] Patch bundle authority comes from effective policy, not actor-controlled
+      fields.
+- [x] Multi-file patch application rolls back partial writes on failure.
+- [x] Validation evidence is redacted and digest-linked to request, policy,
+      actor invocation, patch, tree, and evaluator input before terminal pass.
+- [x] Result and status projection read from artifacts.
+- [x] Go runtime and Codex CLI runtime surfaces are removed from the active
+      Python product path.
+- [x] Rail skill copies and active docs describe Actor Runtime terminology.
+
+This completion marker does **not** mean the Python product is release-ready.
+It means the redesign foundation is complete enough to begin release-hardening.
+The release-ready product target is defined separately in
+`docs/superpowers/specs/2026-04-29-python-actor-runtime-release-ready.md`.
+
 ## Why Python-First
 
 The current failure mode is structural. The Go runtime has to treat Codex CLI as
@@ -474,21 +512,22 @@ evidence produced under a different effective policy.
 
 The redesign is not complete until these gates pass:
 
-- A fresh task can be composed from natural language through the Rail skill.
-- A task can allocate an artifact without hand-authored YAML.
-- Fresh work returns an artifact handle and does not require user-selected task
+- [x] A fresh task can be composed from natural language through the Rail skill.
+- [x] A task can allocate an artifact without hand-authored YAML.
+- [x] Fresh work returns an artifact handle and does not require user-selected task
   IDs.
-- Existing artifact operations resume only when an artifact handle is supplied
+- [x] Existing artifact operations resume only when an artifact handle is supplied
   or the user explicitly asks to continue prior work.
-- The supervisor can run all required actor phases through the Python Actor
+- [x] The supervisor can run all required actor phases through the Python Actor
   Runtime.
-- Actor outputs validate against Rail-owned schemas.
-- Target repository mutation happens only through Rail-validated patch bundles.
-- Path traversal and forbidden path writes are rejected.
-- Validation evidence is stored under the artifact.
-- Evaluator pass/revise/reject is required before terminal success.
-- `rail result --json` works without knowing SDK internals.
-- The docs contain no machine-specific home-directory paths.
+- [x] Actor outputs validate against Rail-owned schemas.
+- [x] Target repository mutation happens only through Rail-validated patch
+  bundles.
+- [x] Path traversal and forbidden path writes are rejected.
+- [x] Validation evidence is stored under the artifact.
+- [x] Evaluator pass/revise/reject is required before terminal success.
+- [x] Result projection works without knowing SDK internals.
+- [x] The docs contain no machine-specific home-directory paths.
 
 ## Rollout Strategy
 

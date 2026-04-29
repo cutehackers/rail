@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from rail.artifacts import ArtifactHandle, ArtifactStore, TaskIdentityDecision, decide_identity
+from rail.artifacts.handle import load_handle_file
 from rail.artifacts.projection import project_result, project_status
 from rail.request import HarnessRequest, normalize_draft
 from rail.supervisor import supervise_artifact
@@ -15,6 +16,10 @@ def normalize_request(draft: Any) -> HarnessRequest:
 def start_task(draft: Any) -> ArtifactHandle:
     request = normalize_request(draft)
     return ArtifactStore.for_project(request.project_root).allocate(request)
+
+
+def load_handle(path: Any) -> ArtifactHandle:
+    return load_handle_file(path)
 
 
 def decide_task_identity(user_intent: str, known_handle: ArtifactHandle | None = None) -> TaskIdentityDecision:

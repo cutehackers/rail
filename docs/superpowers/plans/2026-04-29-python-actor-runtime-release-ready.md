@@ -38,7 +38,7 @@
 - Modify: `src/rail/api.py`
 - Test: `tests/artifacts/test_handle_resolution.py`
 
-- [ ] **Step 1: Write failing handle persistence tests**
+- [x] **Step 1: Write failing handle persistence tests**
 
 Add `tests/artifacts/test_handle_resolution.py`:
 
@@ -94,7 +94,7 @@ def test_load_handle_rejects_forged_artifact_id(tmp_path):
         rail.load_handle(path)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -104,7 +104,7 @@ uv run --python 3.12 pytest tests/artifacts/test_handle_resolution.py -q
 
 Expected: fail because `rail.artifacts.handle` and `rail.load_handle` do not exist.
 
-- [ ] **Step 3: Implement handle persistence**
+- [x] **Step 3: Implement handle persistence**
 
 Create `src/rail/artifacts/handle.py`:
 
@@ -137,7 +137,7 @@ def load_handle_file(path: str | Path) -> ArtifactHandle:
 Update `ArtifactStore.allocate` and `bind_effective_policy` to call `write_handle_file`.
 Expose `load_handle` from `src/rail/api.py` and `src/rail/__init__.py`.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -147,7 +147,7 @@ uv run --python 3.12 pytest tests/artifacts/test_handle_resolution.py tests/arti
 
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/rail/artifacts src/rail/api.py src/rail/__init__.py tests/artifacts

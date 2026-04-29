@@ -1,10 +1,11 @@
 """Rail harness Python control plane."""
 
-from rail.api import decide_task_identity, normalize_request, result, start_task, status, supervise
+from rail.api import decide_task_identity, load_handle, normalize_request, result, start_task, status, supervise
 
 __all__ = [
     "__version__",
     "decide_task_identity",
+    "load_handle",
     "normalize_request",
     "result",
     "start_task",

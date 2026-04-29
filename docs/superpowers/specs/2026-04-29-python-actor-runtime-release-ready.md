@@ -27,9 +27,9 @@ The release candidate must satisfy all of these conditions:
       real runner when credentials are configured.
 - [ ] Missing or invalid credentials fail before actor work starts and produce a
       secret-safe readiness report.
-- [ ] Artifact handles are persisted, reloadable, and bound to artifact id,
+- [x] Artifact handles are persisted, reloadable, and bound to artifact id,
       request digest, effective policy digest, and canonical project root.
-- [ ] Existing artifact operations can resume from a persisted handle without
+- [x] Existing artifact operations can resume from a persisted handle without
       composing a new request or allocating a new artifact.
 - [ ] Validation evidence comes from Rail-owned request or policy commands, not
       synthetic success or actor-invented commands.

@@ -33,7 +33,7 @@ Actor Runtime based.
 
 ## Must
 
-- [ ] Add persisted artifact handle loading
+- [x] Add persisted artifact handle loading
   Done when `handle.yaml` is written, `rail.load_handle(path)` validates it, and
   existing artifact operations can resume without composing a new request.
 

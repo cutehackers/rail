@@ -47,7 +47,11 @@ class ArtifactStore:
         _write_yaml(artifact_dir / "terminal_summary.yaml", TerminalSummary(artifact_id=artifact_id).model_dump(mode="json"))
         (artifact_dir / "runs").mkdir()
 
-        return validate_artifact_handle(handle)
+        validated = validate_artifact_handle(handle)
+        from rail.artifacts.handle import write_handle_file
+
+        write_handle_file(validated)
+        return validated
 
     def _allocate_artifact_dir(self) -> tuple[str, Path]:
         for _ in range(100):
@@ -103,7 +107,11 @@ def bind_effective_policy(handle: ArtifactHandle, policy: ActorRuntimePolicyV2) 
     validated = validate_artifact_handle(handle.model_copy(update={"effective_policy_digest": None}))
     digest = digest_policy(policy)
     _write_yaml(validated.artifact_dir / _EFFECTIVE_POLICY, policy.model_dump(mode="json"))
-    return validate_artifact_handle(validated.model_copy(update={"effective_policy_digest": digest}))
+    bound = validate_artifact_handle(validated.model_copy(update={"effective_policy_digest": digest}))
+    from rail.artifacts.handle import write_handle_file
+
+    write_handle_file(bound)
+    return bound
 
 
 def digest_request(request: HarnessRequest) -> str:

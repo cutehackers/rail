@@ -68,6 +68,30 @@ def test_supervise_blocks_when_actor_runtime_interrupts(tmp_path):
     assert run_status["outcome"] == "blocked"
 
 
+def test_supervise_redacts_runtime_errors_from_terminal_artifacts(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    rail.supervise(handle, runtime=SecretInterruptingRuntime())
+
+    run_status = (handle.artifact_dir / "run_status.yaml").read_text(encoding="utf-8")
+    terminal_summary = (handle.artifact_dir / "terminal_summary.yaml").read_text(encoding="utf-8")
+    assert "sk-secret-value" not in run_status
+    assert "sk-secret-value" not in terminal_summary
+    assert "[REDACTED]" in run_status
+    assert "[REDACTED]" in terminal_summary
+
+
+def test_supervise_maps_runtime_exceptions_to_blocked_artifact(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    result = rail.supervise(handle, runtime=ExplodingRuntime())
+
+    assert result.outcome == "blocked"
+    assert (handle.artifact_dir / "run_status.yaml").is_file()
+    evidence = (handle.artifact_dir / "runs" / "planner.runtime_evidence.json").read_text(encoding="utf-8")
+    assert "sdk exploded" in evidence
+
+
 def test_default_supervise_does_not_fake_terminal_pass(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
 
@@ -100,9 +124,46 @@ def test_supervise_applies_generator_patch_bundle_inside_supervision(tmp_path):
     assert (target / "app.txt").read_text(encoding="utf-8") == "new\n"
 
 
+def test_supervise_uses_policy_validation_command_and_blocks_when_missing(tmp_path):
+    target = tmp_path / "target-without-validation"
+    target.mkdir()
+    handle = rail.start_task(_draft(target))
+
+    result = rail.supervise(handle, runtime=PassingRuntime())
+
+    assert result.outcome == "blocked"
+    run_status = yaml.safe_load((handle.artifact_dir / "run_status.yaml").read_text(encoding="utf-8"))
+    assert run_status["blocked_category"] == "validation"
+    assert "validation command" in run_status["reason"]
+
+
+def test_supervise_routes_evaluator_revise_back_to_generator(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runtime = RevisingRuntime()
+
+    result = rail.supervise(handle, runtime=runtime)
+
+    assert result.outcome == "pass"
+    assert runtime.seen == ["planner", "context_builder", "critic", "generator", "executor", "evaluator", "generator", "executor", "evaluator"]
+
+
+def test_actor_invocation_contains_request_and_prior_outputs(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runtime = CapturingRuntime()
+
+    rail.supervise(handle, runtime=runtime)
+
+    context_invocation = runtime.invocations["context_builder"]
+    evaluator_invocation = runtime.invocations["evaluator"]
+    assert context_invocation.input["request"]["goal"] == "Route the supervisor graph."
+    assert "planner" in context_invocation.input["prior_outputs"]
+    assert "validation/evidence.yaml" in evaluator_invocation.input["evidence_refs"]
+
+
 def _target_repo(tmp_path: Path) -> Path:
     target = tmp_path / "target-repo"
     target.mkdir(parents=True, exist_ok=True)
+    _write_validation_policy(target)
     return target
 
 
@@ -126,6 +187,22 @@ class InterruptingRuntime:
         )
 
 
+class SecretInterruptingRuntime:
+    def run(self, invocation: ActorInvocation) -> ActorResult:
+        _write_runtime_files(invocation, "interrupted")
+        return ActorResult(
+            status="interrupted",
+            structured_output={"error": "OPENAI_API_KEY=sk-secret-value"},
+            events_ref=Path("runs") / f"{invocation.actor}.events.jsonl",
+            runtime_evidence_ref=Path("runs") / f"{invocation.actor}.runtime_evidence.json",
+        )
+
+
+class ExplodingRuntime:
+    def run(self, invocation: ActorInvocation) -> ActorResult:
+        raise RuntimeError("sdk exploded")
+
+
 class PassingRuntime:
     def run(self, invocation: ActorInvocation) -> ActorResult:
         from rail.actor_runtime.schemas import fake_actor_output
@@ -141,6 +218,30 @@ class PassingRuntime:
             runtime_evidence_ref=Path("runs") / f"{invocation.actor}.runtime_evidence.json",
             patch_bundle_ref=Path("patches/generator.patch.yaml") if invocation.actor == "generator" else None,
         )
+
+
+class RevisingRuntime(PassingRuntime):
+    def __init__(self) -> None:
+        self.seen: list[str] = []
+        self.revised = False
+
+    def run(self, invocation: ActorInvocation) -> ActorResult:
+        self.seen.append(invocation.actor)
+        result = super().run(invocation)
+        if invocation.actor == "evaluator" and not self.revised:
+            self.revised = True
+            output = {"decision": "revise", "findings": ["fix"], "reason_codes": ["implementation_gap"], "quality_confidence": "medium"}
+            return result.model_copy(update={"structured_output": output})
+        return result
+
+
+class CapturingRuntime(PassingRuntime):
+    def __init__(self) -> None:
+        self.invocations: dict[str, ActorInvocation] = {}
+
+    def run(self, invocation: ActorInvocation) -> ActorResult:
+        self.invocations[invocation.actor] = invocation
+        return super().run(invocation)
 
 
 class PatchRuntime(PassingRuntime):
@@ -174,5 +275,24 @@ def _write_noop_patch_bundle(invocation: ActorInvocation) -> None:
     patch_dir.mkdir(exist_ok=True)
     (patch_dir / "generator.patch.yaml").write_text(
         yaml.safe_dump({"schema_version": "1", "base_tree_digest": tree_digest(target_root), "operations": []}),
+        encoding="utf-8",
+    )
+
+
+def _write_validation_policy(target: Path) -> None:
+    policy = target / ".harness" / "supervisor" / "execution_policy.yaml"
+    policy.parent.mkdir(parents=True, exist_ok=True)
+    policy.write_text(
+        yaml.safe_dump(
+            {
+                "version": 2,
+                "validation": {
+                    "commands": [
+                        "python -c \"import pathlib; assert pathlib.Path('.').exists()\"",
+                    ]
+                },
+            },
+            sort_keys=True,
+        ),
         encoding="utf-8",
     )

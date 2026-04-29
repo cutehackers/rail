@@ -48,6 +48,9 @@ def record_validation_evidence(
     stderr: str = "",
     mutation_status: Literal["clean", "mutated"] = "clean",
     duration_ms: int = 0,
+    credential_mode: str = "minimum",
+    network_mode: str = "disabled",
+    sandbox_ref: str = "sandbox",
 ) -> ValidationEvidence:
     validation_dir = artifact_dir / "validation"
     validation_dir.mkdir(parents=True, exist_ok=True)
@@ -68,9 +71,9 @@ def record_validation_evidence(
         request_digest=request_digest,
         effective_policy_digest=effective_policy_digest,
         actor_invocation_digest=actor_invocation_digest,
-        credential_mode="minimum",
-        network_mode="disabled",
-        sandbox_ref="sandbox",
+        credential_mode=credential_mode,
+        network_mode=network_mode,
+        sandbox_ref=sandbox_ref,
         mutation_status=mutation_status,
         duration_ms=duration_ms,
         ref=evidence_ref,

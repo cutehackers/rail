@@ -135,6 +135,7 @@ absent and must never run in default CI.
 
 ## Current Status
 
-The Python redesign baseline is complete. Release-readiness hardening remains
-open and is tracked in
-`docs/superpowers/plans/2026-04-29-python-actor-runtime-release-ready.md`.
+The Python redesign baseline and release-readiness hardening checklist are
+complete for this experimental Python API and Actor Runtime boundary. Future
+work should open a new spec or plan instead of reopening this completed
+checklist.

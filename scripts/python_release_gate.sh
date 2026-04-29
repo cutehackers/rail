@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-uv run --python 3.12 pytest -q
+uv run --python 3.12 pytest -q --ignore=tests/e2e/test_optional_live_sdk_smoke.py
 uv run --python 3.12 ruff check src tests
 uv run --python 3.12 mypy src/rail
 

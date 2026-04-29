@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
 import yaml
 
 from rail.artifacts import ArtifactHandle, bind_effective_policy, validate_artifact_handle
 from rail.artifacts.digests import digest_payload
 from rail.artifacts.terminal_summary import write_terminal_summary
+from rail.actor_runtime.evidence import write_runtime_evidence
+from rail.actor_runtime.events import normalize_sdk_event
 from rail.actor_runtime.agents import AgentsActorRuntime
 from rail.actor_runtime.runtime import ActorResult, ActorRuntime, build_invocation
+from rail.auth.redaction import redact_secrets
 from rail.evaluator.gate import EvaluatorGateInput, evaluate_gate
 from rail.policy import digest_policy, load_effective_policy
 from rail.policy.schema import ActorRuntimePolicyV2
@@ -19,7 +21,8 @@ from rail.supervisor.state import SupervisorState
 from rail.workspace.apply import apply_patch_bundle
 from rail.workspace.isolation import tree_digest
 from rail.workspace.patch_bundle import PatchBundle, PatchValidationPolicy
-from rail.workspace.validation_runner import ValidationCommand, run_validation_command
+from rail.workspace.validation_policy import load_policy_validation_commands
+from rail.workspace.validation_runner import run_validation_commands
 
 
 def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None = None) -> SupervisorState:
@@ -37,17 +40,39 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
     target_tree_digest = tree_digest(handle.project_root)
     terminal_reason: str | None = None
     blocked_category: str | None = None
+    actor_outputs: dict[str, dict[str, object]] = {}
+    evidence_refs: list[str] = []
 
     while not state.terminal:
         visited.append(state.current_actor)
-        invocation = build_invocation(handle, state.current_actor)
+        invocation = build_invocation(
+            handle,
+            state.current_actor,
+            prior_outputs=actor_outputs,
+            evidence_refs=evidence_refs,
+        )
         actor_invocation_digest = digest_payload(invocation.model_dump(mode="json"))
-        result = runtime.run(invocation)
+        try:
+            result = runtime.run(invocation)
+        except Exception as exc:
+            events_ref, evidence_ref = write_runtime_evidence(
+                handle.artifact_dir,
+                state.current_actor,
+                normalize_sdk_event({"status": "interrupted", "actor": state.current_actor, "error": str(exc)}),
+            )
+            result = ActorResult(
+                status="interrupted",
+                structured_output={"error": str(redact_secrets(str(exc)))},
+                events_ref=events_ref,
+                runtime_evidence_ref=evidence_ref,
+            )
+        evidence_refs.extend([result.events_ref.as_posix(), result.runtime_evidence_ref.as_posix()])
         if result.status != "succeeded":
             terminal_reason = _actor_blocked_reason(state.current_actor, result)
             blocked_category = "runtime"
             state = state.finish("blocked")
             break
+        actor_outputs[state.current_actor] = result.structured_output
         if state.current_actor == "generator":
             try:
                 patch_digest, target_tree_digest = _apply_generator_patch(handle, policy, result)
@@ -58,20 +83,25 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
                 break
         if state.current_actor == "executor":
             validation_actor_invocation_digest = actor_invocation_digest
-            validation = run_validation_command(
-                artifact_dir=handle.artifact_dir,
-                target_root=handle.project_root,
-                command=ValidationCommand(
-                    argv=[sys.executable, "-c", "print('rail policy validation completed')"],
-                    source="policy",
-                ),
-                patch_digest=patch_digest,
-                request_digest=handle.request_snapshot_digest,
-                effective_policy_digest=effective_policy_digest,
-                actor_invocation_digest=validation_actor_invocation_digest,
-            )
+            try:
+                validation_commands = load_policy_validation_commands(handle.project_root)
+                validation = run_validation_commands(
+                    artifact_dir=handle.artifact_dir,
+                    target_root=handle.project_root,
+                    commands=validation_commands,
+                    patch_digest=patch_digest,
+                    request_digest=handle.request_snapshot_digest,
+                    effective_policy_digest=effective_policy_digest,
+                    actor_invocation_digest=validation_actor_invocation_digest,
+                )
+            except (ValueError, yaml.YAMLError) as exc:
+                terminal_reason = str(redact_secrets(str(exc)))
+                blocked_category = "validation"
+                state = state.finish("blocked")
+                break
             target_tree_digest = validation.tree_digest
             validation_ref = validation.ref
+            evidence_refs.append(validation.ref.as_posix())
         if state.current_actor == "evaluator":
             gate = evaluate_gate(
                 result.structured_output,
@@ -92,6 +122,12 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
             elif gate.outcome == "reject":
                 terminal_reason = gate.reason
                 state = state.finish("reject")
+            elif gate.outcome == "revise":
+                state = route_next(state, actor_output=result.structured_output)
+                if state.terminal:
+                    terminal_reason = "evaluator revision budget exhausted"
+                    blocked_category = "runtime"
+                continue
             else:
                 terminal_reason = gate.reason
                 blocked_category = _gate_blocked_category(gate.reason)
@@ -121,9 +157,10 @@ def _write_run_status(
         "visited": visited,
     }
     if reason:
-        payload["reason"] = reason
+        payload["reason"] = str(redact_secrets(reason))
     if blocked_category:
         payload["blocked_category"] = blocked_category
+    payload = redact_secrets(payload)
     (handle.artifact_dir / "run_status.yaml").write_text(yaml.safe_dump(payload, sort_keys=True), encoding="utf-8")
 
 
@@ -167,7 +204,7 @@ def _load_patch_bundle(handle: ArtifactHandle, result: ActorResult) -> PatchBund
 def _actor_blocked_reason(actor: str, result: ActorResult) -> str:
     error = result.structured_output.get("error")
     if isinstance(error, str) and error:
-        return f"Actor Runtime blocked during {actor}: {error}"
+        return f"Actor Runtime blocked during {actor}: {redact_secrets(error)}"
     return f"Actor Runtime blocked during {actor}"
 
 

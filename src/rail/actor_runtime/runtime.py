@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal, Protocol
 
+import yaml
 from pydantic import BaseModel, ConfigDict
 
 from rail.artifacts import ArtifactHandle
@@ -34,12 +35,31 @@ class ActorRuntime(Protocol):
         ...
 
 
-def build_invocation(handle: ArtifactHandle, actor: str) -> ActorInvocation:
+def build_invocation(
+    handle: ArtifactHandle,
+    actor: str,
+    *,
+    prior_outputs: dict[str, dict[str, object]] | None = None,
+    evidence_refs: list[str] | None = None,
+) -> ActorInvocation:
+    request = _load_request_snapshot(handle)
     return ActorInvocation(
         actor=actor,
         artifact_id=handle.artifact_id,
         artifact_dir=handle.artifact_dir,
-        prompt=f"Run Rail actor {actor}.",
-        input={"artifact_id": handle.artifact_id},
+        prompt=f"Run Rail actor {actor} for task goal: {request.get('goal', '')}",
+        input={
+            "artifact_id": handle.artifact_id,
+            "request": request,
+            "prior_outputs": prior_outputs or {},
+            "evidence_refs": evidence_refs or [],
+        },
         policy_digest=handle.effective_policy_digest or "sha256:policy-not-yet-bound",
     )
+
+
+def _load_request_snapshot(handle: ArtifactHandle) -> dict[str, object]:
+    payload = yaml.safe_load((handle.artifact_dir / "request.yaml").read_text(encoding="utf-8")) or {}
+    if not isinstance(payload, dict):
+        raise ValueError("request snapshot must be a mapping")
+    return payload

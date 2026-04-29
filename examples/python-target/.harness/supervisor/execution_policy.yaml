@@ -1,0 +1,5 @@
+version: 2
+
+validation:
+  commands:
+    - python -c "import ast, pathlib; ast.parse(pathlib.Path('app.py').read_text())"

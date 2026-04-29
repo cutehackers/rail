@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import Callable
 import os
 from pathlib import Path
@@ -13,6 +15,7 @@ from rail.actor_runtime.events import normalize_sdk_event
 from rail.actor_runtime.prompts import load_actor_catalog
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
 from rail.auth.credentials import discover_sdk_credential_sources
+from rail.auth.redaction import redact_secrets
 from rail.policy.schema import ActorRuntimePolicyV2
 
 
@@ -60,6 +63,8 @@ class AgentsActorRuntime:
             return RuntimeReadiness(ready=False, reason="operator SDK credential is not configured")
         if not _live_runtime_enabled():
             return RuntimeReadiness(ready=False, reason="live actor runtime is not enabled")
+        if self.policy.approval_policy.mode != "never":
+            return RuntimeReadiness(ready=False, reason="live actor runtime only supports approval_policy=never")
         return RuntimeReadiness(
             ready=True,
             reason="operator SDK credential configured",
@@ -99,9 +104,14 @@ class AgentsActorRuntime:
             )
         entry = self.catalog[invocation.actor]
         agent = self.build_agent(invocation.actor)
-        prompt = f"{invocation.prompt}\n\nPolicy digest: {invocation.policy_digest}"
+        prompt = (
+            f"{invocation.prompt}\n\n"
+            f"Policy digest: {invocation.policy_digest}\n\n"
+            f"Actor input JSON:\n{json.dumps(invocation.input, sort_keys=True, ensure_ascii=False)}"
+        )
         run_config: dict[str, object] = {
             "timeout_seconds": self.policy.runtime.timeout_seconds,
+            "max_actor_turns": self.policy.actor_runtime.max_actor_turns,
             "approval_policy": self.policy.approval_policy.mode,
         }
         try:
@@ -126,13 +136,13 @@ class AgentsActorRuntime:
                 runtime_evidence_ref=evidence_ref,
                 patch_bundle_ref=Path(structured["patch_bundle_ref"]) if structured.get("patch_bundle_ref") else None,
             )
-        except (RuntimeError, ValidationError, ValueError) as exc:
+        except Exception as exc:
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.actor,
                 normalize_sdk_event({"status": "interrupted", "actor": invocation.actor, "error": str(exc)}),
             )
-            message = str(exc)
+            message = str(redact_secrets(str(exc)))
             if isinstance(exc, ValidationError):
                 message = f"validation failed: {message}"
             return ActorResult(
@@ -159,12 +169,19 @@ def build_sdk_tools(policy: ActorRuntimePolicyV2) -> list[Any]:
 def run_agent_live(agent: Agent[Any], prompt: str, *, run_config: dict[str, object]) -> SDKRunResult:
     from agents import Runner
 
+    timeout_seconds = _run_config_int(run_config, "timeout_seconds", 180)
+    max_actor_turns = _run_config_int(run_config, "max_actor_turns", 3)
     sdk_run_config = RunConfig(
         tracing_disabled=False,
         trace_include_sensitive_data=False,
         workflow_name="Rail Actor Runtime",
     )
-    result = Runner.run_sync(agent, prompt, run_config=sdk_run_config)
+    result = asyncio.run(
+        asyncio.wait_for(
+            Runner.run(agent, prompt, max_turns=max_actor_turns, run_config=sdk_run_config),
+            timeout=timeout_seconds,
+        )
+    )
     output = _structured_output(result)
     trace_id = str(getattr(result, "trace_id", None) or "trace-unavailable")
     return SDKRunResult(final_output=output, trace_id=trace_id)
@@ -181,3 +198,12 @@ def _structured_output(result: Any) -> dict[str, object]:
 
 def _live_runtime_enabled() -> bool:
     return os.environ.get("RAIL_ACTOR_RUNTIME_LIVE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _run_config_int(run_config: dict[str, object], key: str, default: int) -> int:
+    value = run_config.get(key, default)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value)
+    raise ValueError(f"{key} must be an integer")

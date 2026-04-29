@@ -52,12 +52,11 @@ def project_result(handle: ArtifactHandle) -> ResultProjection:
     handle = validate_artifact_handle(handle)
     status = project_status(handle)
     summary = project_terminal_summary(handle)
-    evidence_refs = sorted(path.relative_to(handle.artifact_dir).as_posix() for path in (handle.artifact_dir / "runs").glob("*"))
     return ResultProjection(
         outcome=summary.outcome,
         current_phase=status.current_phase,
         terminal_decision=status.terminal_state,
-        evidence_refs=evidence_refs,
+        evidence_refs=summary.evidence_refs,
         changed_files=_changed_files(handle.artifact_dir),
         residual_risk="low" if summary.outcome == "pass" else "medium",
         next_step=summary.next_step,

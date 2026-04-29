@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import rail
-from rail.actor_runtime.agents import AgentsActorRuntime, SDKRunResult, build_sdk_tools
+from rail.actor_runtime.agents import AgentsActorRuntime, SDKRunResult, build_sdk_tools, run_agent_live
 from rail.actor_runtime.runtime import build_invocation
 from rail.policy import load_effective_policy
+from pydantic import BaseModel
 
 
 def test_default_runner_requires_ready_credentials(tmp_path, monkeypatch):
@@ -90,7 +91,9 @@ def test_agents_runtime_builds_prompt_schema_and_validates_output(tmp_path):
     assert result.structured_output["summary"] == "Plan"
     assert calls[0]["agent"].output_type.__name__ == "PlanOutput"
     assert "Run Rail actor planner" in calls[0]["prompt"]
+    assert "Exercise agents runtime." in calls[0]["prompt"]
     assert calls[0]["run_config"]["timeout_seconds"] == 180
+    assert calls[0]["run_config"]["max_actor_turns"] == 3
     assert calls[0]["run_config"]["approval_policy"] == "never"
     assert (handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8")
 
@@ -107,6 +110,21 @@ def test_agents_runtime_maps_sdk_errors_to_interruption(tmp_path):
 
     assert result.status == "interrupted"
     assert "sdk unavailable" in result.structured_output["error"]
+
+
+def test_agents_runtime_maps_unexpected_sdk_errors_to_redacted_interruption(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    def runner(_agent, _prompt, *, run_config):
+        raise Exception("OPENAI_API_KEY=sk-secret-value")
+
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert "sk-secret-value" not in result.structured_output["error"]
+    assert "[REDACTED]" in result.structured_output["error"]
 
 
 def test_agents_runtime_redacts_secret_events(tmp_path):
@@ -138,6 +156,35 @@ def test_offline_real_sdk_adapter_construction_does_not_require_network():
     assert agent.name == "rail-planner"
     assert agent.output_type.__name__ == "PlanOutput"
     assert agent.tools == []
+
+
+def test_live_runner_applies_policy_bounds(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    class FinalOutput(BaseModel):
+        decision: str = "pass"
+        findings: list[str] = []
+        reason_codes: list[str] = []
+        quality_confidence: str = "high"
+
+    class RunResult:
+        final_output = FinalOutput()
+        trace_id = "trace-bounds"
+
+    async def fake_run(agent, prompt, *, max_turns, run_config):
+        calls.append({"max_turns": max_turns, "workflow_name": run_config.workflow_name})
+        return RunResult()
+
+    monkeypatch.setattr("agents.Runner.run", fake_run)
+
+    result = run_agent_live(
+        object(),
+        "prompt",
+        run_config={"timeout_seconds": 3, "max_actor_turns": 2, "approval_policy": "never"},
+    )
+
+    assert result.trace_id == "trace-bounds"
+    assert calls == [{"max_turns": 2, "workflow_name": "Rail Actor Runtime"}]
 
 
 def test_agents_runtime_rejects_invalid_final_output(tmp_path):

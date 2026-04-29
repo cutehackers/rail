@@ -75,3 +75,71 @@ def test_validation_runner_records_target_mutation(tmp_path):
     assert evidence.status == "pass"
     assert evidence.mutation_status == "mutated"
     assert evidence.tree_digest != before
+
+
+def test_validation_runner_scrubs_secret_environment(tmp_path, monkeypatch):
+    artifact = tmp_path / "artifact"
+    target = tmp_path / "target"
+    artifact.mkdir()
+    target.mkdir()
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-secret-value")
+
+    evidence = run_validation_command(
+        artifact_dir=artifact,
+        target_root=target,
+        command=ValidationCommand(
+            argv=[sys.executable, "-c", "import os; print(os.environ.get('OPENAI_API_KEY', 'missing'))"],
+            source="policy",
+        ),
+        patch_digest="sha256:patch",
+        request_digest="sha256:request",
+        effective_policy_digest="sha256:policy",
+        actor_invocation_digest="sha256:actor",
+    )
+
+    assert evidence.credential_mode == "scrubbed"
+    assert "sk-secret-value" not in (artifact / evidence.stdout_ref).read_text(encoding="utf-8")
+    assert "missing" in (artifact / evidence.stdout_ref).read_text(encoding="utf-8")
+
+
+def test_validation_runner_records_harness_mutation(tmp_path):
+    artifact = tmp_path / "artifact"
+    target = tmp_path / "target"
+    artifact.mkdir()
+    target.mkdir()
+
+    evidence = run_validation_command(
+        artifact_dir=artifact,
+        target_root=target,
+        command=ValidationCommand(
+            argv=[sys.executable, "-c", "from pathlib import Path; Path('.harness/touched').parent.mkdir(); Path('.harness/touched').write_text('changed')"],
+            source="policy",
+        ),
+        patch_digest="sha256:patch",
+        request_digest="sha256:request",
+        effective_policy_digest="sha256:policy",
+        actor_invocation_digest="sha256:actor",
+    )
+
+    assert evidence.mutation_status == "mutated"
+    assert evidence.network_mode == "inherited"
+
+
+def test_validation_runner_records_missing_command_as_failure(tmp_path):
+    artifact = tmp_path / "artifact"
+    target = tmp_path / "target"
+    artifact.mkdir()
+    target.mkdir()
+
+    evidence = run_validation_command(
+        artifact_dir=artifact,
+        target_root=target,
+        command=ValidationCommand(argv=["definitely-not-a-rail-command"], source="policy"),
+        patch_digest="sha256:patch",
+        request_digest="sha256:request",
+        effective_policy_digest="sha256:policy",
+        actor_invocation_digest="sha256:actor",
+    )
+
+    assert evidence.status == "fail"
+    assert evidence.exit_code == 127

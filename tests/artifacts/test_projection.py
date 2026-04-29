@@ -18,6 +18,7 @@ def test_result_projection_reads_artifacts_only(tmp_path):
     assert projection.current_phase == "terminal"
     assert projection.terminal_decision == "pass"
     assert projection.evidence_refs
+    assert "validation/evidence.yaml" in projection.evidence_refs
     assert "src/rail/api.py" in projection.changed_files
     assert projection.residual_risk == "low"
     assert projection.next_step == "complete"

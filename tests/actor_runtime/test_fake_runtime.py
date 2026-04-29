@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import importlib.util
+
 import rail
 from rail.actor_runtime.runtime import ActorInvocation
-from rail.actor_runtime.testing import FakeActorRuntime
+from tests.runtime_helpers import FakeActorRuntime
 
 
 def test_fake_runtime_is_not_exported_from_production_runtime():
     import rail.actor_runtime.runtime as runtime
 
     assert not hasattr(runtime, "FakeActorRuntime")
+    assert importlib.util.find_spec("rail.actor_runtime.testing") is None
 
 
 def test_fake_actor_runtime_returns_contract_result(tmp_path):
@@ -50,6 +53,12 @@ def test_supervisor_invokes_fake_runtime_and_persists_actor_evidence(tmp_path):
 def _target_repo(tmp_path: Path) -> Path:
     target = tmp_path / "target-repo"
     target.mkdir(parents=True, exist_ok=True)
+    policy = target / ".harness" / "supervisor" / "execution_policy.yaml"
+    policy.parent.mkdir(parents=True, exist_ok=True)
+    policy.write_text(
+        "version: 2\nvalidation:\n  commands:\n    - python -c \"import pathlib; assert pathlib.Path('.').exists()\"\n",
+        encoding="utf-8",
+    )
     return target
 
 

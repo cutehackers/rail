@@ -28,6 +28,8 @@ ACTIVE_TEXT_ROOTS = [
     Path("assets/skill/Rail"),
     Path("assets/defaults/rules"),
     Path("assets/defaults/supervisor"),
+    Path(".harness/rules"),
+    Path(".harness/supervisor"),
     Path(".github/workflows"),
 ]
 
@@ -91,6 +93,7 @@ def test_python_release_gate_exists_and_uses_python_runtime_only():
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
     assert "uv run --python 3.12 pytest -q" in text
+    assert "--ignore=tests/e2e/test_optional_live_sdk_smoke.py" in text
     assert "uv run --python 3.12 ruff check src tests" in text
     assert "uv run --python 3.12 mypy src/rail" in text
     assert "RAIL_ACTOR_RUNTIME_LIVE_SMOKE" in text

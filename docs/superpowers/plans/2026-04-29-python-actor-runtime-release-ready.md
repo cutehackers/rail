@@ -22,7 +22,7 @@
 - `src/rail/workspace/validation.py`: validation evidence model with duration and command ownership.
 - `src/rail/artifacts/terminal_summary.py`: terminal summary projection.
 - `src/rail/artifacts/projection.py`: user-facing blocked/pass/reject result mapping.
-- `src/rail/actor_runtime/testing.py`: test-only fake runtime helpers.
+- `tests/runtime_helpers.py`: test-only fake runtime helpers outside the production package.
 - `skills/rail/SKILL.md`: handle-based release-ready workflow.
 - `assets/skill/Rail/SKILL.md`: bundled skill copy.
 - `docs/tasks.md`: active Python release-ready checklist.
@@ -300,7 +300,7 @@ Record pre/post tree digests and set `mutation_status="mutated"` when they diffe
 
 - [x] **Step 4: Wire supervisor executor phase**
 
-Replace the synthetic `record_validation_evidence(..., command="policy:validation", exit_code=0)` call in `src/rail/supervisor/supervise.py` with the validation runner. Start with a deterministic no-op policy validation command that records real evidence, then extend request/policy command selection in a later task if needed.
+Replace the synthetic `record_validation_evidence(..., command="policy:validation", exit_code=0)` call in `src/rail/supervisor/supervise.py` with the validation runner. Validation must come from request or policy commands such as `.harness/supervisor/execution_policy.yaml`; missing commands block terminal pass.
 
 - [x] **Step 5: Verify**
 
@@ -401,7 +401,7 @@ git commit -m "feat: add terminal summary projection"
 ## Task 5: Isolate Test-Only Fake Runtime
 
 **Files:**
-- Create: `src/rail/actor_runtime/testing.py`
+- Modify: `tests/runtime_helpers.py`
 - Modify: `src/rail/actor_runtime/runtime.py`
 - Modify: `tests/actor_runtime/test_fake_runtime.py`
 - Modify: `tests/supervisor/test_routing.py`
@@ -430,7 +430,7 @@ Expected: fail because `FakeActorRuntime` still lives in production runtime.
 
 - [x] **Step 3: Move fake runtime**
 
-Move `FakeActorRuntime` into `src/rail/actor_runtime/testing.py`. Update tests to import from `rail.actor_runtime.testing`. Keep `ActorRuntime`, `ActorInvocation`, and `ActorResult` in `runtime.py`.
+Move `FakeActorRuntime` outside the production package into test helpers. Update tests to import from `tests.runtime_helpers`. Keep `ActorRuntime`, `ActorInvocation`, and `ActorResult` in `runtime.py`.
 
 - [x] **Step 4: Verify**
 

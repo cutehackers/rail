@@ -26,6 +26,12 @@ def test_runtime_flow_slices_wire_actor_patch_validation_evaluator_and_projectio
 def _target_repo(tmp_path: Path) -> Path:
     target = tmp_path / "target-repo"
     target.mkdir()
+    policy = target / ".harness" / "supervisor" / "execution_policy.yaml"
+    policy.parent.mkdir(parents=True, exist_ok=True)
+    policy.write_text(
+        "version: 2\nvalidation:\n  commands:\n    - python -c \"import pathlib; assert pathlib.Path('app.txt').exists()\"\n",
+        encoding="utf-8",
+    )
     return target
 
 

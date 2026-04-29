@@ -38,7 +38,7 @@ The release candidate must satisfy all of these conditions:
 - [x] Result and terminal summaries clearly distinguish pass, reject, blocked
       runtime, blocked validation, blocked policy, and blocked environment
       outcomes.
-- [ ] Test-only fake actor paths cannot be used accidentally by the public
+- [x] Test-only fake actor paths cannot be used accidentally by the public
       supervise path.
 - [ ] The Rail skill and bundled skill document the handle-based API flow and
       do not instruct users to manage request YAML, task IDs, or wrapper flags.

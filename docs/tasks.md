@@ -51,7 +51,7 @@ Actor Runtime based.
   and environment-blocked outcomes are summarized for users without inspecting
   raw artifacts.
 
-- [ ] Isolate fake actor runtime to tests
+- [x] Isolate fake actor runtime to tests
   Done when production runtime modules no longer export fake actor execution and
   public supervise cannot accidentally use it.
 

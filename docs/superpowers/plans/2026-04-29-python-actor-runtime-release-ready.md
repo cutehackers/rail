@@ -407,7 +407,7 @@ git commit -m "feat: add terminal summary projection"
 - Modify: `tests/supervisor/test_routing.py`
 - Test: `tests/test_no_legacy_runtime_calls.py`
 
-- [ ] **Step 1: Write failing fake-runtime isolation test**
+- [x] **Step 1: Write failing fake-runtime isolation test**
 
 Add to `tests/actor_runtime/test_fake_runtime.py`:
 
@@ -418,7 +418,7 @@ def test_fake_runtime_is_not_exported_from_production_runtime():
     assert not hasattr(runtime, "FakeActorRuntime")
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run:
 
@@ -428,11 +428,11 @@ uv run --python 3.12 pytest tests/actor_runtime/test_fake_runtime.py -q
 
 Expected: fail because `FakeActorRuntime` still lives in production runtime.
 
-- [ ] **Step 3: Move fake runtime**
+- [x] **Step 3: Move fake runtime**
 
 Move `FakeActorRuntime` into `src/rail/actor_runtime/testing.py`. Update tests to import from `rail.actor_runtime.testing`. Keep `ActorRuntime`, `ActorInvocation`, and `ActorResult` in `runtime.py`.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -442,7 +442,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_fake_runtime.py tests/super
 
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/rail/actor_runtime tests/actor_runtime tests/supervisor tests/test_no_legacy_runtime_calls.py

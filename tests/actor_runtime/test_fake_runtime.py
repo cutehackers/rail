@@ -3,7 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import rail
-from rail.actor_runtime.runtime import ActorInvocation, FakeActorRuntime
+from rail.actor_runtime.runtime import ActorInvocation
+from rail.actor_runtime.testing import FakeActorRuntime
+
+
+def test_fake_runtime_is_not_exported_from_production_runtime():
+    import rail.actor_runtime.runtime as runtime
+
+    assert not hasattr(runtime, "FakeActorRuntime")
 
 
 def test_fake_actor_runtime_returns_contract_result(tmp_path):

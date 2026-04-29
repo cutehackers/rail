@@ -62,7 +62,7 @@ Actor Runtime based.
   artifact, readiness failure, supervision, and result reporting through the
   Python API handle flow.
 
-- [ ] Add a Python release gate script
+- [x] Add a Python release gate script
   Done when a single local script runs the full Python test suite, lint, typing,
   docs guard, no-legacy guard, and deterministic SDK-adapter smoke.
 

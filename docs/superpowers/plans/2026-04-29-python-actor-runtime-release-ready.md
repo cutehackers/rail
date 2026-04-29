@@ -516,11 +516,11 @@ git commit -m "docs: align release-ready workflow"
 - Modify: `docs/ARCHITECTURE.md`
 - Test: `tests/docs/test_removed_runtime_surfaces.py`
 
-- [ ] **Step 1: Write failing release gate test**
+- [x] **Step 1: Write failing release gate test**
 
 Add a docs test that asserts `scripts/python_release_gate.sh` exists and does not contain old runtime commands.
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run:
 
@@ -530,7 +530,7 @@ uv run --python 3.12 pytest tests/docs/test_removed_runtime_surfaces.py -q
 
 Expected: fail until the release gate script exists.
 
-- [ ] **Step 3: Add release gate script**
+- [x] **Step 3: Add release gate script**
 
 Create `scripts/python_release_gate.sh`:
 
@@ -543,11 +543,11 @@ uv run --python 3.12 ruff check src tests
 uv run --python 3.12 mypy src/rail
 ```
 
-- [ ] **Step 4: Document the gate**
+- [x] **Step 4: Document the gate**
 
 Update active docs to point release operators at `scripts/python_release_gate.sh` as the local release gate. Do not describe this as a broad downstream task success proof; it is the Rail control-plane release gate.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -557,7 +557,7 @@ scripts/python_release_gate.sh
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/python_release_gate.sh README.md docs/ARCHITECTURE.md tests/docs

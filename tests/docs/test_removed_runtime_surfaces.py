@@ -79,3 +79,15 @@ def test_active_product_surfaces_do_not_reference_removed_runtime():
                     findings.append(f"{path}: {forbidden}")
 
     assert findings == []
+
+
+def test_python_release_gate_exists_and_uses_python_runtime_only():
+    path = Path("scripts/python_release_gate.sh")
+
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+    assert "uv run --python 3.12 pytest -q" in text
+    assert "uv run --python 3.12 ruff check src tests" in text
+    assert "uv run --python 3.12 mypy src/rail" in text
+    for forbidden in FORBIDDEN_RUNTIME_TEXT:
+        assert forbidden not in text

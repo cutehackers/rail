@@ -69,6 +69,10 @@ Evaluator pass is blocked when evidence is missing, failed, stale, actor-invente
 
 Status and result projection read artifacts only. They do not call the SDK or infer success from process output.
 
+## Release Gate
+
+`scripts/python_release_gate.sh` is the local release gate for the Rail control plane. It runs the Python test suite, docs guards, removed-surface guards, lint, and typing checks. It does not prove that an arbitrary downstream target repository task succeeded.
+
 ## `.harness`
 
 `.harness` remains a first-class product surface:

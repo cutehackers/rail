@@ -112,9 +112,10 @@ The layout remains explicit and reviewable, but normal users interact through th
 
 This repository owns the Python Rail Harness Runtime, bundled Rail skill, default `.harness` assets, tests, examples, and design documents.
 
-Use:
+Use the local release gate before treating this control-plane repository as release-ready:
 
 ```bash
-uv run --python 3.12 pytest -q
-uv run --python 3.12 ruff check src tests
+scripts/python_release_gate.sh
 ```
+
+The gate proves the Rail runtime, docs guards, removed-surface guards, lint, and typing checks for this repository. It is not a downstream target application success proof.

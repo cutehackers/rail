@@ -430,7 +430,7 @@ Expected: fail because `FakeActorRuntime` still lives in production runtime.
 
 - [x] **Step 3: Move fake runtime**
 
-Move `FakeActorRuntime` outside the production package into test helpers. Update tests to import from `tests.runtime_helpers`. Keep `ActorRuntime`, `ActorInvocation`, and `ActorResult` in `runtime.py`.
+Move `FakeActorRuntime` outside the production package into test helpers. Update tests to import from `tests.actor_runtime_test_fixtures`. Keep `ActorRuntime`, `ActorInvocation`, and `ActorResult` in `runtime.py`.
 
 - [x] **Step 4: Verify**
 

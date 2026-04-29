@@ -5,15 +5,15 @@ Runtime release-ready.
 
 Canonical release-ready product spec:
 
-- `docs/superpowers/specs/2026-04-29-python-actor-runtime-release-ready.md`
+- `docs/SPEC.md`
 
 Canonical execution plan:
 
 - `docs/superpowers/plans/2026-04-29-python-actor-runtime-release-ready.md`
 
-The previous release-ready notes for earlier runtime boundaries are historical
-context. The current product boundary is Python API first, Rail skill first, and
-Actor Runtime based.
+The dated specs under `docs/superpowers/specs/2026-04-29*.md` are the design
+records used to derive `docs/SPEC.md`. The current product boundary is Python
+API first, Rail skill first, and Actor Runtime based.
 
 ## Done
 
@@ -28,7 +28,7 @@ Actor Runtime based.
   flags.
 
 - [x] Establish release-ready target documentation
-  Done when the canonical spec and implementation plan above define the next
+  Done when `docs/SPEC.md` and the implementation plan above define the next
   product boundary.
 
 ## Must

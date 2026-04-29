@@ -6,7 +6,7 @@ import importlib.util
 
 import rail
 from rail.actor_runtime.runtime import ActorInvocation
-from tests.runtime_helpers import FakeActorRuntime
+from tests.actor_runtime_test_fixtures import FakeActorRuntime
 
 
 def test_fake_runtime_is_not_exported_from_production_runtime():

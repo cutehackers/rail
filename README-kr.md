@@ -2,6 +2,8 @@
 
 `rail`은 자연어 작업 요청을 안전한 하네스 실행으로 바꾸는 Python-first control plane입니다.
 
+정식 제품 계약 문서는 `docs/SPEC.md`입니다.
+
 핵심 계약:
 
 - 사용자는 Rail skill을 통해 작업을 자연어로 설명한다.

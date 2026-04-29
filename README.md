@@ -2,6 +2,8 @@
 
 `rail` is a skill-first harness control plane for bounded agentic software work.
 
+The canonical product contract is `docs/SPEC.md`.
+
 The product contract is:
 
 - users describe work in natural language through the Rail skill

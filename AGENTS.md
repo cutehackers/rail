@@ -21,6 +21,7 @@ This repository does not contain the downstream application under change. It own
 - Repo-owned skill: `skills/rail/SKILL.md`
 - Bundled skill copy: `assets/skill/Rail/`
 - Project docs, plans, and specs: `docs/`
+- Canonical product contract: `docs/SPEC.md`
 - Example target-repo conventions: `examples/`
 
 Prefer changing the smallest set of files that actually own the behavior.
@@ -73,6 +74,7 @@ Use the lightest validation that proves the change.
 ## Repo Map
 
 - `README.md`: operator-facing overview and quick start
+- `docs/SPEC.md`: canonical product contract and release-ready criteria
 - `docs/ARCHITECTURE.md`: product architecture and runtime boundaries
 - `docs/CONVENTIONS.md`: Python Rail Harness coding conventions
 - `src/rail/api.py`: public Python API

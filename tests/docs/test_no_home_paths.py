@@ -5,7 +5,10 @@ from pathlib import Path
 
 ACTIVE_DOCS = [
     Path("README.md"),
+    Path("README-kr.md"),
+    Path("docs/SPEC.md"),
     Path("docs/ARCHITECTURE.md"),
+    Path("docs/CONVENTIONS.md"),
     Path("skills/rail/SKILL.md"),
     Path("assets/skill/Rail/SKILL.md"),
 ]
@@ -45,7 +48,7 @@ def test_repo_skill_and_bundled_skill_are_aligned():
 def test_active_tasks_reference_python_release_ready_spec_and_plan():
     text = Path("docs/tasks.md").read_text(encoding="utf-8")
 
-    assert "docs/superpowers/specs/2026-04-29-python-actor-runtime-release-ready.md" in text
+    assert "docs/SPEC.md" in text
     assert "docs/superpowers/plans/2026-04-29-python-actor-runtime-release-ready.md" in text
 
 

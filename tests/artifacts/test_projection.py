@@ -4,7 +4,7 @@ from pathlib import Path
 
 import rail
 from rail.artifacts.projection import project_result
-from tests.runtime_helpers import scripted_agents_runtime
+from tests.actor_runtime_test_fixtures import scripted_agents_runtime
 
 
 def test_result_projection_reads_artifacts_only(tmp_path):

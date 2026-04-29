@@ -4,7 +4,7 @@ from pathlib import Path
 
 import rail
 from rail.artifacts.terminal_summary import project_terminal_summary
-from tests.runtime_helpers import scripted_agents_runtime
+from tests.actor_runtime_test_fixtures import scripted_agents_runtime
 
 
 def test_terminal_summary_explains_blocked_runtime(tmp_path, monkeypatch):

@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 import rail
-from tests.runtime_helpers import scripted_agents_runtime
+from tests.actor_runtime_test_fixtures import scripted_agents_runtime
 from rail.workspace.validation import load_validation_evidence
 
 

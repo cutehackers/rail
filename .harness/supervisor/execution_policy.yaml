@@ -1,22 +1,13 @@
-version: 1
+version: 2
 
 artifacts:
   root: .harness/artifacts
 
-format:
-  command: gofmt -w {files}
-
-analyze:
-  package_command: go build ./...
-  workspace_fallback: go build ./...
-  smoke_command: go build ./...
-
-tests:
-  package_command: go test ./...
-  workspace_fallback: go test ./...
-  smoke_command: go test ./...
-
 runtime:
-  create_placeholders: true
-  create_actor_briefs: true
-  persist_json_snapshots: true
+  provider: python_actor_runtime
+  validation_profile: standard
+
+validation:
+  commands:
+    - uv run --python 3.12 pytest -q
+    - uv run --python 3.12 ruff check src tests

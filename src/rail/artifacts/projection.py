@@ -35,10 +35,13 @@ class ResultProjection(BaseModel):
 def project_status(handle: ArtifactHandle) -> StatusProjection:
     handle = validate_artifact_handle(handle)
     run_status = _load_run_status(handle)
-    terminal = run_status.get("outcome")
+    raw_terminal = run_status.get("outcome")
+    terminal = raw_terminal if isinstance(raw_terminal, str) else None
+    raw_actor = run_status.get("current_actor")
+    current_actor = raw_actor if isinstance(raw_actor, str) else None
     return StatusProjection(
         current_phase="terminal" if run_status.get("status") == "terminal" else "running",
-        current_actor=run_status.get("current_actor"),
+        current_actor=current_actor,
         terminal_state=terminal,
         next_step="complete" if terminal == "pass" else "inspect",
     )

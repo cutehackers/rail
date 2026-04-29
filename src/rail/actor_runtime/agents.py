@@ -51,7 +51,7 @@ class AgentsActorRuntime:
         entry = self.catalog[invocation.actor]
         agent = self.build_agent(invocation.actor)
         prompt = f"{invocation.prompt}\n\nPolicy digest: {invocation.policy_digest}"
-        run_config = {
+        run_config: dict[str, object] = {
             "timeout_seconds": self.policy.runtime.timeout_seconds,
             "approval_policy": self.policy.approval_policy.mode,
         }
@@ -94,7 +94,7 @@ class AgentsActorRuntime:
             )
 
 
-def build_sdk_tools(policy: ActorRuntimePolicyV2) -> list[object]:
+def build_sdk_tools(policy: ActorRuntimePolicyV2) -> list[Any]:
     if not any(
         (
             policy.tools.shell.enabled,

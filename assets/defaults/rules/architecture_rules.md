@@ -1,6 +1,6 @@
 # Architecture Rules
 
-- Preserve the current control-plane boundaries across `cmd/`, `internal/`, `.harness/`, `skills/`, and `docs/`.
+- Preserve the current control-plane boundaries across `src/rail`, `.harness/`, `skills/`, and `docs/`.
 - Keep request composition, runtime orchestration, routing, reporting, and learning-state operations explicit and reviewable.
 - Do not move files across architecture boundaries without explicit permission.
 - Keep dependency direction simple: CLI entrypoint -> internal runtime/services -> contracts/assets.

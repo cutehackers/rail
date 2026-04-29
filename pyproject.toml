@@ -12,9 +12,15 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=1.15,<2",
     "pytest>=8.3,<9",
     "ruff>=0.14,<0.15",
+    "types-PyYAML>=6.0,<7",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

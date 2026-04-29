@@ -3,13 +3,13 @@ goal: "Describe the requested outcome"
 context:
   feature: "feature_name"
   suspected_files:
-    - "internal/path/to/file.go"
+    - "src/path/to/file.py"
   related_files:
-    - "cmd/rail/main.go"
+    - "README.md"
   validation_roots:
-    - "internal"
+    - "src"
   validation_targets:
-    - "internal/path/to/file_test.go"
+    - "tests/path/to/test_file.py"
 constraints: []
 definition_of_done:
   - "Describe observable success criteria"

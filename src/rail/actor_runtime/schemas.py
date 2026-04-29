@@ -82,7 +82,7 @@ class EvaluationResultOutput(BaseModel):
     next_action: str | None = None
 
 
-ACTOR_OUTPUT_MODELS = {
+ACTOR_OUTPUT_MODELS: dict[str, type[BaseModel]] = {
     "planner": PlanOutput,
     "context_builder": ContextPackOutput,
     "critic": CriticReportOutput,

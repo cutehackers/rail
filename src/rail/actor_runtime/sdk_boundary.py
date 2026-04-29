@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final, cast
 
 from agents import Agent, Runner
 from pydantic import BaseModel, ConfigDict, Field
@@ -47,18 +47,18 @@ class AgentsSDKProbe:
 
 
 def build_rail_agents(policy: ActorRuntimePolicy) -> tuple[Agent[None], Agent[None]]:
-    tools = _tools_for_policy(policy)
+    tools = cast(Any, list(_tools_for_policy(policy)))
     return (
         Agent(
             name="rail-planner",
             instructions="Plan one bounded Rail workflow step using only the provided request and policy context.",
-            tools=list(tools),
+            tools=tools,
             output_type=ActorPlan,
         ),
         Agent(
             name="rail-executor",
             instructions="Return a patch bundle reference and evidence summary without directly mutating host state.",
-            tools=list(tools),
+            tools=tools,
             output_type=ActorExecution,
         ),
     )
@@ -77,7 +77,7 @@ def build_agents_sdk_probe() -> AgentsSDKProbe:
     )
 
 
-def _tools_for_policy(policy: ActorRuntimePolicy) -> tuple[object, ...]:
+def _tools_for_policy(policy: ActorRuntimePolicy) -> tuple[Any, ...]:
     if policy.allow_shell or policy.allow_network or policy.allow_filesystem:
         raise ValueError("Task 0 only permits constructing actors with host tools disabled.")
     return ()

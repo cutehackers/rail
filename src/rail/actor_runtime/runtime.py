@@ -39,7 +39,8 @@ class ActorRuntime(Protocol):
 class FakeActorRuntime:
     def run(self, invocation: ActorInvocation) -> ActorResult:
         output = fake_actor_output(invocation.actor)
-        patch_ref = Path(output["patch_bundle_ref"]) if invocation.actor == "generator" else None
+        patch_value = output.get("patch_bundle_ref")
+        patch_ref = Path(patch_value) if isinstance(patch_value, str) and invocation.actor == "generator" else None
         events_ref, evidence_ref = write_runtime_evidence(
             invocation.artifact_dir,
             invocation.actor,

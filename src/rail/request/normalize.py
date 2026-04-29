@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-from rail.request.schema import DEFAULT_RISK_TOLERANCE_BY_TASK_TYPE, HarnessRequest, RequestDraft
+from rail.request.schema import DEFAULT_RISK_TOLERANCE_BY_TASK_TYPE, HarnessRequest, RequestDraft, RequestVersion
 
 
 def normalize_draft(draft: Any) -> HarnessRequest:
@@ -13,7 +13,7 @@ def normalize_draft(draft: Any) -> HarnessRequest:
     risk_tolerance = request_draft.risk_tolerance or DEFAULT_RISK_TOLERANCE_BY_TASK_TYPE[request_draft.task_type]
 
     return HarnessRequest(
-        request_version=request_draft.request_version,
+        request_version=cast(RequestVersion, request_draft.request_version),
         project_root=request_draft.project_root,
         task_type=request_draft.task_type,
         goal=request_draft.goal,

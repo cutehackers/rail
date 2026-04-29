@@ -120,7 +120,7 @@ Use the local release gate before treating this control-plane repository as rele
 scripts/python_release_gate.sh
 ```
 
-The gate proves the Rail runtime, docs guards, removed-surface guards, lint, and typing checks for this repository. It is not a downstream target application success proof.
+The gate proves the Rail runtime, package build, package asset inspection, installed-wheel smoke, docs guards, removed-surface guards, lint, and typing checks for this repository. It is not a downstream target application success proof.
 
 Optional live SDK smoke is operator-gated. Set `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` with an operator-controlled `OPENAI_API_KEY`; the release gate then enables `RAIL_ACTOR_RUNTIME_LIVE=1` for the live smoke only.
 

@@ -30,7 +30,7 @@
 - Create: `tests/build/test_package_assets.py`
 - Modify: `pyproject.toml`
 
-- [ ] **Step 1: Write the failing package asset test**
+- [x] **Step 1: Write the failing package asset test**
 
 Create `tests/build/test_package_assets.py` with a fixture-built fake wheel or
 archive that proves the checker fails when `assets/skill/Rail/SKILL.md`,
@@ -38,7 +38,7 @@ archive that proves the checker fails when `assets/skill/Rail/SKILL.md`,
 `assets/defaults/templates/plan.schema.yaml`, and
 `assets/defaults/supervisor/actor_runtime.yaml` are absent.
 
-- [ ] **Step 2: Run the focused test**
+- [x] **Step 2: Run the focused test**
 
 Run:
 
@@ -48,7 +48,7 @@ uv run --python 3.12 pytest tests/build/test_package_assets.py -q
 
 Expected: fail until the checker exists.
 
-- [ ] **Step 3: Implement `scripts/check_python_package_assets.py`**
+- [x] **Step 3: Implement `scripts/check_python_package_assets.py`**
 
 The script should:
 
@@ -60,13 +60,13 @@ The script should:
 - print concise missing-asset findings
 - exit non-zero on any missing required asset
 
-- [ ] **Step 4: Configure package inclusion**
+- [x] **Step 4: Configure package inclusion**
 
 Update `pyproject.toml` so `uv build` includes the required assets in both
 wheel and sdist. Prefer package resources that can be read through
 `importlib.resources` after installation. Do not rely on a source checkout path.
 
-- [ ] **Step 5: Verify package asset inspection**
+- [x] **Step 5: Verify package asset inspection**
 
 Run:
 
@@ -87,7 +87,7 @@ Expected: build succeeds and the checker reports all required assets present.
 - Test: `tests/policy/test_policy_v2.py`
 - Test: `tests/actor_runtime/test_actor_catalog.py`
 
-- [ ] **Step 1: Write failing resource-loading tests**
+- [x] **Step 1: Write failing resource-loading tests**
 
 Add tests that monkeypatch or isolate the current working directory so runtime
 defaults cannot be found through repository-parent paths. Assert that:
@@ -97,7 +97,7 @@ defaults cannot be found through repository-parent paths. Assert that:
 - `load_actor_catalog(project_root)` can fall back to packaged actor prompts
   and schema files when the target does not provide those files
 
-- [ ] **Step 2: Run focused tests**
+- [x] **Step 2: Run focused tests**
 
 Run:
 
@@ -107,7 +107,7 @@ uv run --python 3.12 pytest tests/policy/test_policy_v2.py tests/actor_runtime/t
 
 Expected: fail on source-checkout assumptions.
 
-- [ ] **Step 3: Add package resource helpers**
+- [x] **Step 3: Add package resource helpers**
 
 Create `src/rail/resources.py` with small functions for reading packaged text
 and YAML resources. Keep the API concrete, for example:
@@ -115,13 +115,13 @@ and YAML resources. Keep the API concrete, for example:
 - `read_default_asset_text(relative_path: str) -> str`
 - `load_default_asset_yaml(relative_path: str) -> dict[str, object]`
 
-- [ ] **Step 4: Update policy loading**
+- [x] **Step 4: Update policy loading**
 
 Change `src/rail/policy/load.py` so the base policy comes from packaged
 `assets/defaults/supervisor/actor_runtime.yaml`. Target policy overlays should
 still be read from the target repository and may only narrow the packaged base.
 
-- [ ] **Step 5: Update actor catalog loading**
+- [x] **Step 5: Update actor catalog loading**
 
 Change `src/rail/actor_runtime/prompts.py` so target `.harness/actors` and
 `.harness/templates` remain the first choice when present, with packaged
@@ -129,7 +129,7 @@ defaults as fallback. The returned `prompt_path` and `schema_path` should remain
 reviewable references; when using a packaged resource, use a stable logical
 resource label rather than a machine-specific path.
 
-- [ ] **Step 6: Verify focused behavior**
+- [x] **Step 6: Verify focused behavior**
 
 Run:
 
@@ -147,7 +147,7 @@ Expected: pass.
 - Modify: `README.md`
 - Modify: `docs/ARCHITECTURE.md`
 
-- [ ] **Step 1: Extend docs guard expectations**
+- [x] **Step 1: Extend docs guard expectations**
 
 Update the docs guard test so the release gate must run:
 
@@ -156,7 +156,7 @@ Update the docs guard test so the release gate must run:
 - the existing full Python tests, lint, typing checks, no-legacy guard, naming
   convention guard, deterministic SDK-adapter smoke, and optional live SDK smoke
 
-- [ ] **Step 2: Run the docs guard**
+- [x] **Step 2: Run the docs guard**
 
 Run:
 
@@ -166,19 +166,19 @@ uv run --python 3.12 pytest tests/docs/test_removed_runtime_surfaces.py -q
 
 Expected: fail until the release gate is updated.
 
-- [ ] **Step 3: Update the release gate**
+- [x] **Step 3: Update the release gate**
 
 Modify `scripts/python_release_gate.sh` to remove stale build artifacts, run
 `uv build`, run `scripts/check_python_package_assets.py`, then run the existing
 test/lint/type checks. Keep optional live SDK smoke skipped by default and
 enabled only by `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1`.
 
-- [ ] **Step 4: Update active docs**
+- [x] **Step 4: Update active docs**
 
 Update `README.md` and `docs/ARCHITECTURE.md` so the release gate description
 mentions package build and package asset inspection.
 
-- [ ] **Step 5: Verify the full gate**
+- [x] **Step 5: Verify the full gate**
 
 Run:
 
@@ -195,7 +195,7 @@ optional live SDK smoke remains skipped unless explicitly enabled.
 - Modify: `docs/tasks.md`
 - Optional Modify: implementation or tests named by review findings
 
-- [ ] **Step 1: Request independent review**
+- [x] **Step 1: Request independent review**
 
 Use a subagent reviewer against the main worktree, not a removed worktree path.
 Give it only:
@@ -209,7 +209,7 @@ Give it only:
 Ask whether every `docs/SPEC.md` release-ready criterion is enforced by code,
 tests, release gate, or explicit operator-only evidence.
 
-- [ ] **Step 2: Classify findings**
+- [x] **Step 2: Classify findings**
 
 For every finding, classify it as:
 
@@ -218,16 +218,16 @@ For every finding, classify it as:
 - documented residual risk
 - incorrect finding with rationale
 
-- [ ] **Step 3: Fix blockers**
+- [x] **Step 3: Fix blockers**
 
 Implement fixes for release blockers using focused tests first.
 
-- [ ] **Step 4: Update `docs/tasks.md`**
+- [x] **Step 4: Update `docs/tasks.md`**
 
 Mark the package distribution, installed-resource loading, release gate, and
 critical review tasks complete only after the fixes and review are done.
 
-- [ ] **Step 5: Run final verification**
+- [x] **Step 5: Run final verification**
 
 Run:
 

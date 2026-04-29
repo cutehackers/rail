@@ -71,7 +71,7 @@ Status and result projection read artifacts only. They do not call the SDK or in
 
 ## Release Gate
 
-`scripts/python_release_gate.sh` is the local release gate for the Rail control plane. It runs the Python test suite, docs guards, removed-surface guards, lint, and typing checks. It does not prove that an arbitrary downstream target repository task succeeded.
+`scripts/python_release_gate.sh` is the local release gate for the Rail control plane. It builds the Python package, inspects required package assets, runs an installed-wheel smoke, and runs the Python test suite, docs guards, removed-surface guards, lint, and typing checks. It does not prove that an arbitrary downstream target repository task succeeded.
 
 When `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` and an operator-controlled SDK credential is present, the gate also runs the optional live SDK smoke. That smoke is skipped by default and is not part of normal CI.
 

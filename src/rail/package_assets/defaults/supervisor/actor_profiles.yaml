@@ -1,0 +1,21 @@
+version: 1
+
+actors:
+  planner:
+    model: gpt-5.4
+    reasoning: high
+  context_builder:
+    model: gpt-5.4-mini
+    reasoning: high
+  critic:
+    model: gpt-5.4
+    reasoning: high
+  generator:
+    model: gpt-5.4
+    reasoning: high
+  evaluator:
+    model: gpt-5.4
+    reasoning: high
+  integrator:
+    model: gpt-5.4
+    reasoning: high

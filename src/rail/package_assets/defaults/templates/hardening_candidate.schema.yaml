@@ -1,0 +1,50 @@
+type: object
+required:
+  - originating_run_artifact_identity
+  - candidate_identifier
+  - task_family
+  - task_family_source
+  - policy_affecting_observation
+  - why_it_must_not_become_reusable_family_memory
+  - supporting_evidence_refs
+  - hardening_recommendation
+properties:
+  originating_run_artifact_identity:
+    type: object
+    required:
+      - run_ref
+      - artifact_ref
+    properties:
+      run_ref:
+        type: string
+      artifact_ref:
+        type: string
+    additionalProperties: false
+
+  candidate_identifier:
+    type: string
+
+  task_family:
+    type: string
+
+  task_family_source:
+    type: string
+
+  policy_affecting_observation:
+    type: string
+
+  why_it_must_not_become_reusable_family_memory:
+    type: string
+
+  supporting_evidence_refs:
+    type: array
+    items:
+      type: string
+
+  hardening_recommendation:
+    type: string
+    enum:
+      - accept_for_hardening
+      - hold
+      - reject
+additionalProperties: false

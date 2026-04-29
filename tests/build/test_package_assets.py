@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+import tarfile
+import zipfile
+from io import BytesIO
+from pathlib import Path
+
+from scripts.check_python_package_assets import find_missing_assets
+
+
+def test_packaged_assets_match_repo_sources():
+    _assert_tree_matches(Path("assets/defaults"), Path("src/rail/package_assets/defaults"))
+    _assert_tree_matches(Path("assets/skill/Rail"), Path("src/rail/package_assets/skill/Rail"))
+
+
+def test_package_asset_checker_reports_missing_required_assets(tmp_path: Path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    _write_wheel(dist / "rail_harness-0.1.0-py3-none-any.whl", ["rail/__init__.py"])
+    _write_sdist(dist / "rail_harness-0.1.0.tar.gz", ["rail_harness-0.1.0/pyproject.toml"])
+
+    missing = find_missing_assets(dist, required_assets=tuple(_required_asset_paths()))
+
+    assert "wheel: rail/package_assets/skill/Rail/SKILL.md" in missing
+    assert "sdist: src/rail/package_assets/skill/Rail/SKILL.md" in missing
+    assert "wheel: rail/package_assets/defaults/supervisor/actor_runtime.yaml" in missing
+
+
+def test_package_asset_checker_accepts_required_assets(tmp_path: Path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    wheel_members = [f"rail/{path}" for path in _required_asset_paths()]
+    sdist_members = [f"rail_harness-0.1.0/src/rail/{path}" for path in _required_asset_paths()]
+    _write_wheel(dist / "rail_harness-0.1.0-py3-none-any.whl", wheel_members)
+    _write_sdist(dist / "rail_harness-0.1.0.tar.gz", sdist_members)
+
+    assert find_missing_assets(dist, required_assets=tuple(_required_asset_paths())) == []
+
+
+def _required_asset_paths() -> list[str]:
+    return [
+        "package_assets/skill/Rail/SKILL.md",
+        "package_assets/skill/Rail/references/examples.md",
+        "package_assets/defaults/actors/planner.md",
+        "package_assets/defaults/templates/plan.schema.yaml",
+        "package_assets/defaults/supervisor/actor_runtime.yaml",
+        "package_assets/defaults/rules/allowed_commands.md",
+        "package_assets/defaults/rubrics/bug_fix.yaml",
+    ]
+
+
+def _write_wheel(path: Path, members: list[str]) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        for member in members:
+            archive.writestr(member, "content")
+
+
+def _write_sdist(path: Path, members: list[str]) -> None:
+    with tarfile.open(path, "w:gz") as archive:
+        for member in members:
+            payload = b"content"
+            info = tarfile.TarInfo(member)
+            info.size = len(payload)
+            archive.addfile(info, fileobj=BytesIO(payload))
+
+
+def _assert_tree_matches(source: Path, packaged: Path) -> None:
+    source_files = sorted(path.relative_to(source) for path in source.rglob("*") if path.is_file())
+    packaged_files = sorted(path.relative_to(packaged) for path in packaged.rglob("*") if path.is_file())
+
+    assert packaged_files == source_files
+    for relative_path in source_files:
+        assert (packaged / relative_path).read_text(encoding="utf-8") == (source / relative_path).read_text(encoding="utf-8")

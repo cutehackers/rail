@@ -9,6 +9,7 @@ import yaml
 from pydantic import BaseModel
 
 from rail.actor_runtime.schemas import ACTOR_OUTPUT_MODELS
+from rail.resources import load_default_asset_yaml, read_default_asset_text
 
 SUPERVISOR_ACTORS = ("planner", "context_builder", "critic", "generator", "executor", "evaluator")
 
@@ -40,15 +41,25 @@ def load_actor_catalog(project_root: Path) -> dict[str, ActorCatalogEntry]:
     catalog: dict[str, ActorCatalogEntry] = {}
     for actor in SUPERVISOR_ACTORS:
         prompt_path = project_root / ".harness" / "actors" / f"{actor}.md"
-        prompt = prompt_path.read_text(encoding="utf-8")
+        prompt_ref = Path(".harness") / "actors" / f"{actor}.md"
+        if prompt_path.is_file():
+            prompt = prompt_path.read_text(encoding="utf-8")
+        else:
+            prompt_ref = Path("package_assets") / "defaults" / "actors" / f"{actor}.md"
+            prompt = read_default_asset_text(f"defaults/actors/{actor}.md")
         schema_path = project_root / ".harness" / "templates" / _ACTOR_SCHEMA_FILES[actor]
-        schema_source = yaml.safe_load(schema_path.read_text(encoding="utf-8")) or {}
+        schema_ref = Path(".harness") / "templates" / _ACTOR_SCHEMA_FILES[actor]
+        if schema_path.is_file():
+            schema_source = yaml.safe_load(schema_path.read_text(encoding="utf-8")) or {}
+        else:
+            schema_ref = Path("package_assets") / "defaults" / "templates" / _ACTOR_SCHEMA_FILES[actor]
+            schema_source = load_default_asset_yaml(f"defaults/templates/{_ACTOR_SCHEMA_FILES[actor]}")
         catalog[actor] = ActorCatalogEntry(
             actor=actor,
-            prompt_path=prompt_path,
+            prompt_path=prompt_ref,
             prompt=prompt,
             prompt_digest=_digest_text(prompt),
-            schema_path=schema_path,
+            schema_path=schema_ref,
             schema_source=schema_source,
             output_model=ACTOR_OUTPUT_MODELS[actor],
         )

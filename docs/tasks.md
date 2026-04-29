@@ -32,21 +32,21 @@ Current execution plan:
 
 ## Must
 
-- [ ] Close the Python package distribution gap
+- [x] Close the Python package distribution gap
   Done when the wheel and sdist include the bundled Rail skill assets and
   Rail-owned default harness assets needed by the installed runtime.
 
-- [ ] Move installed runtime resource loading off source-checkout assumptions
+- [x] Move installed runtime resource loading off source-checkout assumptions
   Done when runtime defaults are loaded from package resources or an explicitly
   configured target/project surface, not from a parent directory that only
   exists in the repository checkout.
 
-- [ ] Canonicalize packaging checks in the release gate
+- [x] Canonicalize packaging checks in the release gate
   Done when `scripts/python_release_gate.sh` builds the Python distribution and
   fails if required package assets or installed-resource smoke checks are
   missing.
 
-- [ ] Run a main-worktree critical review against `docs/SPEC.md`
+- [x] Run a main-worktree critical review against `docs/SPEC.md`
   Done when an independent review checks that each release-ready criterion is
   enforced by code, tests, release gate, or documented operator-only evidence,
   and any findings are either fixed or recorded here as explicit follow-up.

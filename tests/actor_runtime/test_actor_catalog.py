@@ -18,6 +18,16 @@ def test_every_supervisor_actor_has_prompt_and_schema_source():
         assert entry.output_model is not None
 
 
+def test_actor_catalog_falls_back_to_packaged_defaults(tmp_path):
+    catalog = load_actor_catalog(tmp_path)
+
+    assert set(catalog) == set(SUPERVISOR_ACTORS)
+    assert catalog["planner"].prompt_path == Path("package_assets/defaults/actors/planner.md")
+    assert catalog["planner"].schema_path == Path("package_assets/defaults/templates/plan.schema.yaml")
+    assert catalog["planner"].prompt.strip()
+    assert catalog["planner"].schema_source["type"] == "object"
+
+
 def test_prompts_load_deterministically():
     first = load_actor_catalog(Path("."))
     second = load_actor_catalog(Path("."))

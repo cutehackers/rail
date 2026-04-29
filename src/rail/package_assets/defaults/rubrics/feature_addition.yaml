@@ -1,0 +1,19 @@
+name: feature_addition
+
+checks:
+  requirements:
+    - requested_behavior_implemented
+    - all_definition_of_done_items_satisfied
+
+  correctness:
+    - build_or_analyze_pass
+    - related_tests_pass
+    - new_or_updated_tests_for_new_behavior
+
+  architecture:
+    - public_interfaces_preserved_unless_allowed
+    - behavior_added_with_existing_patterns
+
+  maintainability:
+    - diff_minimal
+    - no_unnecessary_abstractions

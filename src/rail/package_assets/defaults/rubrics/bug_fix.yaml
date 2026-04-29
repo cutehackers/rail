@@ -1,0 +1,20 @@
+name: bug_fix
+
+checks:
+  requirements:
+    - reported_bug_scenario_is_resolved
+    - all_definition_of_done_items_satisfied
+
+  correctness:
+    - build_or_analyze_pass
+    - related_tests_pass
+    - regression_test_or_equivalent_added_when_feasible
+
+  architecture:
+    - existing_architecture_pattern_preserved
+    - no_forbidden_layer_violations
+    - no_public_api_change_unless_allowed
+
+  regression_risk:
+    - fix_is_localized
+    - unrelated_behavior_not_modified

@@ -1,0 +1,11 @@
+version: 1
+
+naming:
+  source_suffix: ""
+  test_suffix: ""
+
+path_rules: []
+
+fallback:
+  feature_test_root: .
+  package_test_root: .

@@ -98,6 +98,9 @@ def test_python_release_gate_exists_and_uses_python_runtime_only():
     assert "--ignore=tests/e2e/test_optional_live_sdk_smoke.py" in text
     assert "uv run --python 3.12 ruff check src tests" in text
     assert "uv run --python 3.12 mypy src/rail" in text
+    assert "uv build" in text
+    assert "scripts/check_python_package_assets.py" in text
+    assert "scripts/check_installed_wheel.py" in text
     assert "RAIL_ACTOR_RUNTIME_LIVE_SMOKE" in text
     for forbidden in FORBIDDEN_RUNTIME_TEXT:
         assert forbidden not in text
@@ -109,4 +112,6 @@ def test_optional_live_smoke_and_distribution_are_documented():
 
     assert "RAIL_ACTOR_RUNTIME_LIVE_SMOKE" in readme
     assert "Python package" in readme
+    assert "package asset" in readme
+    assert "package asset" in architecture
     assert "no command-line product contract" in architecture

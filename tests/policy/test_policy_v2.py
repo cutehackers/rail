@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from rail.policy import load_effective_policy
+from rail.policy import load as policy_load
 from rail.policy.schema import ActorRuntimePolicyV2
 from rail.policy.validate import digest_policy, narrow_policy
 
@@ -24,6 +25,14 @@ def test_default_policy_load_is_not_controlled_by_current_working_directory(tmp_
     hostile_policy.mkdir(parents=True)
     (hostile_policy / "actor_runtime.yaml").write_text("runtime:\n  provider: codex_cli\n", encoding="utf-8")
     monkeypatch.chdir(hostile_cwd)
+
+    policy = load_effective_policy(tmp_path)
+
+    assert policy.runtime.provider == "openai_agents_sdk"
+
+
+def test_default_policy_load_does_not_require_source_checkout_asset_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(policy_load, "_DEFAULT_POLICY_PATH", tmp_path / "missing.yaml", raising=False)
 
     policy = load_effective_policy(tmp_path)
 

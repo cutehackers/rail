@@ -6,14 +6,13 @@ import yaml
 
 from rail.policy.schema import ActorRuntimePolicyV2
 from rail.policy.validate import narrow_policy
+from rail.resources import load_default_asset_yaml
 
-_RAIL_ROOT = Path(__file__).resolve().parents[3]
-_DEFAULT_POLICY_PATH = _RAIL_ROOT / "assets/defaults/supervisor/actor_runtime.yaml"
 _TARGET_POLICY_PATH = Path(".harness/supervisor/actor_runtime.yaml")
 
 
 def load_effective_policy(project_root: Path) -> ActorRuntimePolicyV2:
-    base = _load_policy(_DEFAULT_POLICY_PATH)
+    base = ActorRuntimePolicyV2.model_validate(load_default_asset_yaml("defaults/supervisor/actor_runtime.yaml"))
     target_policy_path = project_root / _TARGET_POLICY_PATH
     if not target_policy_path.is_file():
         return base

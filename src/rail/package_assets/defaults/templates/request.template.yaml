@@ -1,0 +1,19 @@
+task_type: bug_fix
+goal: "Describe the requested outcome"
+context:
+  feature: "feature_name"
+  suspected_files:
+    - "src/path/to/file.py"
+  related_files:
+    - "README.md"
+  validation_roots:
+    - "src"
+  validation_targets:
+    - "tests/path/to/test_file.py"
+constraints: []
+definition_of_done:
+  - "Describe observable success criteria"
+  - "Describe validation expectation"
+priority: medium
+risk_tolerance: low
+validation_profile: standard

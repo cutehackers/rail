@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+cleanup() {
+  rm -rf src/rail_harness.egg-info
+}
+trap cleanup EXIT
+
+rm -rf dist src/rail_harness.egg-info
+uv build
+uv run --python 3.12 python scripts/check_python_package_assets.py dist
+uv run --python 3.12 python scripts/check_installed_wheel.py dist
 uv run --python 3.12 pytest -q --ignore=tests/e2e/test_optional_live_sdk_smoke.py
 uv run --python 3.12 ruff check src tests
 uv run --python 3.12 mypy src/rail

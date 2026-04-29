@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "rail-harness"
 version = "0.1.0"
@@ -25,3 +29,12 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rail = [
+    "package_assets/**/*.md",
+    "package_assets/**/*.yaml",
+]

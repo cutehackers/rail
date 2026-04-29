@@ -4,6 +4,7 @@ from typing import Any
 
 from rail.artifacts import ArtifactHandle, ArtifactStore, TaskIdentityDecision, decide_identity
 from rail.request import HarnessRequest, normalize_draft
+from rail.supervisor import supervise_artifact
 
 
 def normalize_request(draft: Any) -> HarnessRequest:
@@ -20,7 +21,7 @@ def decide_task_identity(user_intent: str, known_handle: ArtifactHandle | None =
 
 
 def supervise(handle: Any) -> Any:
-    raise NotImplementedError("Supervisor graph execution is implemented in Task 5.")
+    return supervise_artifact(handle)
 
 
 def status(handle: Any) -> Any:

@@ -20,8 +20,8 @@ def decide_task_identity(user_intent: str, known_handle: ArtifactHandle | None =
     return decide_identity(user_intent=user_intent, known_handle=known_handle)
 
 
-def supervise(handle: Any) -> Any:
-    return supervise_artifact(handle)
+def supervise(handle: Any, *, runtime: Any | None = None) -> Any:
+    return supervise_artifact(handle, runtime=runtime)
 
 
 def status(handle: Any) -> Any:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
@@ -17,9 +18,14 @@ def scripted_agents_runtime(
 ) -> AgentsActorRuntime:
     _ensure_validation_policy(target_root)
 
-    def runner(agent, _prompt: str, *, run_config: dict[str, object]) -> SDKRunResult:
+    def runner(agent, prompt: str, *, run_config: dict[str, object]) -> SDKRunResult:
         actor = agent.name.removeprefix("rail-")
         output = fake_actor_output(actor)
+        if actor == "evaluator":
+            actor_input = _actor_input_from_prompt(prompt)
+            evaluator_input_digest = actor_input.get("evaluator_input_digest")
+            if isinstance(evaluator_input_digest, str):
+                output["evaluated_input_digest"] = evaluator_input_digest
         if actor == "generator":
             operations = []
             if patch_path is not None:
@@ -37,6 +43,10 @@ def scripted_agents_runtime(
 class FakeActorRuntime:
     def run(self, invocation: ActorInvocation) -> ActorResult:
         output = fake_actor_output(invocation.actor)
+        if invocation.actor == "evaluator":
+            evaluator_input_digest = invocation.input.get("evaluator_input_digest")
+            if isinstance(evaluator_input_digest, str):
+                output["evaluated_input_digest"] = evaluator_input_digest
         patch_value = output.get("patch_bundle_ref")
         patch_ref = Path(patch_value) if isinstance(patch_value, str) and invocation.actor == "generator" else None
         if patch_ref is not None:
@@ -72,6 +82,15 @@ def _write_noop_patch_bundle(invocation: ActorInvocation, patch_ref: Path) -> No
         yaml.safe_dump({"schema_version": "1", "base_tree_digest": tree_digest(target_root), "operations": []}),
         encoding="utf-8",
     )
+
+
+def _actor_input_from_prompt(prompt: str) -> dict[str, object]:
+    marker = "Actor input JSON:\n"
+    if marker not in prompt:
+        return {}
+    payload = prompt.split(marker, 1)[1]
+    decoded = json.loads(payload)
+    return decoded if isinstance(decoded, dict) else {}
 
 
 def _ensure_validation_policy(target_root: Path) -> None:

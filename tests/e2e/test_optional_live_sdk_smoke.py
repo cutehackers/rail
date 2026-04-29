@@ -16,6 +16,7 @@ def test_optional_live_sdk_smoke_runs_planner_actor(tmp_path):
         pytest.skip("set RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1 to run the optional live SDK smoke")
     if not os.environ.get("OPENAI_API_KEY"):
         pytest.fail("OPENAI_API_KEY is required for optional live SDK smoke")
+    os.environ["RAIL_ACTOR_RUNTIME_LIVE"] = "1"
 
     target = tmp_path / "target"
     target.mkdir()

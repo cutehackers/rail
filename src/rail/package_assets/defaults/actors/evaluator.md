@@ -19,6 +19,7 @@ Judge whether implementation satisfies the task definition and rubrics.
 - `implementation_result`
 - `execution_report`
 - `rubric`
+- `evaluator_input_digest`
 
 ## Executor evidence handling
 - Treat executor failure classes as the first routing signal, then refine to rubric-aligned `reason_codes`.
@@ -37,6 +38,7 @@ Judge whether implementation satisfies the task definition and rubrics.
 ## Output
 Return YAML matching `evaluation_result.schema.yaml`:
 - `decision`
+- `evaluated_input_digest` (must exactly echo `evaluator_input_digest` from input)
 - `scores` (`requirements`, `architecture`, `regression_risk`, optional)
 - `findings`
 - `reason_codes`

@@ -10,7 +10,7 @@ from rail.artifacts.terminal_summary import write_terminal_summary
 from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.events import normalize_sdk_event
 from rail.actor_runtime.agents import AgentsActorRuntime
-from rail.actor_runtime.runtime import ActorResult, ActorRuntime, build_invocation
+from rail.actor_runtime.runtime import ActorInvocation, ActorResult, ActorRuntime, build_invocation
 from rail.auth.redaction import redact_secrets
 from rail.evaluator.gate import EvaluatorGateInput, evaluate_gate
 from rail.policy import digest_policy, load_effective_policy
@@ -37,9 +37,11 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
     actor_invocation_digest = "sha256:no-actor"
     validation_actor_invocation_digest = "sha256:no-actor"
     validation_ref = None
+    validation_evidence_digest = "sha256:no-validation"
     target_tree_digest = tree_digest(handle.project_root)
     terminal_reason: str | None = None
     blocked_category: str | None = None
+    terminal_actor: str | None = None
     actor_outputs: dict[str, dict[str, object]] = {}
     evidence_refs: list[str] = []
 
@@ -51,6 +53,12 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
             prior_outputs=actor_outputs,
             evidence_refs=evidence_refs,
         )
+        evaluator_input_digest: str | None = None
+        if state.current_actor == "evaluator":
+            invocation, evaluator_input_digest = _bind_evaluator_input_digest(
+                invocation,
+                validation_evidence_digest=validation_evidence_digest,
+            )
         actor_invocation_digest = digest_payload(invocation.model_dump(mode="json"))
         try:
             result = runtime.run(invocation)
@@ -69,7 +77,8 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
         evidence_refs.extend([result.events_ref.as_posix(), result.runtime_evidence_ref.as_posix()])
         if result.status != "succeeded":
             terminal_reason = _actor_blocked_reason(state.current_actor, result)
-            blocked_category = "runtime"
+            blocked_category = result.blocked_category or "runtime"
+            terminal_actor = state.current_actor
             state = state.finish("blocked")
             break
         actor_outputs[state.current_actor] = result.structured_output
@@ -79,6 +88,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
             except (ValueError, yaml.YAMLError) as exc:
                 terminal_reason = str(exc)
                 blocked_category = "policy"
+                terminal_actor = state.current_actor
                 state = state.finish("blocked")
                 break
         if state.current_actor == "executor":
@@ -97,10 +107,12 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
             except (ValueError, yaml.YAMLError) as exc:
                 terminal_reason = str(redact_secrets(str(exc)))
                 blocked_category = "validation"
+                terminal_actor = state.current_actor
                 state = state.finish("blocked")
                 break
             target_tree_digest = validation.tree_digest
             validation_ref = validation.ref
+            validation_evidence_digest = digest_payload(validation.model_dump(mode="json"))
             evidence_refs.append(validation.ref.as_posix())
         if state.current_actor == "evaluator":
             gate = evaluate_gate(
@@ -113,29 +125,41 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
                     patch_bundle_digest=patch_digest,
                     tree_digest=target_tree_digest,
                     validation_ref=validation_ref,
-                    evaluator_input_digest=digest_payload(result.structured_output),
+                    validation_evidence_digest=validation_evidence_digest,
+                    evaluator_input_digest=evaluator_input_digest or "sha256:no-evaluator-input",
                 ),
             )
             if gate.outcome == "pass":
                 terminal_reason = gate.reason
+                terminal_actor = state.current_actor
                 state = state.finish("pass")
             elif gate.outcome == "reject":
                 terminal_reason = gate.reason
+                terminal_actor = state.current_actor
                 state = state.finish("reject")
             elif gate.outcome == "revise":
                 state = route_next(state, actor_output=result.structured_output)
                 if state.terminal:
                     terminal_reason = "evaluator revision budget exhausted"
                     blocked_category = "runtime"
+                    terminal_actor = "evaluator"
                 continue
             else:
                 terminal_reason = gate.reason
                 blocked_category = _gate_blocked_category(gate.reason)
+                terminal_actor = state.current_actor
                 state = state.finish("blocked")
             break
         state = route_next(state, actor_output=result.structured_output)
 
-    _write_run_status(handle, state, visited, reason=terminal_reason, blocked_category=blocked_category)
+    _write_run_status(
+        handle,
+        state,
+        visited,
+        reason=terminal_reason,
+        blocked_category=blocked_category,
+        current_actor=terminal_actor,
+    )
     write_terminal_summary(handle)
     return state
 
@@ -147,13 +171,15 @@ def _write_run_status(
     *,
     reason: str | None = None,
     blocked_category: str | None = None,
+    current_actor: str | None = None,
 ) -> None:
+    terminal_actor = current_actor or (visited[-1] if visited else SUPERVISOR_GRAPH[-1])
     payload = {
         "schema_version": "1",
         "artifact_id": handle.artifact_id,
         "status": "terminal" if state.outcome in {"pass", "reject"} else "blocked",
         "outcome": state.outcome,
-        "current_actor": SUPERVISOR_GRAPH[-1],
+        "current_actor": terminal_actor,
         "visited": visited,
     }
     if reason:
@@ -206,6 +232,15 @@ def _actor_blocked_reason(actor: str, result: ActorResult) -> str:
     if isinstance(error, str) and error:
         return f"Actor Runtime blocked during {actor}: {redact_secrets(error)}"
     return f"Actor Runtime blocked during {actor}"
+
+
+def _bind_evaluator_input_digest(invocation: ActorInvocation, *, validation_evidence_digest: str) -> tuple[ActorInvocation, str]:
+    evaluator_input = dict(invocation.input)
+    evaluator_input.pop("evaluator_input_digest", None)
+    evaluator_input["validation_evidence_digest"] = validation_evidence_digest
+    evaluator_input_digest = digest_payload(evaluator_input)
+    evaluator_input["evaluator_input_digest"] = evaluator_input_digest
+    return invocation.model_copy(update={"input": evaluator_input}), evaluator_input_digest
 
 
 def _gate_blocked_category(reason: str) -> str:

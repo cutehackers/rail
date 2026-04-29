@@ -273,7 +273,9 @@ Rail is release-ready when all of the following are true:
   supervise path.
 - The Rail skill and bundled skill document the handle-based API flow.
 - Active docs and release checklist point to this product spec.
-- The release gate runs tests, lint, typing, docs guards, no-legacy guards,
+- The release gate builds the Python package, verifies packaged Rail assets,
+  verifies repo `.harness` defaults stay aligned with packaged defaults, smokes
+  the installed wheel, runs tests, lint, typing, docs guards, no-legacy guards,
   deterministic SDK-adapter smoke, and optional live SDK smoke when credentials
   are explicitly enabled.
 
@@ -282,14 +284,21 @@ Rail is release-ready when all of the following are true:
 The mandatory local release gate is:
 
 ```bash
-uv run --python 3.12 pytest -q
-uv run --python 3.12 ruff check src tests
-uv run --python 3.12 mypy src/rail
+scripts/python_release_gate.sh
 ```
 
-Docs and legacy-surface guards must be part of the test suite. Optional live SDK
-smoke must be skipped by default and enabled only through explicit operator
-configuration.
+The gate removes stale build artifacts, runs `uv build`, verifies required
+wheel and sdist assets with `scripts/check_python_package_assets.py`, smokes the
+installed wheel with `scripts/check_installed_wheel.py`, runs the Python test
+suite excluding the optional live smoke, runs lint and typing, and preserves
+docs guards, no-legacy guards, naming guards, repo `.harness` default alignment,
+and deterministic SDK-adapter smoke through the test suite.
+
+Optional live SDK smoke is skipped by default. When
+`RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` and operator SDK credentials are configured,
+the gate enables live Actor Runtime execution and runs a narrow real-runner
+planner smoke to prove SDK adapter readiness. It is not evidence that an
+arbitrary downstream target repository task succeeded.
 
 ## Non-Goals
 
@@ -301,4 +310,3 @@ configuration.
 - Do not treat SDK traces as terminal decision authority.
 - Do not let actors directly mutate target repositories.
 - Do not claim release readiness from deterministic fixture tests alone.
-

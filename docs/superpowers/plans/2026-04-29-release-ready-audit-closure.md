@@ -4,6 +4,8 @@
 
 **Goal:** Close the remaining `docs/SPEC.md` release-ready gap by making the Python package distribution and release gate prove the installed Rail product boundary.
 
+**Status:** Completed. Follow-up SPEC findings were closed in `docs/superpowers/plans/2026-04-29-release-ready-gap-closure.md`.
+
 **Architecture:** Keep the Python API as the product authority and keep source-checkout files as development inputs only. Package the bundled Rail skill and Rail-owned default harness assets as installed resources, then make the release gate build and inspect the distribution artifact before release-ready can be claimed.
 
 **Tech Stack:** Python 3.12, setuptools/uv build, importlib.resources, pytest, ruff, mypy.

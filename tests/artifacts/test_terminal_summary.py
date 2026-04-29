@@ -7,7 +7,7 @@ from rail.artifacts.terminal_summary import project_terminal_summary
 from tests.actor_runtime_test_fixtures import scripted_agents_runtime
 
 
-def test_terminal_summary_explains_blocked_runtime(tmp_path, monkeypatch):
+def test_terminal_summary_explains_blocked_environment_readiness(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
     handle = rail.start_task(_draft(_target_repo(tmp_path), "Explain blocked state."))
@@ -17,9 +17,9 @@ def test_terminal_summary_explains_blocked_runtime(tmp_path, monkeypatch):
     summary = project_terminal_summary(handle)
 
     assert summary.outcome == "blocked"
-    assert summary.blocked_category == "runtime"
-    assert "runtime" in summary.reason.lower() or "actor" in summary.reason.lower()
-    assert summary.next_step
+    assert summary.blocked_category == "environment"
+    assert "credential" in summary.reason.lower() or "live actor runtime" in summary.reason.lower()
+    assert "environment" in summary.next_step
     assert (handle.artifact_dir / "terminal_summary.yaml").is_file()
 
 

@@ -31,6 +31,12 @@ def validate_credential_source(source: CredentialSource, project_root: Path) -> 
     return source
 
 
+def validate_sdk_credential_format(source: CredentialSource) -> CredentialSource:
+    if source.name == "OPENAI_API_KEY" and source.value is not None and not source.value.startswith("sk-"):
+        raise ValueError("operator SDK invalid credential is configured")
+    return source
+
+
 def build_actor_environment(sources: list[CredentialSource], project_root: Path) -> dict[str, str]:
     env: dict[str, str] = {}
     for source in sources:

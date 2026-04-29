@@ -5,7 +5,7 @@ import json
 from collections.abc import Callable
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from agents import Agent, RunConfig
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -14,7 +14,7 @@ from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.events import normalize_sdk_event
 from rail.actor_runtime.prompts import load_actor_catalog
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
-from rail.auth.credentials import discover_sdk_credential_sources
+from rail.auth.credentials import CredentialSource, discover_sdk_credential_sources, validate_sdk_credential_format
 from rail.auth.redaction import redact_secrets
 from rail.policy.schema import ActorRuntimePolicyV2
 
@@ -27,6 +27,7 @@ class SDKRunResult(BaseModel):
 
 
 SDKRunner = Callable[[Agent[Any], str], SDKRunResult]
+CredentialPreflight = Callable[[list[CredentialSource], ActorRuntimePolicyV2], str | None]
 
 
 class RuntimeReadiness(BaseModel):
@@ -35,6 +36,7 @@ class RuntimeReadiness(BaseModel):
     ready: bool
     reason: str
     credential_source: str | None = None
+    blocked_category: Literal["environment"] | None = None
 
 
 class AgentsActorRuntime:
@@ -44,12 +46,15 @@ class AgentsActorRuntime:
         project_root: Path,
         policy: ActorRuntimePolicyV2,
         runner: Callable[..., SDKRunResult] | None = None,
+        credential_preflight: CredentialPreflight | None = None,
     ) -> None:
         self.project_root = project_root
         self.policy = policy
         self.catalog = load_actor_catalog(project_root)
         self.runner = runner or run_agent_live
         self._runner_injected = runner is not None
+        self.credential_preflight = credential_preflight or validate_live_sdk_credentials
+        self._readiness_cache: RuntimeReadiness | None = None
 
     def readiness(self) -> RuntimeReadiness:
         if self._runner_injected:
@@ -58,18 +63,56 @@ class AgentsActorRuntime:
                 reason="runner injected for deterministic execution",
                 credential_source="injected_runner",
             )
+        if self._readiness_cache is not None:
+            return self._readiness_cache
         sources = discover_sdk_credential_sources()
         if not sources:
-            return RuntimeReadiness(ready=False, reason="operator SDK credential is not configured")
+            return self._cache_readiness(
+                RuntimeReadiness(
+                    ready=False,
+                    reason="operator SDK credential is not configured",
+                    blocked_category="environment",
+                )
+            )
         if not _live_runtime_enabled():
-            return RuntimeReadiness(ready=False, reason="live actor runtime is not enabled")
+            return self._cache_readiness(
+                RuntimeReadiness(
+                    ready=False,
+                    reason="live actor runtime is not enabled",
+                    credential_source=sources[0].category,
+                    blocked_category="environment",
+                )
+            )
         if self.policy.approval_policy.mode != "never":
-            return RuntimeReadiness(ready=False, reason="live actor runtime only supports approval_policy=never")
-        return RuntimeReadiness(
-            ready=True,
-            reason="operator SDK credential configured",
-            credential_source=sources[0].category,
+            return self._cache_readiness(
+                RuntimeReadiness(
+                    ready=False,
+                    reason="live actor runtime only supports approval_policy=never",
+                    credential_source=sources[0].category,
+                    blocked_category="environment",
+                )
+            )
+        preflight_failure = self.credential_preflight(sources, self.policy)
+        if preflight_failure:
+            return self._cache_readiness(
+                RuntimeReadiness(
+                    ready=False,
+                    reason=preflight_failure,
+                    credential_source=sources[0].category,
+                    blocked_category="environment",
+                )
+            )
+        return self._cache_readiness(
+            RuntimeReadiness(
+                ready=True,
+                reason="operator SDK credential configured",
+                credential_source=sources[0].category,
+            )
         )
+
+    def _cache_readiness(self, readiness: RuntimeReadiness) -> RuntimeReadiness:
+        self._readiness_cache = readiness
+        return readiness
 
     def build_agent(self, actor: str) -> Agent[None]:
         entry = self.catalog[actor]
@@ -93,6 +136,7 @@ class AgentsActorRuntime:
                         "actor": invocation.actor,
                         "error": readiness.reason,
                         "credential_source": readiness.credential_source,
+                        "blocked_category": readiness.blocked_category,
                     }
                 ),
             )
@@ -101,6 +145,7 @@ class AgentsActorRuntime:
                 structured_output={"error": readiness.reason},
                 events_ref=events_ref,
                 runtime_evidence_ref=evidence_ref,
+                blocked_category=readiness.blocked_category,
             )
         entry = self.catalog[invocation.actor]
         agent = self.build_agent(invocation.actor)
@@ -150,7 +195,25 @@ class AgentsActorRuntime:
                 structured_output={"error": message},
                 events_ref=events_ref,
                 runtime_evidence_ref=evidence_ref,
+                blocked_category="runtime",
             )
+
+
+def validate_live_sdk_credentials(sources: list[CredentialSource], policy: ActorRuntimePolicyV2) -> str | None:
+    for source in sources:
+        try:
+            validate_sdk_credential_format(source)
+        except ValueError as exc:
+            return str(exc)
+    try:
+        from openai import OpenAI
+
+        source = sources[0]
+        client = OpenAI(api_key=source.value) if source.value is not None else OpenAI()
+        client.models.list(timeout=policy.runtime.timeout_seconds)
+    except Exception:
+        return "operator SDK invalid credential is configured"
+    return None
 
 
 def build_sdk_tools(policy: ActorRuntimePolicyV2) -> list[Any]:

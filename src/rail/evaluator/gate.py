@@ -19,6 +19,7 @@ class EvaluatorGateInput(BaseModel):
     patch_bundle_digest: str
     tree_digest: str
     validation_ref: Path | None
+    validation_evidence_digest: str
     evaluator_input_digest: str
 
 
@@ -32,12 +33,17 @@ class EvaluatorGateResult(BaseModel):
 
 def evaluate_gate(evaluator_output: dict[str, object], gate_input: EvaluatorGateInput) -> EvaluatorGateResult:
     decision = evaluator_output.get("decision")
+    if decision not in {"pass", "revise", "reject"}:
+        return EvaluatorGateResult(outcome="blocked", reason="unknown evaluator decision")
+
+    evaluated_input_digest = evaluator_output.get("evaluated_input_digest")
+    if not isinstance(evaluated_input_digest, str) or evaluated_input_digest != gate_input.evaluator_input_digest:
+        return EvaluatorGateResult(outcome="blocked", reason="evaluator input digest does not match")
+
     if decision == "revise":
         return EvaluatorGateResult(outcome="revise", reason="evaluator requested revision", next_actor="generator")
     if decision == "reject":
         return EvaluatorGateResult(outcome="reject", reason="evaluator rejected the result")
-    if decision != "pass":
-        return EvaluatorGateResult(outcome="blocked", reason="unknown evaluator decision")
 
     if gate_input.validation_ref is None:
         return EvaluatorGateResult(outcome="blocked", reason="terminal pass requires validation evidence")
@@ -55,8 +61,8 @@ def evaluate_gate(evaluator_output: dict[str, object], gate_input: EvaluatorGate
         return EvaluatorGateResult(outcome="blocked", reason="validation evidence policy digest does not match")
     if evidence.actor_invocation_digest != gate_input.actor_invocation_digest:
         return EvaluatorGateResult(outcome="blocked", reason="validation evidence actor digest does not match")
-    if digest_payload(evaluator_output) != gate_input.evaluator_input_digest:
-        return EvaluatorGateResult(outcome="blocked", reason="evaluator input digest does not match")
+    if digest_payload(evidence.model_dump(mode="json")) != gate_input.validation_evidence_digest:
+        return EvaluatorGateResult(outcome="blocked", reason="validation evidence digest does not match")
     if evidence.mutation_status != "clean":
         return EvaluatorGateResult(outcome="blocked", reason="validation mutated the target")
 

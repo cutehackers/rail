@@ -13,6 +13,11 @@ def test_packaged_assets_match_repo_sources():
     _assert_tree_matches(Path("assets/skill/Rail"), Path("src/rail/package_assets/skill/Rail"))
 
 
+def test_repo_harness_defaults_match_packaged_defaults():
+    for subdir in ("actors", "rules", "rubrics", "supervisor", "templates"):
+        _assert_tree_matches(Path(".harness") / subdir, Path("assets/defaults") / subdir)
+
+
 def test_package_asset_checker_reports_missing_required_assets(tmp_path: Path):
     dist = tmp_path / "dist"
     dist.mkdir()

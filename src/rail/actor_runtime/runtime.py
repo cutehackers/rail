@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict
 
 from rail.artifacts import ArtifactHandle
 
+BlockedCategory = Literal["runtime", "validation", "policy", "environment"]
+
 
 class ActorInvocation(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -28,6 +30,7 @@ class ActorResult(BaseModel):
     events_ref: Path
     runtime_evidence_ref: Path
     patch_bundle_ref: Path | None = None
+    blocked_category: BlockedCategory | None = None
 
 
 class ActorRuntime(Protocol):

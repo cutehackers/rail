@@ -19,6 +19,7 @@ def test_evaluator_gate_input_requires_all_chain_digests(tmp_path):
         patch_bundle_digest="sha256:patch",
         tree_digest="sha256:tree",
         validation_ref=None,
+        validation_evidence_digest="sha256:validation",
         evaluator_input_digest="sha256:evaluator",
     )
 
@@ -27,6 +28,7 @@ def test_evaluator_gate_input_requires_all_chain_digests(tmp_path):
     assert gate_input.actor_invocation_digest
     assert gate_input.patch_bundle_digest
     assert gate_input.tree_digest
+    assert gate_input.validation_evidence_digest
     assert gate_input.evaluator_input_digest
 
 

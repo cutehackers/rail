@@ -58,6 +58,10 @@ class _InlinePatchRuntime:
 
     def run(self, invocation: ActorInvocation) -> ActorResult:
         output = fake_actor_output(invocation.actor)
+        if invocation.actor == "evaluator":
+            evaluator_input_digest = invocation.input.get("evaluator_input_digest")
+            if isinstance(evaluator_input_digest, str):
+                output["evaluated_input_digest"] = evaluator_input_digest
         if invocation.actor == "generator":
             output["changed_files"] = [self.relative_path]
             output["patch_bundle"] = {

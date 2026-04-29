@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from rail.workspace.patch_bundle import PatchBundle
 
@@ -79,10 +79,18 @@ class EvaluationResultOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     decision: Literal["pass", "revise", "reject"]
+    evaluated_input_digest: str
     findings: list[str]
     reason_codes: list[str]
     quality_confidence: Literal["high", "medium", "low"]
     next_action: str | None = None
+
+    @field_validator("evaluated_input_digest")
+    @classmethod
+    def _sha256_digest(cls, value: str) -> str:
+        if not value.startswith("sha256:"):
+            raise ValueError("evaluated_input_digest must start with sha256:")
+        return value
 
 
 ACTOR_OUTPUT_MODELS: dict[str, type[BaseModel]] = {
@@ -133,6 +141,7 @@ def fake_actor_output(actor: str) -> dict[str, object]:
         },
         "evaluator": {
             "decision": "pass",
+            "evaluated_input_digest": "sha256:evaluator-input-not-bound",
             "findings": [],
             "reason_codes": [],
             "quality_confidence": "high",

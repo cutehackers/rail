@@ -7,7 +7,7 @@ Canonical release-ready product spec:
 
 - `docs/SPEC.md`
 
-Canonical execution plan:
+Canonical baseline execution plan:
 
 - `docs/superpowers/plans/2026-04-29-python-actor-runtime-release-ready.md`
 
@@ -17,18 +17,29 @@ API first, Rail skill first, and Actor Runtime based.
 
 ## Current Audit
 
-Status: release-ready is not yet closed after the `docs/SPEC.md` audit.
+Status: release-ready criteria are closed for the mandatory local gate.
 
-The Python runtime criteria are largely implemented and covered by the local
-release gate, but the distribution boundary is not yet enforced. The active
-architecture says the experimental release artifact is a Python package with
-the Rail Python API and bundled Rail skill assets. A built wheel currently does
-not prove that the bundled skill assets, default harness assets, and resource
-loading behavior survive installation outside the source checkout.
+The post-audit blockers have been implemented and verified against
+`docs/SPEC.md`: packaged assets survive wheel installation, Actor Runtime
+readiness blocks missing, syntactically invalid, or provider-preflight-rejected
+credentials before actor work,
+blocked result projections distinguish runtime, validation, policy, and
+environment categories, evaluator pass is bound to a supervisor-provided
+evaluator input digest and validation evidence digest, repo `.harness` defaults
+stay aligned with packaged defaults, and the canonical gate is
+`scripts/python_release_gate.sh`.
 
-Current execution plan:
+Local verification:
+
+- `scripts/python_release_gate.sh` passed with optional live SDK smoke skipped
+  by default.
+- Optional live SDK smoke remains operator-gated by
+  `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` plus operator SDK credentials.
+
+Completed closure plans:
 
 - `docs/superpowers/plans/2026-04-29-release-ready-audit-closure.md`
+- `docs/superpowers/plans/2026-04-29-release-ready-gap-closure.md`
 
 ## Must
 
@@ -50,6 +61,39 @@ Current execution plan:
   Done when an independent review checks that each release-ready criterion is
   enforced by code, tests, release gate, or documented operator-only evidence,
   and any findings are either fixed or recorded here as explicit follow-up.
+
+- [x] Block invalid Actor Runtime credentials before actor work
+  Done when missing, syntactically invalid, or provider-preflight-rejected
+  operator credentials produce a secret-safe environment-blocked result without
+  invoking the actor SDK runner, and provider preflight uses the configured
+  runtime timeout.
+
+- [x] Distinguish blocked result categories in `rail.result(handle)`
+  Done when result projection exposes blocked category, reason, and a
+  category-specific outcome label from artifacts only.
+
+- [x] Make environment-blocked outcomes reachable
+  Done when runtime readiness failures are persisted and projected as
+  environment-blocked terminal outcomes with the actual blocking actor.
+
+- [x] Bind evaluator pass to supervisor-provided evaluator input digest
+  Done when every evaluator decision requires the evaluator output to echo the
+  supervisor-computed evaluator input digest instead of accepting a self-hash of
+  evaluator output.
+
+- [x] Bind terminal pass to validation evidence digest
+  Done when terminal pass verifies the persisted validation evidence digest in
+  addition to request, policy, actor, patch, tree, and evaluator input digests.
+
+- [x] Enforce repo `.harness` defaults and packaged defaults stay aligned
+  Done when the release gate fails if `.harness/actors`, `.harness/rules`,
+  `.harness/rubrics`, `.harness/supervisor`, or `.harness/templates` drift from
+  `assets/defaults`, and package assets still match `assets/defaults`.
+
+- [x] Canonicalize `docs/SPEC.md` release gate text
+  Done when `docs/SPEC.md` points to `scripts/python_release_gate.sh` and lists
+  build, package asset, installed-wheel, repo `.harness` alignment, test, lint,
+  typing, deterministic smoke, and optional live smoke behavior.
 
 ## Done
 

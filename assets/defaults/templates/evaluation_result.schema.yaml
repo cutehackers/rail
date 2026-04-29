@@ -1,6 +1,7 @@
 type: object
 required:
   - decision
+  - evaluated_input_digest
   - findings
   - reason_codes
   - quality_confidence
@@ -12,6 +13,10 @@ properties:
       - pass
       - revise
       - reject
+
+  evaluated_input_digest:
+    type: string
+    pattern: '^sha256:'
 
   scores:
     type: object

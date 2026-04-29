@@ -101,6 +101,25 @@ def test_default_supervise_does_not_fake_terminal_pass(tmp_path):
     assert result.outcome == "blocked"
 
 
+def test_default_supervise_blocks_environment_when_runtime_not_ready(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    result = rail.supervise(handle)
+
+    assert result.terminal is True
+    assert result.outcome == "blocked"
+    run_status = yaml.safe_load((handle.artifact_dir / "run_status.yaml").read_text(encoding="utf-8"))
+    assert run_status["current_actor"] == "planner"
+    assert run_status["blocked_category"] == "environment"
+    projection = rail.result(handle)
+    assert projection.current_phase == "terminal"
+    assert projection.terminal_decision == "blocked"
+    assert projection.blocked_category == "environment"
+    assert rail.status(handle).current_actor == "planner"
+
+
 def test_supervise_api_updates_artifact_run_status(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
 
@@ -158,6 +177,19 @@ def test_actor_invocation_contains_request_and_prior_outputs(tmp_path):
     assert context_invocation.input["request"]["goal"] == "Route the supervisor graph."
     assert "planner" in context_invocation.input["prior_outputs"]
     assert "validation/evidence.yaml" in evaluator_invocation.input["evidence_refs"]
+    assert "validation_evidence_digest" in evaluator_invocation.input
+    assert "evaluator_input_digest" in evaluator_invocation.input
+
+
+def test_supervise_blocks_evaluator_output_digest_mismatch(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    result = rail.supervise(handle, runtime=MismatchedEvaluatorDigestRuntime())
+
+    assert result.outcome == "blocked"
+    run_status = yaml.safe_load((handle.artifact_dir / "run_status.yaml").read_text(encoding="utf-8"))
+    assert run_status["blocked_category"] == "runtime"
+    assert "evaluator input digest" in run_status["reason"]
 
 
 def _target_repo(tmp_path: Path) -> Path:
@@ -208,6 +240,10 @@ class PassingRuntime:
         from rail.actor_runtime.schemas import fake_actor_output
 
         output = fake_actor_output(invocation.actor)
+        if invocation.actor == "evaluator":
+            evaluator_input_digest = invocation.input.get("evaluator_input_digest")
+            if isinstance(evaluator_input_digest, str):
+                output["evaluated_input_digest"] = evaluator_input_digest
         if invocation.actor == "generator":
             _write_noop_patch_bundle(invocation)
         _write_runtime_files(invocation, "succeeded")
@@ -230,9 +266,25 @@ class RevisingRuntime(PassingRuntime):
         result = super().run(invocation)
         if invocation.actor == "evaluator" and not self.revised:
             self.revised = True
-            output = {"decision": "revise", "findings": ["fix"], "reason_codes": ["implementation_gap"], "quality_confidence": "medium"}
+            output = {
+                "decision": "revise",
+                "evaluated_input_digest": invocation.input["evaluator_input_digest"],
+                "findings": ["fix"],
+                "reason_codes": ["implementation_gap"],
+                "quality_confidence": "medium",
+            }
             return result.model_copy(update={"structured_output": output})
         return result
+
+
+class MismatchedEvaluatorDigestRuntime(PassingRuntime):
+    def run(self, invocation: ActorInvocation) -> ActorResult:
+        result = super().run(invocation)
+        if invocation.actor != "evaluator":
+            return result
+        output = dict(result.structured_output)
+        output["evaluated_input_digest"] = "sha256:wrong-evaluator-input"
+        return result.model_copy(update={"structured_output": output})
 
 
 class CapturingRuntime(PassingRuntime):

@@ -3,8 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import rail
-from rail.actor_runtime.agents import AgentsActorRuntime, SDKRunResult, build_sdk_tools, run_agent_live
+from rail.actor_runtime.agents import (
+    AgentsActorRuntime,
+    SDKRunResult,
+    build_sdk_tools,
+    run_agent_live,
+    validate_live_sdk_credentials,
+)
 from rail.actor_runtime.runtime import build_invocation
+from rail.auth.credentials import CredentialSource
 from rail.policy import load_effective_policy
 from pydantic import BaseModel
 
@@ -47,7 +54,11 @@ def test_live_runner_is_ready_when_operator_credential_is_configured(tmp_path, m
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret")
     monkeypatch.setenv("RAIL_ACTOR_RUNTIME_LIVE", "1")
 
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path))
+    runtime = AgentsActorRuntime(
+        project_root=Path("."),
+        policy=load_effective_policy(tmp_path),
+        credential_preflight=lambda _sources, _policy: None,
+    )
 
     readiness = runtime.readiness()
     assert readiness.ready is True
@@ -64,6 +75,80 @@ def test_default_runner_blocks_before_actor_when_credentials_missing(tmp_path, m
 
     assert result.status == "interrupted"
     assert "credential" in result.structured_output["error"]
+
+
+def test_live_runner_blocks_invalid_operator_credential_before_actor_work(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "not-a-real-key")
+    monkeypatch.setenv("RAIL_ACTOR_RUNTIME_LIVE", "1")
+    called = False
+
+    async def fail_if_called(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("SDK runner should not be called when credentials are invalid")
+
+    monkeypatch.setattr("agents.Runner.run", fail_if_called)
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path))
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert called is False
+    assert result.status == "interrupted"
+    assert result.blocked_category == "environment"
+    assert "invalid credential" in str(result.structured_output["error"])
+    assert "not-a-real-key" not in str(result.structured_output["error"])
+
+
+def test_live_runner_blocks_failed_credential_preflight_before_actor_work(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.setenv("RAIL_ACTOR_RUNTIME_LIVE", "1")
+    called = False
+
+    async def fail_if_called(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("SDK runner should not be called when credential preflight fails")
+
+    monkeypatch.setattr("agents.Runner.run", fail_if_called)
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runtime = AgentsActorRuntime(
+        project_root=Path("."),
+        policy=load_effective_policy(tmp_path),
+        credential_preflight=lambda _sources, _policy: "operator SDK invalid credential is configured",
+    )
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert called is False
+    assert result.status == "interrupted"
+    assert result.blocked_category == "environment"
+    assert "invalid credential" in str(result.structured_output["error"])
+
+
+def test_live_credential_preflight_uses_policy_timeout(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeModels:
+        def list(self, *, timeout=None):
+            captured["timeout"] = timeout
+            return object()
+
+    class FakeOpenAI:
+        def __init__(self, *, api_key):
+            captured["api_key"] = api_key
+            self.models = FakeModels()
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    base_policy = load_effective_policy(tmp_path)
+    policy = base_policy.model_copy(
+        update={"runtime": base_policy.runtime.model_copy(update={"timeout_seconds": 7})}
+    )
+
+    failure = validate_live_sdk_credentials(_credential_sources("sk-test-secret"), policy)
+
+    assert failure is None
+    assert captured == {"api_key": "sk-test-secret", "timeout": 7}
 
 
 def test_agents_runtime_builds_prompt_schema_and_validates_output(tmp_path):
@@ -131,7 +216,16 @@ def test_agents_runtime_redacts_secret_events(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
 
     def runner(_agent, _prompt, *, run_config):
-        return SDKRunResult(final_output={"decision": "pass", "findings": [], "reason_codes": [], "quality_confidence": "high"}, trace_id="sk-secret")
+        return SDKRunResult(
+            final_output={
+                "decision": "pass",
+                "evaluated_input_digest": "sha256:evaluator",
+                "findings": [],
+                "reason_codes": [],
+                "quality_confidence": "high",
+            },
+            trace_id="sk-secret",
+        )
 
     runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")), runner=runner)
 
@@ -163,6 +257,7 @@ def test_live_runner_applies_policy_bounds(monkeypatch):
 
     class FinalOutput(BaseModel):
         decision: str = "pass"
+        evaluated_input_digest: str = "sha256:evaluator"
         findings: list[str] = []
         reason_codes: list[str] = []
         quality_confidence: str = "high"
@@ -201,6 +296,29 @@ def test_agents_runtime_rejects_invalid_final_output(tmp_path):
     assert "validation" in result.structured_output["error"]
 
 
+def test_agents_runtime_rejects_invalid_evaluator_digest_shape(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    def runner(_agent, _prompt, *, run_config):
+        return SDKRunResult(
+            final_output={
+                "decision": "pass",
+                "evaluated_input_digest": "not-a-digest",
+                "findings": [],
+                "reason_codes": [],
+                "quality_confidence": "high",
+            },
+            trace_id="trace-invalid-digest",
+        )
+
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "evaluator"))
+
+    assert result.status == "interrupted"
+    assert "validation" in result.structured_output["error"]
+
+
 def _target_repo(tmp_path: Path) -> Path:
     target = tmp_path / "target-repo"
     target.mkdir(parents=True, exist_ok=True)
@@ -214,3 +332,7 @@ def _draft(target: Path) -> dict[str, object]:
         "goal": "Exercise agents runtime.",
         "definition_of_done": ["SDK adapter is offline-testable."],
     }
+
+
+def _credential_sources(value: str) -> list[CredentialSource]:
+    return [CredentialSource(category="operator_env", name="OPENAI_API_KEY", value=value)]

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from rail.request import HarnessRequest, normalize_draft
 
-def normalize_request(draft: Any) -> Any:
-    raise NotImplementedError("Request normalization is implemented in Task 2.")
+
+def normalize_request(draft: Any) -> HarnessRequest:
+    return normalize_draft(draft)
 
 
 def start_task(draft: Any) -> Any:

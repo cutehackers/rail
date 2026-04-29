@@ -1,0 +1,22 @@
+{
+  "request_version": "1",
+  "project_root": "/absolute/path/to/target-repo",
+  "task_type": "feature_addition",
+  "goal": "Add the account settings screen described by the product brief.",
+  "context": {
+    "feature": "account_settings",
+    "suspected_files": ["lib", "test", "pubspec.yaml"],
+    "related_files": ["AGENTS.md"],
+    "validation_roots": ["lib", "test"],
+    "validation_targets": ["test/account_settings_test.dart"]
+  },
+  "constraints": [
+    "Keep the implementation inside the target repository.",
+    "Do not introduce network sync or account migration flows."
+  ],
+  "definition_of_done": [
+    "The settings screen is reachable from the existing navigation.",
+    "Focused UI and state tests cover the new flow."
+  ],
+  "validation_profile": "real"
+}

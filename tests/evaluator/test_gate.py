@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from rail.artifacts.digests import digest_payload
 from rail.evaluator.gate import EvaluatorGateInput, evaluate_gate
 from rail.workspace.validation import record_validation_evidence
 
@@ -61,15 +62,60 @@ def test_evaluator_revise_and_reject_route_without_terminal_pass(tmp_path):
 
 def test_terminal_pass_accepts_current_clean_validation(tmp_path):
     evidence = record_validation_evidence(
-        tmp_path, command="pytest", exit_code=0, source="request", patch_digest="sha256:patch", tree_digest="sha256:tree"
+        tmp_path,
+        command="pytest",
+        exit_code=0,
+        source="request",
+        patch_digest="sha256:patch",
+        tree_digest="sha256:tree",
+        request_digest="sha256:request",
+        effective_policy_digest="sha256:policy",
+        actor_invocation_digest="sha256:actor",
     )
 
-    result = evaluate_gate({"decision": "pass", "findings": [], "reason_codes": [], "quality_confidence": "high"}, _gate_input(tmp_path, evidence.ref))
+    output = {"decision": "pass", "findings": [], "reason_codes": [], "quality_confidence": "high"}
+    result = evaluate_gate(output, _gate_input(tmp_path, evidence.ref, evaluator_input_digest=digest_payload(output)))
 
     assert result.outcome == "pass"
 
 
-def _gate_input(tmp_path: Path, validation_ref: Path | None) -> EvaluatorGateInput:
+def test_terminal_pass_rejects_mismatched_request_policy_actor_or_evaluator_digest(tmp_path):
+    evidence = record_validation_evidence(
+        tmp_path,
+        command="pytest",
+        exit_code=0,
+        source="request",
+        patch_digest="sha256:patch",
+        tree_digest="sha256:tree",
+        request_digest="sha256:other-request",
+        effective_policy_digest="sha256:policy",
+        actor_invocation_digest="sha256:actor",
+    )
+    output = {"decision": "pass", "findings": [], "reason_codes": [], "quality_confidence": "high"}
+
+    result = evaluate_gate(output, _gate_input(tmp_path, evidence.ref, evaluator_input_digest=digest_payload(output)))
+
+    assert result.outcome == "blocked"
+    assert "request digest" in result.reason
+
+
+def test_validation_evidence_redacts_logs_before_persisting(tmp_path):
+    evidence = record_validation_evidence(
+        tmp_path,
+        command="pytest",
+        exit_code=0,
+        source="request",
+        patch_digest="sha256:patch",
+        tree_digest="sha256:tree",
+        stdout="OPENAI_API_KEY=sk-secret-value",
+    )
+
+    assert "sk-secret-value" not in (tmp_path / evidence.stdout_ref).read_text(encoding="utf-8")
+
+
+def _gate_input(
+    tmp_path: Path, validation_ref: Path | None, evaluator_input_digest: str = "sha256:evaluator"
+) -> EvaluatorGateInput:
     return EvaluatorGateInput(
         artifact_dir=tmp_path,
         request_digest="sha256:request",
@@ -78,5 +124,5 @@ def _gate_input(tmp_path: Path, validation_ref: Path | None) -> EvaluatorGateInp
         patch_bundle_digest="sha256:patch",
         tree_digest="sha256:tree",
         validation_ref=validation_ref,
-        evaluator_input_digest="sha256:evaluator",
+        evaluator_input_digest=evaluator_input_digest,
     )

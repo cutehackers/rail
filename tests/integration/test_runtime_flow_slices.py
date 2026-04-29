@@ -14,7 +14,7 @@ def test_runtime_flow_slices_wire_actor_patch_validation_evaluator_and_projectio
     report = run_runtime_flow_slices(handle, target_root=target, relative_path="app.txt", content="new\n")
 
     assert report.actor_evidence_persisted is True
-    assert report.patch_bundle_ref == "patches/generator.patch.yaml"
+    assert report.patch_bundle_ref == "inline"
     assert report.patch_applied is True
     assert report.validation_status == "pass"
     assert report.evaluator_outcome == "pass"

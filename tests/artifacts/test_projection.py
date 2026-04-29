@@ -4,11 +4,13 @@ from pathlib import Path
 
 import rail
 from rail.artifacts.projection import project_result
+from tests.runtime_helpers import scripted_agents_runtime
 
 
 def test_result_projection_reads_artifacts_only(tmp_path):
-    handle = rail.start_task(_draft(_target_repo(tmp_path)))
-    rail.supervise(handle)
+    target = _target_repo(tmp_path)
+    handle = rail.start_task(_draft(target))
+    rail.supervise(handle, runtime=scripted_agents_runtime(target))
 
     projection = project_result(handle)
 
@@ -22,8 +24,9 @@ def test_result_projection_reads_artifacts_only(tmp_path):
 
 
 def test_status_and_result_api_project_from_handle(tmp_path):
-    handle = rail.start_task(_draft(_target_repo(tmp_path)))
-    rail.supervise(handle)
+    target = _target_repo(tmp_path)
+    handle = rail.start_task(_draft(target))
+    rail.supervise(handle, runtime=scripted_agents_runtime(target))
 
     status = rail.status(handle)
     result = rail.result(handle)

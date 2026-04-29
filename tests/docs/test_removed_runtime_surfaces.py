@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 REMOVED_SURFACES = [
+    Path(".goreleaser.yaml"),
     Path("cmd"),
     Path("internal"),
     Path("go.mod"),
@@ -12,12 +13,15 @@ REMOVED_SURFACES = [
     Path("assets/scaffold/embed.go"),
     Path("assets/skill/embed.go"),
     Path("packaging/homebrew"),
+    Path("scripts/install_skill.sh"),
     Path("tool"),
 ]
 
 ACTIVE_TEXT_ROOTS = [
+    Path("AGENTS.md"),
     Path("README.md"),
     Path("README-kr.md"),
+    Path(".harness/README.md"),
     Path("docs/ARCHITECTURE.md"),
     Path("docs/ARCHITECTURE-kr.md"),
     Path("skills/rail"),
@@ -34,8 +38,22 @@ FORBIDDEN_RUNTIME_TEXT = (
     "go test",
     "go build",
     "./build/rail",
+    "rail compose-request",
+    "rail validate-request",
+    "rail run",
+    "rail execute",
+    "rail route-evaluation",
+    "rail supervise",
+    "rail status",
+    "rail result",
+    "rail integrate",
     "cmd/rail",
     "internal/",
+    "Go CLI",
+    "Go runtime",
+    "goreleaser",
+    ".goreleaser",
+    "install_skill",
 )
 
 

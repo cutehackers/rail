@@ -24,6 +24,11 @@ class PatchBundle(BaseModel):
     schema_version: Literal["1"] = "1"
     base_tree_digest: str
     operations: list[PatchOperation]
+
+
+class PatchValidationPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     max_files: int = 100
     max_bytes: int = 1_000_000
     allow_binary: bool = False
@@ -41,18 +46,19 @@ def build_patch_bundle(sandbox: Sandbox, relative_paths: list[str]) -> PatchBund
     return bundle
 
 
-def validate_patch_bundle(bundle: PatchBundle) -> PatchBundle:
-    if len(bundle.operations) > bundle.max_files:
+def validate_patch_bundle(bundle: PatchBundle, *, policy: PatchValidationPolicy | None = None) -> PatchBundle:
+    policy = policy or PatchValidationPolicy()
+    if len(bundle.operations) > policy.max_files:
         raise ValueError("patch bundle file count exceeds policy")
     total_size = 0
     for operation in bundle.operations:
-        _validate_path(operation.path, allow_artifact_writes=bundle.allow_artifact_writes)
+        _validate_path(operation.path, allow_artifact_writes=policy.allow_artifact_writes)
         total_size += len(operation.content.encode("utf-8"))
-        if operation.binary and not bundle.allow_binary:
+        if operation.binary and not policy.allow_binary:
             raise ValueError("binary patch operations require explicit policy")
-        if operation.executable and not bundle.allow_executable:
+        if operation.executable and not policy.allow_executable:
             raise ValueError("executable mode changes require explicit policy")
-    if total_size > bundle.max_bytes:
+    if total_size > policy.max_bytes:
         raise ValueError("patch bundle size exceeds policy")
     return bundle
 

@@ -14,11 +14,11 @@ class SupervisorState(BaseModel):
     current_actor: str
     revision_budget: int = 1
     terminal: bool = False
-    outcome: Literal["pass", "reject"] | None = None
+    outcome: Literal["pass", "reject", "blocked"] | None = None
 
     @classmethod
     def created(cls, artifact_id: str) -> SupervisorState:
         return cls(artifact_id=artifact_id, current_actor=SUPERVISOR_GRAPH[0])
 
-    def finish(self, outcome: Literal["pass", "reject"]) -> SupervisorState:
+    def finish(self, outcome: Literal["pass", "reject", "blocked"]) -> SupervisorState:
         return self.model_copy(update={"terminal": True, "outcome": outcome})

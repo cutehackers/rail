@@ -10,9 +10,12 @@ import yaml
 from pydantic import ValidationError
 
 from rail.artifacts.models import ArtifactHandle, RunStatus, TerminalSummary, WorkflowState
+from rail.policy.schema import ActorRuntimePolicyV2
+from rail.policy.validate import digest_policy
 from rail.request import HarnessRequest, normalize_draft
 
 _REQUEST_SNAPSHOT = "request.yaml"
+_EFFECTIVE_POLICY = "effective_policy.yaml"
 
 
 class ArtifactStore:
@@ -74,6 +77,8 @@ def validate_artifact_handle(handle: ArtifactHandle) -> ArtifactHandle:
     artifacts_root = (project_root / ".harness" / "artifacts").resolve(strict=False)
     if not _is_relative_to(artifact_dir, artifacts_root):
         raise ValueError("artifact_dir must be inside the project artifact store")
+    if artifact_dir.name != handle.artifact_id:
+        raise ValueError("artifact_id does not match artifact_dir")
 
     request_snapshot = artifact_dir / _REQUEST_SNAPSHOT
     if not request_snapshot.is_file():
@@ -88,7 +93,17 @@ def validate_artifact_handle(handle: ArtifactHandle) -> ArtifactHandle:
     if actual_digest != handle.request_snapshot_digest:
         raise ValueError("request snapshot digest mismatch")
 
+    _validate_artifact_identity_files(artifact_dir, handle.artifact_id)
+    _validate_effective_policy_digest(artifact_dir, handle.effective_policy_digest)
+
     return handle.model_copy(update={"artifact_dir": artifact_dir, "project_root": project_root})
+
+
+def bind_effective_policy(handle: ArtifactHandle, policy: ActorRuntimePolicyV2) -> ArtifactHandle:
+    validated = validate_artifact_handle(handle.model_copy(update={"effective_policy_digest": None}))
+    digest = digest_policy(policy)
+    _write_yaml(validated.artifact_dir / _EFFECTIVE_POLICY, policy.model_dump(mode="json"))
+    return validate_artifact_handle(validated.model_copy(update={"effective_policy_digest": digest}))
 
 
 def digest_request(request: HarnessRequest) -> str:
@@ -132,3 +147,31 @@ def _workflow_payload(artifact_id: str, request: HarnessRequest) -> dict[str, ob
         "task_type": request.task_type,
         "status": "created",
     }
+
+
+def _validate_artifact_identity_files(artifact_dir: Path, artifact_id: str) -> None:
+    for name in ("state.yaml", "workflow.yaml", "run_status.yaml", "terminal_summary.yaml"):
+        path = artifact_dir / name
+        if not path.is_file():
+            raise ValueError(f"{name} is missing")
+        try:
+            payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as exc:
+            raise ValueError(f"{name} is invalid") from exc
+        if payload.get("artifact_id") != artifact_id:
+            raise ValueError(f"artifact_id mismatch in {name}")
+
+
+def _validate_effective_policy_digest(artifact_dir: Path, expected_digest: str | None) -> None:
+    if expected_digest is None:
+        return
+    path = artifact_dir / _EFFECTIVE_POLICY
+    if not path.is_file():
+        raise ValueError("effective policy snapshot is missing")
+    try:
+        policy = ActorRuntimePolicyV2.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    except (ValidationError, yaml.YAMLError) as exc:
+        raise ValueError("effective policy snapshot is invalid") from exc
+    actual_digest = digest_policy(policy)
+    if actual_digest != expected_digest:
+        raise ValueError("effective policy digest mismatch")

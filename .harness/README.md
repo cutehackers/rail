@@ -1,80 +1,66 @@
 # Rail Harness Bundle
 
-이 저장소의 `.harness/` 는 별도 앱 repo에 종속되지 않는 control-plane harness 번들이다. 현재 내용은 Go 바이너리에 포함되는 기본 harness 자산의 원본이며, 프로젝트 로컬 `.harness/` 파일이 있으면 해당 파일이 우선 적용된다.
+This `.harness/` tree is the default control-plane harness bundle for target repositories. It is source data for the Python Rail Harness Runtime, not a downstream application.
 
-핵심 역할은 다음과 같다.
+Core responsibilities:
 
-- 최소 입력 request를 구조화하고 검증한다.
-- task type별 workflow와 actor 계약을 고정한다.
-- artifact, actor brief, execution plan을 생성한다.
-- actor 실행 시 일관된 rubric/rule/schema를 공급한다.
+- define actor prompts and structured output contracts
+- define supervisor routing and policy defaults
+- define request and artifact templates
+- provide rules, rubrics, and review-only learning state
+- keep project-local harness state explicit and reviewable
 
-## 기본 철학
+## Philosophy
 
-- 사용자 입력은 적게 받는다.
-- 작업 범위는 가능한 한 좁힌다.
-- 실행과 평가는 분리한다.
-- 하네스의 우선순위는 생성 속도보다 일관성과 안전성이다.
+- Accept minimal user input.
+- Keep task scope narrow.
+- Separate actor work, patch application, validation, and evaluation.
+- Prefer traceable evidence over implicit runtime state.
+- Mutate target repositories only through validated patch bundles.
 
-## 구조
+## Structure
 
 - `supervisor/`: routing, registry, execution policy, contract
-- `actors/`: actor별 지침
-- `rules/`: 금지 변경, 아키텍처 규칙, 프로젝트 프로필 규칙
-- `rubrics/`: task type별 평가 기준
-- `templates/`: request/output schema와 template
-- `skills/`: 반복 작업용 보조 skill 문서
+- `actors/`: actor instructions
+- `rules/`: forbidden changes, architecture rules, project profile rules
+- `rubrics/`: task-type evaluation criteria
+- `templates/`: request and output schemas
+- `skills/`: auxiliary skill documents
 
-상태성 디렉터리인 `.harness/artifacts/`, `.harness/learning/`, `.harness/requests/`, `.harness/fixtures/` 는 기본 자산으로 되돌아가지 않는다.
+Stateful directories such as `.harness/artifacts/`, `.harness/learning/`, `.harness/requests/`, and `.harness/fixtures/` belong to the project-local harness state and are not treated as disposable generated output.
 
-## 사용 방식
+## Operating Model
 
-개발 중인 이 source repo에서는 `.harness/` 원본을 수정하지만, 제품 사용 시에는 target repo 안의 프로젝트 로컬 `.harness/` 가 실제 상태 저장소가 된다.
+Normal users interact through the Rail skill and Python API:
 
-즉 운영 관점에서는 두 역할이 분리된다.
+```python
+import rail
 
-- source repo: Rail 제품과 기본 harness 자산의 원본
-- target project root: `rail init` 또는 `--project-root` 로 지정되는 실제 작업 repo
+handle = rail.start_task(draft)
+rail.supervise(handle)
+projection = rail.result(handle)
+```
 
-## 실행 순서
+The target project root is carried by the request draft and then by the artifact handle. Existing artifact operations use that handle rather than reconstructing identity from request files.
 
-1. request 생성
-   - `./build/rail compose-request --stdin`
-2. request 검증
-   - `./build/rail validate-request --request ...`
-3. workflow bootstrap
-   - `./build/rail run --request ... --project-root /absolute/path/to/app-repo`
-4. actor 실행
-   - `./build/rail execute --artifact .harness/artifacts/<task-id>`
-5. 평가 라우팅 / handoff / learning 검증
-   - `./build/rail route-evaluation --artifact ...`
-   - `./build/rail integrate --artifact ...`
-   - `./build/rail verify-learning-state`
+## Runtime Path
 
-`run` 시점에 target project root가 workflow에 기록되므로, 보통 `execute` 에서는 다시 넘기지 않아도 된다.
+The Python supervisor runs the actor graph:
 
-## 현재 자동화 수준
+1. planner
+2. context builder
+3. critic
+4. generator
+5. executor
+6. evaluator
 
-현재 runtime은 다음까지 수행한다.
+The Actor Runtime returns structured actor output and evidence. Generator output may include a patch bundle reference or inline patch bundle. Rail validates and applies that bundle before validation evidence is recorded. Evaluator pass is accepted only when the evidence chain matches the request digest, effective policy digest, actor invocation digest, patch bundle digest, target tree digest, validation result, and evaluator input digest.
 
-- request template/init compose/validate
-- workflow artifact 생성
-- actor brief 생성
-- `codex exec` 기반 actor 순차 실행
-- evaluator의 `revise` 시 generator 재시도
-- file-based review flow (`init-*`, `apply-*`)
-- derived learning snapshot 검증
+## Source Of Truth
 
-아직 다음은 완성되지 않았다.
+- `registry.yaml`: task actor and output definitions
+- `task_router.yaml`: task type routing and risk policy
+- `context_contract.yaml`: actor input and output contract
+- `supervisor/actor_runtime.yaml`: default Actor Runtime policy
 
-- 병렬 actor orchestration
-- 다양한 프로젝트 프로필
-- 모든 task type에 대한 운영 수준 검증
-
-## source of truth
-
-- `registry.yaml`: task별 actor/output/rubric 정의
-- `task_router.yaml`: task_type별 actor route와 risk retry 정책
-- `context_contract.yaml`: actor별 입력/출력 계약
-
-runtime은 이 세 파일을 기준으로 부트스트랩과 실행 정합성을 판단한다.
+The runtime uses these files to preserve deterministic routing, policy narrowing, and evidence checks.

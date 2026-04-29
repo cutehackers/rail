@@ -37,6 +37,16 @@ def test_sandbox_write_rejects_symlink_escape(tmp_path):
         write_sandbox_file(sandbox, "link.txt", "escape")
 
 
+def test_sandbox_creation_rejects_target_symlink_to_host_file(tmp_path):
+    target = _target(tmp_path)
+    outside = tmp_path / "outside-secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    (target / "linked-secret.txt").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="symlink"):
+        create_sandbox(target)
+
+
 def test_pre_post_tree_digest_proves_actor_did_not_mutate_target(tmp_path):
     target = _target(tmp_path)
     (target / "app.txt").write_text("old\n", encoding="utf-8")

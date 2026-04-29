@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from rail.workspace.patch_bundle import PatchBundle
+
 
 class PlanOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -52,6 +54,7 @@ class ImplementationResultOutput(BaseModel):
     tests_added_or_updated: list[str]
     known_limits: list[str]
     patch_bundle_ref: str | None = None
+    patch_bundle: PatchBundle | None = None
 
 
 class ExecutionTestsOutput(BaseModel):

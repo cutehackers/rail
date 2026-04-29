@@ -4,8 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+import yaml
 
 import rail
+from rail.policy import load_effective_policy
 
 
 def test_start_task_allocates_artifact_handle_and_layout(tmp_path):
@@ -88,6 +90,45 @@ def test_validate_handle_rejects_artifact_dir_outside_project_store(tmp_path):
     forged = handle.model_copy(update={"artifact_dir": handle.artifact_dir.parent / ".." / "outside"})
 
     with pytest.raises(ValueError, match="artifact_dir"):
+        validate_artifact_handle(forged)
+
+
+def test_validate_handle_rejects_tampered_artifact_identity_files(tmp_path):
+    from rail.artifacts.store import validate_artifact_handle
+
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    state_path = handle.artifact_dir / "state.yaml"
+    state = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+    state["artifact_id"] = "rail-forged"
+    state_path.write_text(yaml.safe_dump(state), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="artifact_id"):
+        validate_artifact_handle(handle)
+
+
+def test_validate_handle_binds_effective_policy_digest_to_persisted_policy(tmp_path):
+    from rail.artifacts.store import bind_effective_policy, validate_artifact_handle
+    from rail.policy import digest_policy
+
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    policy = load_effective_policy(handle.project_root)
+
+    bound = bind_effective_policy(handle, policy)
+
+    assert bound.effective_policy_digest == digest_policy(policy)
+    assert validate_artifact_handle(bound).effective_policy_digest == bound.effective_policy_digest
+    forged = bound.model_copy(update={"effective_policy_digest": "sha256:forged"})
+    with pytest.raises(ValueError, match="policy"):
+        validate_artifact_handle(forged)
+
+
+def test_validate_handle_rejects_policy_digest_without_persisted_policy(tmp_path):
+    from rail.artifacts.store import validate_artifact_handle
+
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    forged = handle.model_copy(update={"effective_policy_digest": "sha256:missing"})
+
+    with pytest.raises(ValueError, match="policy"):
         validate_artifact_handle(forged)
 
 

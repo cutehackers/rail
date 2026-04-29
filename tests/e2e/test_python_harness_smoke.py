@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 import rail
+from tests.runtime_helpers import scripted_agents_runtime
 
 
 def test_python_harness_direct_api_smoke_allocates_supervises_and_projects(tmp_path):
@@ -11,7 +12,7 @@ def test_python_harness_direct_api_smoke_allocates_supervises_and_projects(tmp_p
     shutil.copytree(Path("examples/python-target"), target)
 
     first = rail.start_task(_draft(target, "Fix the sample greeting."))
-    rail.supervise(first)
+    rail.supervise(first, runtime=scripted_agents_runtime(target))
     first_result = rail.result(first)
 
     assert first_result.outcome == "pass"

@@ -7,7 +7,8 @@ import yaml
 from rail.policy.schema import ActorRuntimePolicyV2
 from rail.policy.validate import narrow_policy
 
-_DEFAULT_POLICY_PATH = Path("assets/defaults/supervisor/actor_runtime.yaml")
+_RAIL_ROOT = Path(__file__).resolve().parents[3]
+_DEFAULT_POLICY_PATH = _RAIL_ROOT / "assets/defaults/supervisor/actor_runtime.yaml"
 _TARGET_POLICY_PATH = Path(".harness/supervisor/actor_runtime.yaml")
 
 

@@ -6,6 +6,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from rail.auth.redaction import redact_secrets
+
 ValidationSource = Literal["request", "policy", "actor"]
 
 
@@ -20,6 +22,9 @@ class ValidationEvidence(BaseModel):
     stderr_ref: str
     patch_digest: str
     tree_digest: str
+    request_digest: str | None = None
+    effective_policy_digest: str | None = None
+    actor_invocation_digest: str | None = None
     credential_mode: str
     network_mode: str
     sandbox_ref: str
@@ -35,6 +40,9 @@ def record_validation_evidence(
     source: ValidationSource,
     patch_digest: str,
     tree_digest: str,
+    request_digest: str | None = None,
+    effective_policy_digest: str | None = None,
+    actor_invocation_digest: str | None = None,
     stdout: str = "",
     stderr: str = "",
 ) -> ValidationEvidence:
@@ -43,8 +51,8 @@ def record_validation_evidence(
     stdout_ref = "validation/stdout.txt"
     stderr_ref = "validation/stderr.txt"
     evidence_ref = Path("validation/evidence.yaml")
-    (artifact_dir / stdout_ref).write_text(stdout, encoding="utf-8")
-    (artifact_dir / stderr_ref).write_text(stderr, encoding="utf-8")
+    (artifact_dir / stdout_ref).write_text(redact_secrets(stdout), encoding="utf-8")
+    (artifact_dir / stderr_ref).write_text(redact_secrets(stderr), encoding="utf-8")
     evidence = ValidationEvidence(
         command=command,
         exit_code=exit_code,
@@ -54,6 +62,9 @@ def record_validation_evidence(
         stderr_ref=stderr_ref,
         patch_digest=patch_digest,
         tree_digest=tree_digest,
+        request_digest=request_digest,
+        effective_policy_digest=effective_policy_digest,
+        actor_invocation_digest=actor_invocation_digest,
         credential_mode="minimum",
         network_mode="disabled",
         sandbox_ref="sandbox",

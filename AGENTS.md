@@ -2,21 +2,24 @@
 
 ## Purpose
 
-`rail` is the harness control-plane repository and the source of the Rail Codex skill.
+`rail` is the skill-first harness control-plane repository and the source of the bundled Rail Codex skill.
 
-The most important product behavior to preserve is this:
+The product behavior to preserve is:
 
 - users describe work in natural language through the Rail skill
-- the Rail skill turns that request into the correct harness request shape
-- Rail then executes the bounded workflow against a separate target repository
+- the Rail skill turns that request into the correct Python request draft
+- Rail executes a bounded Actor Runtime workflow against a separate target repository
 
-This repository does not contain the downstream application under change. It owns the Go runtime, the supervisor and actor configuration under `.harness/`, the embedded defaults, and the Rail skill behavior that keeps users from hand-writing complex harness YAML.
+This repository does not contain the downstream application under change. It owns the Python Rail Harness Runtime, supervisor and actor configuration under `.harness/`, bundled defaults, tests, examples, and Rail skill behavior.
 
 ## What To Change
 
-- Runtime entrypoint: `cmd/rail`
+- Public Python API: `src/rail/api.py`
 - Harness behavior and policy: `.harness/`
+- Actor Runtime: `src/rail/actor_runtime/`
+- Supervisor, routing, evidence, and projection: `src/rail/supervisor/`, `src/rail/evaluator/`, `src/rail/artifacts/`
 - Repo-owned skill: `skills/rail/SKILL.md`
+- Bundled skill copy: `assets/skill/Rail/`
 - Project docs, plans, and specs: `docs/`
 - Example target-repo conventions: `examples/`
 
@@ -24,13 +27,13 @@ Prefer changing the smallest set of files that actually own the behavior.
 
 ## Working Rules
 
-- Do not treat this as a Flutter app repo. It is a Go CLI control-plane project.
+- Do not treat this as a Flutter app repo.
 - Do not implement downstream product code here. Changes here should affect request composition, validation, orchestration, routing, reporting, skills, or harness policy.
-- Treat the Rail skill as a first-class product surface, not ancillary documentation. If a change affects how users express work, verify whether `skills/rail/` and `assets/skill/Rail/` must change with it.
-- Keep the end-user contract skill-first. The CLI exists to materialize, validate, and execute the workflow, but normal users should not need to know the full command surface.
-- Preserve the current file layout. The hidden `.harness/` tree is part of the product, not incidental config.
+- Treat the Rail skill as a first-class product surface. If a change affects how users express work, verify whether `skills/rail/` and `assets/skill/Rail/` must change with it.
+- Keep the end-user contract skill-first. Normal users should not need to know request YAML or wrapper details.
+- Preserve the `.harness/` layout. It is part of the product, not incidental config.
 - Keep supervisor behavior explicit and reviewable. Favor deterministic routing and traceable outputs over clever automation.
-- Documentation security rule: **DO NOT** include a user's home directory path in docs or examples. Treat any home-folder path like `/Users/<name>/...` or `~/<...>` in documentation as a warning-level lint issue and replace it with a sanitized placeholder such as `/absolute/path/to/...`.
+- Documentation security rule: do not include a user's home directory path in docs or examples. Replace home-folder paths with placeholders such as `/absolute/path/to/...`.
 - Avoid editing generated artifacts in `.harness/artifacts/` unless the task is specifically about fixtures, evidence, or checked-in examples.
 - Avoid editing `.worktrees/` or `.git/worktrees/` content from the main worktree.
 - Treat untracked patch rejects or stale migration leftovers as local artifacts unless the task explicitly asks you to inspect or resolve them.
@@ -40,43 +43,44 @@ Prefer changing the smallest set of files that actually own the behavior.
 Run all commands from the repo root.
 
 ```bash
-go test ./...
-go build -o build/rail ./cmd/rail
-./build/rail compose-request --stdin
-./build/rail validate-request --request .harness/requests/<file>.yaml
-./build/rail run --request .harness/requests/<file>.yaml --project-root /absolute/path/to/target-repo
-./build/rail execute --artifact .harness/artifacts/<task-id>
-./build/rail route-evaluation --artifact .harness/artifacts/<task-id>
+uv run --python 3.12 pytest -q
+uv run --python 3.12 ruff check src tests
+uv run --python 3.12 mypy src/rail
 ```
 
-If you need command syntax, `cmd/rail` and `internal/cli/` contain the authoritative usage text.
+Use focused pytest targets while developing, then run the full checks before claiming completion.
 
 ## Editing Guidance
 
 - Keep request and artifact schemas aligned with actor expectations.
 - When changing routing behavior, also update the relevant policy or evaluator guidance under `.harness/`.
-- When changing the repo-owned skill, keep it aligned with the runtime flags and current workflow.
+- When changing the repo-owned skill, keep it aligned with the Python API workflow.
 - Prefer extending existing docs in `docs/` when behavior, launch criteria, or operator expectations change.
 - Keep constraints and definitions of done concrete and testable. Avoid vague policy text.
+- Target mutation must flow through Rail-validated patch bundles and evaluator gates.
 
 ## Validation Expectations
 
 Use the lightest validation that proves the change.
 
-- For CLI or schema changes, run the relevant `./build/rail ...` or `go test ./...` command against an existing request or fixture.
-- For request-shape changes, validate a real request file with `validate-request`.
-- For routing or artifact changes, exercise the smallest relevant harness flow and inspect the produced artifact output.
-- If a task changes documented launch behavior or supervisor outcomes, update the matching docs in `docs/tasks.md` or `docs/superpowers/`.
+- For API, schema, or runtime changes, run focused tests for the touched package and then the full Python test suite.
+- For request-shape changes, validate via `rail.normalize_request(...)` or a focused request test.
+- For routing or artifact changes, exercise the smallest relevant supervisor flow and inspect the produced artifact output.
+- If a task changes documented launch behavior or supervisor outcomes, update the matching docs and skill references.
 
 ## Repo Map
 
 - `README.md`: operator-facing overview and quick start
-- `cmd/rail`: CLI entrypoint
-- `internal/cli/`: CLI surface and dispatch
-- `internal/runtime/`: runtime wiring and harness execution
+- `src/rail/api.py`: public Python API
+- `src/rail/request/`: request normalization and schema
+- `src/rail/artifacts/`: artifact identity, storage, resume policy, and projections
+- `src/rail/actor_runtime/`: SDK-backed Actor Runtime boundary
+- `src/rail/supervisor/`: supervisor loop and routing
+- `src/rail/evaluator/`: evaluator gate and evidence checks
+- `src/rail/workspace/`: sandbox, patch bundle, apply, and validation evidence
 - `.harness/actors/`: actor instructions
 - `.harness/supervisor/`: routing and policy configuration
-- `.harness/templates/`: YAML schema definitions
+- `.harness/templates/`: schema definitions
 - `.harness/rules/` and `.harness/rubrics/`: guardrails and evaluation criteria
 - `.harness/requests/`: checked-in request examples and fixtures
 - `.harness/learning/`: review-only learning and hardening state

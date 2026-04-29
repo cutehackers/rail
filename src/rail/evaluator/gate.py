@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from rail.artifacts.digests import digest_payload
 from rail.workspace.validation import load_validation_evidence
 
 
@@ -48,6 +49,14 @@ def evaluate_gate(evaluator_output: dict[str, object], gate_input: EvaluatorGate
         return EvaluatorGateResult(outcome="blocked", reason="validation evidence source must be request or policy")
     if evidence.patch_digest != gate_input.patch_bundle_digest or evidence.tree_digest != gate_input.tree_digest:
         return EvaluatorGateResult(outcome="blocked", reason="validation evidence is not current for evaluated patch")
+    if evidence.request_digest != gate_input.request_digest:
+        return EvaluatorGateResult(outcome="blocked", reason="validation evidence request digest does not match")
+    if evidence.effective_policy_digest != gate_input.effective_policy_digest:
+        return EvaluatorGateResult(outcome="blocked", reason="validation evidence policy digest does not match")
+    if evidence.actor_invocation_digest != gate_input.actor_invocation_digest:
+        return EvaluatorGateResult(outcome="blocked", reason="validation evidence actor digest does not match")
+    if digest_payload(evaluator_output) != gate_input.evaluator_input_digest:
+        return EvaluatorGateResult(outcome="blocked", reason="evaluator input digest does not match")
     if evidence.mutation_status != "clean":
         return EvaluatorGateResult(outcome="blocked", reason="validation mutated the target")
 

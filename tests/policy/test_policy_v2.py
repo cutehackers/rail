@@ -18,6 +18,18 @@ def test_default_actor_runtime_policy_loads():
     assert policy.workspace.mutation_mode == "patch_bundle"
 
 
+def test_default_policy_load_is_not_controlled_by_current_working_directory(tmp_path, monkeypatch):
+    hostile_cwd = tmp_path / "hostile"
+    hostile_policy = hostile_cwd / "assets" / "defaults" / "supervisor"
+    hostile_policy.mkdir(parents=True)
+    (hostile_policy / "actor_runtime.yaml").write_text("runtime:\n  provider: codex_cli\n", encoding="utf-8")
+    monkeypatch.chdir(hostile_cwd)
+
+    policy = load_effective_policy(tmp_path)
+
+    assert policy.runtime.provider == "openai_agents_sdk"
+
+
 def test_target_policy_can_narrow_capabilities(tmp_path):
     overlay = ActorRuntimePolicyV2.model_validate(
         {

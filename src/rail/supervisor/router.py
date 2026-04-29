@@ -6,11 +6,13 @@ from rail.supervisor.state import SupervisorState
 
 def route_next(state: SupervisorState, actor_output: dict[str, object]) -> SupervisorState:
     if state.current_actor == "evaluator":
-        decision = actor_output.get("decision", "pass")
+        decision = actor_output.get("decision")
         if decision == "pass":
             return state.finish("pass")
         if decision == "reject" or state.revision_budget <= 0:
             return state.finish("reject")
+        if decision != "revise":
+            return state.finish("blocked")
         return state.model_copy(update={"current_actor": "generator", "revision_budget": state.revision_budget - 1})
 
     next_index = SUPERVISOR_GRAPH.index(state.current_actor) + 1

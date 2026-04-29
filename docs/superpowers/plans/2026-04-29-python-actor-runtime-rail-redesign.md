@@ -47,7 +47,7 @@ Remove product runtime surfaces after Python parity:
 - Create: `tests/spikes/test_agents_sdk_boundary.py`
 - Create: `pyproject.toml`
 
-- [ ] **Step 1: Write the failing no-network SDK boundary test**
+- [x] **Step 1: Write the failing no-network SDK boundary test**
 
 Write a test that imports the real OpenAI Agents SDK package and constructs the
 SDK objects Rail depends on without making network calls:
@@ -60,18 +60,18 @@ SDK objects Rail depends on without making network calls:
   by default
 - sandbox capability object with no direct target mutation
 
-- [ ] **Step 2: Run the spike test and verify it fails**
+- [x] **Step 2: Run the spike test and verify it fails**
 
 Run: `pytest tests/spikes/test_agents_sdk_boundary.py -q`
 
 Expected: FAIL until the dependency is pinned and the real SDK surface is known.
 
-- [ ] **Step 3: Pin the dependency and implement the spike**
+- [x] **Step 3: Pin the dependency and implement the spike**
 
 Add the Agents SDK dependency to `pyproject.toml`. Implement the smallest
 no-network construction test. Do not mock the SDK import in this spike.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -81,7 +81,7 @@ pytest tests/spikes/test_agents_sdk_boundary.py -q
 
 Expected: pass without network access.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml spikes tests/spikes
@@ -97,7 +97,7 @@ git commit -m "test: pin agents sdk boundary"
 - Create: `tests/test_no_legacy_runtime_calls.py`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Write the failing public API smoke test**
+- [x] **Step 1: Write the failing public API smoke test**
 
 ```python
 import rail
@@ -110,13 +110,13 @@ def test_public_api_exports_harness_operations():
     assert callable(rail.result)
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `pytest tests/test_api_smoke.py -q`
 
 Expected: FAIL because the public API does not exist.
 
-- [ ] **Step 3: Add minimal Python package and public API**
+- [x] **Step 3: Add minimal Python package and public API**
 
 Implement `rail/api.py` and export from `rail/__init__.py`:
 
@@ -140,13 +140,13 @@ def result(handle):
     raise NotImplementedError
 ```
 
-- [ ] **Step 4: Add legacy runtime guard**
+- [x] **Step 4: Add legacy runtime guard**
 
 Add a test that fails if new Python runtime code shells out to `codex exec`, Go
 binaries, `./build/rail`, or legacy compatibility shims. The Python API is the
 organizing boundary; CLI wrappers come later.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -157,7 +157,7 @@ ruff check rail tests
 
 Expected: tests pass and lint passes.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml rail tests .gitignore
@@ -173,20 +173,20 @@ git commit -m "feat: scaffold python rail api"
 - Modify: `rail/api.py`
 - Test: `tests/request/test_compose_request.py`
 
-- [ ] **Step 1: Write failing schema normalization tests**
+- [x] **Step 1: Write failing schema normalization tests**
 
 Test that a JSON draft with `project_root`, `task_type`, `goal`, `constraints`,
 and `definition_of_done` becomes a normalized request with version `1`.
 Also test a fixture shaped like the Rail skill's natural-language output so the
 core skill-first contract is covered before the e2e phase.
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/request/test_compose_request.py -q`
 
 Expected: FAIL because request modules do not exist.
 
-- [ ] **Step 3: Implement request models**
+- [x] **Step 3: Implement request models**
 
 Use Pydantic models for:
 
@@ -204,7 +204,7 @@ Validation rules:
 - Rail-skill-produced request drafts are accepted without hand-authored harness
   YAML.
 
-- [ ] **Step 4: Implement request normalization API**
+- [x] **Step 4: Implement request normalization API**
 
 Expose request normalization through the Python API:
 
@@ -217,7 +217,7 @@ execution. A later optional CLI/export command may write a request file for
 inspection, but `start_task(draft)` must be able to allocate an artifact from an
 in-memory draft.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -228,7 +228,7 @@ ruff check rail tests
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add rail/request rail/api.py tests/request
@@ -245,7 +245,7 @@ git commit -m "feat: add request draft normalization"
 - Test: `tests/artifacts/test_store.py`
 - Test: `tests/artifacts/test_task_identity.py`
 
-- [ ] **Step 1: Write failing artifact allocation tests**
+- [x] **Step 1: Write failing artifact allocation tests**
 
 Test that the direct Python API allocates an artifact and returns an artifact
 handle:
@@ -271,7 +271,7 @@ Test that allocation creates:
   runs/
 ```
 
-- [ ] **Step 2: Write failing task identity tests**
+- [x] **Step 2: Write failing task identity tests**
 
 Cover the policy:
 
@@ -288,7 +288,7 @@ Cover the policy:
   mismatched project roots, missing request snapshots, and digest mismatches
 - concurrent fresh allocations produce distinct artifact handles atomically
 
-- [ ] **Step 3: Run tests and verify they fail**
+- [x] **Step 3: Run tests and verify they fail**
 
 Run:
 
@@ -298,7 +298,7 @@ pytest tests/artifacts/test_store.py tests/artifacts/test_task_identity.py -q
 
 Expected: FAIL because artifact store does not exist.
 
-- [ ] **Step 4: Implement artifact models**
+- [x] **Step 4: Implement artifact models**
 
 Use Pydantic models for:
 
@@ -309,7 +309,7 @@ Use Pydantic models for:
 - `ArtifactHandle`
 - `TaskIdentityDecision`
 
-- [ ] **Step 5: Implement allocation and identity decisions**
+- [x] **Step 5: Implement allocation and identity decisions**
 
 Generate opaque artifact IDs atomically. Do not derive identity from
 `.harness/requests/request.yaml` or request filenames. Human-readable request
@@ -325,7 +325,7 @@ The CLI, if retained, should only wrap this API. `ArtifactHandle` must include
 canonical artifact directory, canonical project root, request snapshot digest,
 effective policy digest when available, and schema version.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -335,7 +335,7 @@ pytest tests/artifacts/test_store.py tests/artifacts/test_task_identity.py -q
 
 Expected: pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add rail/artifacts rail/api.py tests/artifacts
@@ -352,7 +352,7 @@ git commit -m "feat: add artifact handles and task identity"
 - Modify: `.harness/supervisor/actor_runtime.yaml`
 - Test: `tests/policy/test_policy_v2.py`
 
-- [ ] **Step 1: Write failing policy tests**
+- [x] **Step 1: Write failing policy tests**
 
 Cover:
 
@@ -370,13 +370,13 @@ Cover:
 - unknown runtime provider is rejected
 - docs/examples do not contain home-directory paths
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/policy/test_policy_v2.py -q`
 
 Expected: FAIL because policy v2 does not exist.
 
-- [ ] **Step 3: Implement policy models**
+- [x] **Step 3: Implement policy models**
 
 Implement policy v2 fields:
 
@@ -390,14 +390,14 @@ Implement policy v2 fields:
 Use closed Pydantic models or JSON Schema with `extra=forbid`. Define explicit
 narrowing functions for every field instead of dictionary merging.
 
-- [ ] **Step 4: Implement policy loader**
+- [x] **Step 4: Implement policy loader**
 
 Load Rail/operator defaults first, then apply target `.harness/` policy only as
 a validated narrowing overlay. Keep source metadata for evidence, but do not
 print machine-specific absolute paths in docs. Write canonical effective-policy
 evidence and digest helpers for actor invocations.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -407,7 +407,7 @@ pytest tests/policy/test_policy_v2.py -q
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add rail/policy assets/defaults/supervisor .harness/supervisor tests/policy
@@ -423,7 +423,7 @@ git commit -m "feat: add actor runtime policy v2"
 - Test: `tests/auth/test_credentials.py`
 - Test: `tests/auth/test_secret_redaction.py`
 
-- [ ] **Step 1: Write failing credential and redaction tests**
+- [x] **Step 1: Write failing credential and redaction tests**
 
 Cover:
 
@@ -436,24 +436,24 @@ Cover:
 - `doctor` reports credential source category and runtime readiness without
   printing secret values or machine-specific secret paths
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/auth/test_credentials.py tests/auth/test_secret_redaction.py -q`
 
 Expected: FAIL because auth modules do not exist.
 
-- [ ] **Step 3: Implement credential source and redaction models**
+- [x] **Step 3: Implement credential source and redaction models**
 
 Implement allowlisted credential source categories, secret-bearing key
 detection, redaction helpers, and artifact scan helpers that fail when seeded
 secret canaries appear under artifacts.
 
-- [ ] **Step 4: Implement doctor diagnostics**
+- [x] **Step 4: Implement doctor diagnostics**
 
 Expose direct API and optional CLI doctor diagnostics. Diagnostics must be
 secret-safe and must not require Codex CLI.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -463,7 +463,7 @@ pytest tests/auth/test_credentials.py tests/auth/test_secret_redaction.py -q
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add rail/auth rail/cli/doctor.py tests/auth
@@ -477,7 +477,7 @@ git commit -m "feat: add sdk credential safety"
 - Create: `rail/actor_runtime/schemas.py`
 - Test: `tests/actor_runtime/test_actor_catalog.py`
 
-- [ ] **Step 1: Write failing actor catalog tests**
+- [x] **Step 1: Write failing actor catalog tests**
 
 Cover:
 
@@ -488,19 +488,19 @@ Cover:
 - fake actor outputs for planner, context_builder, critic, generator, executor,
   and evaluator validate against the loaded schemas
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/actor_runtime/test_actor_catalog.py -q`
 
 Expected: FAIL because actor catalog does not exist.
 
-- [ ] **Step 3: Implement prompt and schema catalog**
+- [x] **Step 3: Implement prompt and schema catalog**
 
 Implement actor-to-prompt and actor-to-schema resolution before the real Actor
 Runtime is wired. The supervisor and Actor Runtime must consume this catalog
 instead of hardcoding prompt/schema paths.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -510,7 +510,7 @@ pytest tests/actor_runtime/test_actor_catalog.py -q
 
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add rail/actor_runtime tests/actor_runtime
@@ -526,7 +526,7 @@ git commit -m "feat: add actor prompt and schema catalog"
 - Modify: `rail/api.py`
 - Test: `tests/supervisor/test_routing.py`
 
-- [ ] **Step 1: Write failing graph tests**
+- [x] **Step 1: Write failing graph tests**
 
 Test the initial graph:
 
@@ -536,22 +536,22 @@ planner -> context_builder -> critic -> generator -> executor -> evaluator
 
 Test revise routing and terminal pass/reject behavior.
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/supervisor/test_routing.py -q`
 
 Expected: FAIL because supervisor modules do not exist.
 
-- [ ] **Step 3: Implement graph and state transitions**
+- [x] **Step 3: Implement graph and state transitions**
 
 Implement deterministic transitions and revision budgets. Do not invoke the
 Actor Runtime yet; use fake actor results.
 
-- [ ] **Step 4: Implement supervision API stub**
+- [x] **Step 4: Implement supervision API stub**
 
 Load artifact, load policy, step through graph, and write run status.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -561,7 +561,7 @@ pytest tests/supervisor/test_routing.py -q
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add rail/supervisor rail/api.py tests/supervisor
@@ -576,7 +576,7 @@ git commit -m "feat: add python supervisor graph"
 - Modify: `rail/actor_runtime/schemas.py`
 - Test: `tests/actor_runtime/test_fake_runtime.py`
 
-- [ ] **Step 1: Write failing Actor Runtime contract tests**
+- [x] **Step 1: Write failing Actor Runtime contract tests**
 
 Test that an `ActorInvocation` returns an `ActorResult` with:
 
@@ -586,13 +586,13 @@ Test that an `ActorInvocation` returns an `ActorResult` with:
 - `runtime_evidence_ref`
 - optional `patch_bundle_ref`
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/actor_runtime/test_fake_runtime.py -q`
 
 Expected: FAIL because Actor Runtime contract does not exist.
 
-- [ ] **Step 3: Implement runtime protocol**
+- [x] **Step 3: Implement runtime protocol**
 
 Add:
 
@@ -601,11 +601,11 @@ Add:
 - `ActorRuntime`
 - `FakeActorRuntime`
 
-- [ ] **Step 4: Integrate fake runtime with supervisor**
+- [x] **Step 4: Integrate fake runtime with supervisor**
 
 Allow supervisor tests to run full graph using fake structured actor outputs.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -615,7 +615,7 @@ pytest tests/actor_runtime/test_fake_runtime.py tests/supervisor/test_routing.py
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add rail/actor_runtime tests/actor_runtime tests/supervisor
@@ -632,7 +632,7 @@ git commit -m "feat: define actor runtime contract"
 - Modify: `rail/actor_runtime/runtime.py`
 - Test: `tests/actor_runtime/test_agents_runtime.py`
 
-- [ ] **Step 1: Write tests with mocked SDK runner**
+- [x] **Step 1: Write tests with mocked SDK runner**
 
 Mock the Agents SDK call boundary. Test:
 
@@ -651,28 +651,28 @@ tool objects with a fake transport or no-network test client. This test must
 exercise real SDK object construction, structured-output configuration, and
 policy-to-tool mapping without making live network calls.
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/actor_runtime/test_agents_runtime.py -q`
 
 Expected: FAIL because SDK runtime does not exist.
 
-- [ ] **Step 3: Implement Agents SDK adapter**
+- [x] **Step 3: Implement Agents SDK adapter**
 
 Use a small wrapper so tests do not depend on live network calls. Keep the
 wrapper responsible for SDK-specific object construction.
 
-- [ ] **Step 4: Implement policy-controlled tool construction**
+- [x] **Step 4: Implement policy-controlled tool construction**
 
 Build the SDK tool set from the narrowed invocation policy. Do not create shell,
 network, MCP, or patch tools unless the policy explicitly allows them.
 
-- [ ] **Step 5: Implement normalized events**
+- [x] **Step 5: Implement normalized events**
 
 Convert SDK trace/tool events into Rail-owned JSONL event records. Do not expose
 SDK internals as the only evidence contract.
 
-- [ ] **Step 6: Verify mocked and offline SDK-boundary runtime**
+- [x] **Step 6: Verify mocked and offline SDK-boundary runtime**
 
 Run:
 
@@ -682,7 +682,7 @@ pytest tests/actor_runtime/test_agents_runtime.py -q
 
 Expected: mocked tests and no-network real SDK adapter construction tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add rail/actor_runtime tests/actor_runtime
@@ -699,7 +699,7 @@ git commit -m "feat: add agents sdk actor runtime"
 - Test: `tests/workspace/test_patch_bundle.py`
 - Test: `tests/workspace/test_execution_isolation.py`
 
-- [ ] **Step 1: Write failing sandbox and patch tests**
+- [x] **Step 1: Write failing sandbox and patch tests**
 
 Cover:
 
@@ -722,7 +722,7 @@ Cover:
 - absolute target paths are denied in tool inputs
 - pre/post target tree digests prove actor tools did not mutate the target
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -732,25 +732,25 @@ pytest tests/workspace/test_patch_bundle.py tests/workspace/test_execution_isola
 
 Expected: FAIL because workspace module does not exist.
 
-- [ ] **Step 3: Implement sandbox creation**
+- [x] **Step 3: Implement sandbox creation**
 
 Start with copy or git worktree strategy. Keep the implementation simple and
 deterministic. The sandbox must live outside the target repository and must be
 the only writable working tree exposed to actor tools.
 
-- [ ] **Step 4: Implement patch bundle validation**
+- [x] **Step 4: Implement patch bundle validation**
 
 Validate every file operation before apply. The patch bundle schema must include
 operation type, relative path, expected old content or digest where practical,
 mode changes, size metadata, and sandbox base identity.
 
-- [ ] **Step 5: Implement execution isolation checks**
+- [x] **Step 5: Implement execution isolation checks**
 
 Scrub environment variables, deny target-root absolute paths, record target tree
 digests before and after actor execution, and fail if the target changed before
 Rail applies a patch.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -760,7 +760,7 @@ pytest tests/workspace/test_patch_bundle.py tests/workspace/test_execution_isola
 
 Expected: pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add rail/workspace tests/workspace
@@ -776,7 +776,7 @@ git commit -m "feat: add sandbox patch workflow"
 - Test: `tests/evaluator/test_gate.py`
 - Test: `tests/evaluator/test_evidence_chain.py`
 
-- [ ] **Step 1: Write failing evaluator gate tests**
+- [x] **Step 1: Write failing evaluator gate tests**
 
 Test:
 
@@ -795,7 +795,7 @@ Test:
 - evaluator revise routes back to generator
 - evaluator reject creates terminal failure
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -805,20 +805,20 @@ pytest tests/evaluator/test_gate.py tests/evaluator/test_evidence_chain.py -q
 
 Expected: FAIL because evaluator gate does not exist.
 
-- [ ] **Step 3: Implement validation evidence model**
+- [x] **Step 3: Implement validation evidence model**
 
 Capture command, exit code, stdout/stderr paths, duration, status, credential
 mode, network mode, sandbox ref, pre/post validation tree digests, and mutation
 status.
 
-- [ ] **Step 4: Implement evaluator gate**
+- [x] **Step 4: Implement evaluator gate**
 
 Keep evaluator decision deterministic from schema-valid evaluator output, but do
 not allow `pass` unless required validation evidence is present, current, and
 acceptable. Any validation waiver must be explicit in policy and visible in
 runtime evidence. Compare content digests before terminal pass.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -828,7 +828,7 @@ pytest tests/evaluator/test_gate.py tests/evaluator/test_evidence_chain.py -q
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add rail/workspace/validation.py rail/evaluator rail/artifacts/digests.py tests/evaluator
@@ -842,7 +842,7 @@ git commit -m "feat: add validation and evaluator gate"
 - Modify: `rail/api.py`
 - Test: `tests/artifacts/test_projection.py`
 
-- [ ] **Step 1: Write failing result projection tests**
+- [x] **Step 1: Write failing result projection tests**
 
 Test `rail result --artifact ... --json` returns:
 
@@ -854,21 +854,21 @@ Test `rail result --artifact ... --json` returns:
 - residual risk
 - next step
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/artifacts/test_projection.py -q`
 
 Expected: FAIL because projection does not exist.
 
-- [ ] **Step 3: Implement projection**
+- [x] **Step 3: Implement projection**
 
 Projection reads artifacts only. It must not call the SDK.
 
-- [ ] **Step 4: Implement status and result API**
+- [x] **Step 4: Implement status and result API**
 
 Status prints latest phase, actor, interruption, terminal state, and next step.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -878,7 +878,7 @@ pytest tests/artifacts/test_projection.py -q
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add rail/artifacts/projection.py rail/api.py tests/artifacts
@@ -898,7 +898,7 @@ git commit -m "feat: add result projection"
 - Modify: `rail/artifacts/projection.py`
 - Test: `tests/integration/test_runtime_flow_slices.py`
 
-- [ ] **Step 1: Write failing integration slice tests**
+- [x] **Step 1: Write failing integration slice tests**
 
 Cover these flows separately:
 
@@ -909,19 +909,19 @@ Cover these flows separately:
 - evaluator consumes validation evidence and routes pass/revise/reject
 - result/status projection reads only artifacts produced by the prior slices
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/integration/test_runtime_flow_slices.py -q`
 
 Expected: FAIL until integration slices are wired.
 
-- [ ] **Step 3: Wire one integration boundary at a time**
+- [x] **Step 3: Wire one integration boundary at a time**
 
 Do not use the e2e smoke as a catch-all implementation task. If a slice fails,
 fix the owning module and add focused tests there before updating the integration
 test.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -931,7 +931,7 @@ pytest tests/integration/test_runtime_flow_slices.py -q
 
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add rail tests/integration
@@ -947,18 +947,18 @@ git commit -m "feat: wire python harness runtime slices"
 - Modify: `assets/skill/Rail/SKILL.md`
 - Test: `tests/docs/test_no_home_paths.py`
 
-- [ ] **Step 1: Write failing docs lint**
+- [x] **Step 1: Write failing docs lint**
 
 Test docs and skill files do not contain user home paths or stale Go/Codex CLI
 runtime guidance.
 
-- [ ] **Step 2: Run docs lint and verify it fails**
+- [x] **Step 2: Run docs lint and verify it fails**
 
 Run: `pytest tests/docs/test_no_home_paths.py -q`
 
 Expected: FAIL until docs are updated.
 
-- [ ] **Step 3: Update user workflow docs**
+- [x] **Step 3: Update user workflow docs**
 
 Describe:
 
@@ -970,7 +970,7 @@ Describe:
 - sandbox patch mutation boundary
 - artifact handle fresh/resume policy
 
-- [ ] **Step 4: Keep skill copies aligned**
+- [x] **Step 4: Keep skill copies aligned**
 
 Run:
 
@@ -981,7 +981,7 @@ diff -qr skills/rail/references assets/skill/Rail/references
 
 Expected: no diff.
 
-- [ ] **Step 5: Verify docs**
+- [x] **Step 5: Verify docs**
 
 Run:
 
@@ -992,7 +992,7 @@ rg -n -e '/U[s]ers/' -e '~[/]' -e '/h[o]me/' README.md docs skills/rail assets/s
 
 Expected: pytest passes; `rg` returns no machine-specific home path examples.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md docs/ARCHITECTURE.md skills/rail assets/skill/Rail tests/docs
@@ -1005,7 +1005,7 @@ git commit -m "docs: describe python actor runtime workflow"
 - Create: `tests/e2e/test_python_harness_smoke.py`
 - Create: `examples/python-target/`
 
-- [ ] **Step 1: Write failing e2e smoke**
+- [x] **Step 1: Write failing e2e smoke**
 
 Test a small target repo task:
 
@@ -1030,20 +1030,20 @@ also assert that a second fresh goal allocates a second artifact and that a
 follow-up result/status operation uses the original artifact handle without
 allocating a new artifact.
 
-- [ ] **Step 2: Run and verify it fails**
+- [x] **Step 2: Run and verify it fails**
 
 Run: `pytest tests/e2e/test_python_harness_smoke.py -q`
 
 Expected: FAIL until all runtime paths are wired.
 
-- [ ] **Step 3: Verify prior wiring through e2e**
+- [x] **Step 3: Verify prior wiring through e2e**
 
 This task should not implement broad missing wiring. It should prove the prior
 request, artifact handle, policy, supervisor, Actor Runtime, patch, validation,
 evaluator, and projection tasks work together. If the e2e exposes a missing
 boundary, add or fix the focused owning-module test first.
 
-- [ ] **Step 4: Verify full suite**
+- [x] **Step 4: Verify full suite**
 
 Run:
 
@@ -1055,7 +1055,7 @@ mypy rail
 
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/e2e examples rail
@@ -1075,7 +1075,7 @@ git commit -m "test: add python rail harness smoke"
 - Modify: docs under `docs/`
 - Test: full Python suite
 
-- [ ] **Step 1: Write removal guard test**
+- [x] **Step 1: Write removal guard test**
 
 Add a test that fails if product docs mention `codex exec`, `codex_cli`,
 trusted PATH, Homebrew symlink handling, or Go runtime commands as the active
@@ -1086,24 +1086,24 @@ The guard must also inventory Go product surfaces: `cmd/`, `internal/`,
 and active docs that tell operators to run `go test`, `go build`, or
 `./build/rail`.
 
-- [ ] **Step 2: Run guard and verify it fails**
+- [x] **Step 2: Run guard and verify it fails**
 
 Run: `pytest tests/docs/test_removed_runtime_surfaces.py -q`
 
 Expected: FAIL before removal.
 
-- [ ] **Step 3: Remove Go runtime surfaces**
+- [x] **Step 3: Remove Go runtime surfaces**
 
 Delete Go product runtime, module files, and active build/test references only
 after Task 12 passes. Historical design docs may mention Go only when clearly
 framed as historical context.
 
-- [ ] **Step 4: Remove CLI runtime policy files**
+- [x] **Step 4: Remove CLI runtime policy files**
 
 Replace CLI-shaped policy files with policy v2. Keep `.harness/` layout but not
 the old CLI semantics.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -1115,7 +1115,7 @@ mypy rail
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -1124,25 +1124,25 @@ git commit -m "refactor: remove go and codex cli runtime"
 
 ## Final Acceptance
 
-- [ ] `rail.normalize_request(draft)` creates a schema-valid request object.
-- [ ] `start_task(draft)` allocates an artifact and returns an artifact handle.
-- [ ] Existing artifact operations use the artifact handle without composing a
+- [x] `rail.normalize_request(draft)` creates a schema-valid request object.
+- [x] `start_task(draft)` allocates an artifact and returns an artifact handle.
+- [x] Existing artifact operations use the artifact handle without composing a
       new request or allocating a new artifact.
-- [ ] A new goal creates a fresh artifact even when an older artifact is blocked
+- [x] A new goal creates a fresh artifact even when an older artifact is blocked
       or rejected.
-- [ ] Any CLI command, if present, is a wrapper over the Python API.
-- [ ] `rail.supervise(handle)` runs the Python Actor Runtime path for a supplied
+- [x] Any CLI command, if present, is a wrapper over the Python API.
+- [x] `rail.supervise(handle)` runs the Python Actor Runtime path for a supplied
       artifact handle.
-- [ ] `rail.result(handle)` projects outcome from artifacts only.
-- [ ] Shell, validation, and file tools cannot mutate the target outside
+- [x] `rail.result(handle)` projects outcome from artifacts only.
+- [x] Shell, validation, and file tools cannot mutate the target outside
       Rail-validated patch apply.
-- [ ] Credential canary tests prove secrets do not leak into artifacts or
+- [x] Credential canary tests prove secrets do not leak into artifacts or
       user-facing output.
-- [ ] Effective policy, actor invocation, patch, validation, and evaluator
+- [x] Effective policy, actor invocation, patch, validation, and evaluator
       evidence are digest-linked before terminal pass.
-- [ ] No product workflow invokes `codex exec`.
-- [ ] No product workflow depends on trusted PATH, Homebrew symlink handling, or
+- [x] No product workflow invokes `codex exec`.
+- [x] No product workflow depends on trusted PATH, Homebrew symlink handling, or
       CLI flag compatibility.
-- [ ] Target mutation happens only through Rail-validated patch bundles.
-- [ ] Docs and skills use Actor Runtime terminology.
-- [ ] Docs and examples contain no user home-directory paths.
+- [x] Target mutation happens only through Rail-validated patch bundles.
+- [x] Docs and skills use Actor Runtime terminology.
+- [x] Docs and examples contain no user home-directory paths.

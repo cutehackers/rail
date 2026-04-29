@@ -458,14 +458,14 @@ git commit -m "refactor: isolate fake actor runtime"
 - Test: `tests/docs/test_no_home_paths.py`
 - Test: `tests/docs/test_removed_runtime_surfaces.py`
 
-- [ ] **Step 1: Write failing docs assertion**
+- [x] **Step 1: Write failing docs assertion**
 
 Extend `tests/docs/test_no_home_paths.py` to assert that `docs/tasks.md` references:
 
 - `docs/superpowers/specs/2026-04-29-python-actor-runtime-release-ready.md`
 - `docs/superpowers/plans/2026-04-29-python-actor-runtime-release-ready.md`
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run:
 
@@ -475,7 +475,7 @@ uv run --python 3.12 pytest tests/docs/test_no_home_paths.py -q
 
 Expected: fail until `docs/tasks.md` is updated.
 
-- [ ] **Step 3: Update skill workflow**
+- [x] **Step 3: Update skill workflow**
 
 Make both skill copies describe:
 
@@ -486,11 +486,11 @@ Make both skill copies describe:
 
 Keep the two skill files byte-for-byte aligned.
 
-- [ ] **Step 4: Update active release checklist**
+- [x] **Step 4: Update active release checklist**
 
 Rewrite `docs/tasks.md` so the active release-ready boundary points to this Python spec and plan. Mark the redesign baseline as complete and leave live runtime, persisted resume, validation runner, terminal summary, fake runtime isolation, and release gate hardening unchecked until implemented.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -501,7 +501,7 @@ cmp -s skills/rail/SKILL.md assets/skill/Rail/SKILL.md
 
 Expected: pytest passes and `cmp` exits 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add skills/rail assets/skill/Rail docs/tasks.md tests/docs

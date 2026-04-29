@@ -17,7 +17,7 @@ The user should be able to describe the task naturally. You then:
 2. infer the request draft fields
 3. ask one concise clarification only when a missing field would make the request unsafe
 4. call the Rail Python API or an API-backed wrapper
-5. report the artifact handle and projected result
+5. report the persisted artifact handle, projected result, and terminal summary
 
 Do not make the user write YAML by hand unless they explicitly ask to inspect or export it.
 
@@ -75,9 +75,9 @@ Reject unknown fields instead of inventing them.
 
 ## Task Identity Decision
 
-Start a fresh task when the user gives a new goal, bug, feature, refactor, or test repair. Fresh work calls `rail.start_task(draft)` and receives a new artifact handle.
+Start a fresh task when the user gives a new goal, bug, feature, refactor, or test repair. Fresh work calls `rail.start_task(draft)` and receives a new artifact handle. The persisted handle lives at `handle.artifact_dir / "handle.yaml"`.
 
-Continue an existing artifact only when the user asks to continue, retry, inspect status/result, debug, integrate, or provides a known artifact handle. Existing artifact operations must not compose a new request or allocate a new artifact.
+Continue an existing artifact only when the user asks to continue, retry, inspect status/result, debug, integrate, or provides a known artifact handle or `handle.yaml` path. Existing artifact operations must not compose a new request or allocate a new artifact.
 
 If the user references prior work but gives neither a new goal nor an artifact handle, ask one concise clarification:
 
@@ -93,21 +93,34 @@ Fresh task:
 
 ```python
 import rail
+from rail.artifacts.terminal_summary import project_terminal_summary
 
 request = rail.normalize_request(draft)
 handle = rail.start_task(draft)
 rail.supervise(handle)
 result = rail.result(handle)
+summary = project_terminal_summary(handle)
 ```
 
 Existing artifact:
 
 ```python
+import rail
+from rail.artifacts.terminal_summary import project_terminal_summary
+
+handle = rail.load_handle("/absolute/path/to/artifact/handle.yaml")
 status = rail.status(handle)
 result = rail.result(handle)
+summary = project_terminal_summary(handle)
 ```
 
 Optional command wrappers are acceptable only when they call the same Python API.
+
+## Readiness And Blocking
+
+`rail.supervise(handle)` checks Actor Runtime readiness before actor work. Missing SDK credentials, disabled live execution, policy blocks, validation failures, and environment problems must stop as blocked outcomes with secret-safe reasons.
+
+When supervision blocks, do not continue by manually invoking actors or mutating the target. Report `rail.result(handle)` and the terminal summary so the user sees the blocked category, reason, evidence refs, and next step.
 
 ## Reporting
 
@@ -118,11 +131,12 @@ For fresh tasks, report:
 - target project root
 - artifact handle
 - terminal outcome from `rail.result(handle)`
+- blocked category and reason from the terminal summary when blocked
 - evidence refs
 - residual risk
 - next step
 
-Do not claim implementation success from supervisor process output alone. Use result projection.
+Do not claim implementation success from supervisor process output alone. Use result projection and terminal summary.
 
 ## Guardrails
 

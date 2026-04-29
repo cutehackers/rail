@@ -40,7 +40,7 @@ The release candidate must satisfy all of these conditions:
       outcomes.
 - [x] Test-only fake actor paths cannot be used accidentally by the public
       supervise path.
-- [ ] The Rail skill and bundled skill document the handle-based API flow and
+- [x] The Rail skill and bundled skill document the handle-based API flow and
       do not instruct users to manage request YAML, task IDs, or wrapper flags.
 - [x] Active docs and release checklist point to this Python release-ready
       boundary.

@@ -57,7 +57,7 @@ Actor Runtime based.
 
 ## Should
 
-- [ ] Align Rail skill copies to the release-ready handle workflow
+- [x] Align Rail skill copies to the release-ready handle workflow
   Done when repo-owned and bundled skill files describe fresh task, existing
   artifact, readiness failure, supervision, and result reporting through the
   Python API handle flow.

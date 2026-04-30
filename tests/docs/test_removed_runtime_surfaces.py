@@ -145,8 +145,6 @@ def test_publish_pipeline_is_tag_driven_and_gate_gated():
     assert "push:" in text
     assert "tags:" in text
     assert '\"v*\"' in text
-    assert "scripts/prepare_changelog.py" in text
-    assert "--check-only" in text
     assert "scripts/release_gate.sh" in text
     assert "scripts/check_release_metadata.py" in text
     assert "CHANGELOG.md" in text

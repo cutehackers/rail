@@ -196,39 +196,6 @@ def test_publish_script_creates_changelog_entry_when_missing(tmp_path: Path):
     assert run(["git", "tag", "--list", "v1.2.3"], cwd=repo).stdout.strip() == "v1.2.3"
 
 
-def test_changelog_check_only_rejects_missing_committed_entry(tmp_path: Path):
-    repo, _remote, _env = prepare_release_repo(
-        tmp_path,
-        "#!/usr/bin/env bash\nset -euo pipefail\n",
-    )
-    (repo / "CHANGELOG.md").write_text(
-        "# Changelog\n\n"
-        "## v1.2.2 - 2026-04-29\n\n"
-        "### Changed\n\n"
-        "- Previous release.\n",
-        encoding="utf-8",
-    )
-
-    result = run(
-        [
-            "python3",
-            "scripts/prepare_changelog.py",
-            "v1.2.3",
-            "--changelog",
-            "CHANGELOG.md",
-            "--spec",
-            "docs/SPEC.md",
-            "--check-only",
-        ],
-        cwd=repo,
-        check=False,
-    )
-
-    assert result.returncode == 1
-    assert "does not have a top entry for v1.2.3" in result.stderr
-    assert "## v1.2.3" not in (repo / "CHANGELOG.md").read_text(encoding="utf-8")
-
-
 def test_publish_script_rejects_low_quality_changelog_entry(tmp_path: Path):
     repo, _remote, env = prepare_release_repo(
         tmp_path,

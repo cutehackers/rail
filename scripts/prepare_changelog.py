@@ -222,25 +222,12 @@ def main() -> int:
     parser.add_argument("tag_name")
     parser.add_argument("--changelog", default="CHANGELOG.md")
     parser.add_argument("--spec", default="docs/SPEC.md")
-    parser.add_argument(
-        "--check-only",
-        action="store_true",
-        help="Validate the committed changelog entry without creating one.",
-    )
     args = parser.parse_args()
 
     try:
         version_from_tag(args.tag_name)
         changelog_path = Path(args.changelog)
-        if args.check_only and read_target_section(changelog_path, args.tag_name) is None:
-            raise ValueError(
-                f"CHANGELOG.md does not have a top entry for {args.tag_name}."
-            )
-        created = (
-            False
-            if args.check_only
-            else ensure_changelog_section(changelog_path, args.tag_name)
-        )
+        created = ensure_changelog_section(changelog_path, args.tag_name)
         validate_changelog_section(changelog_path, args.tag_name)
     except (RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

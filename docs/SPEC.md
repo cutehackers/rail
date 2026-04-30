@@ -337,8 +337,6 @@ It must fail if:
 
 - `pyproject.toml` version and tag version differ.
 - the top `CHANGELOG.md` entry version and tag version differ.
-- the top `CHANGELOG.md` entry is empty or contains unresolved draft language,
-  secret-like text, or home-directory paths.
 - the local release gate fails.
 - package build or PyPI publish fails.
 

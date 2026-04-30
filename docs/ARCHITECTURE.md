@@ -83,7 +83,7 @@ Release publication is tag-driven. A `v*` tag push runs `.github/workflows/publi
 - top `CHANGELOG.md` entry version matches the tag
 - `scripts/release_gate.sh` passes
 - `uv build` succeeds
-- PyPI upload succeeds with `PYPI_API_TOKEN`
+- PyPI upload succeeds through Trusted Publishing
 
 The workflow uses the same top `CHANGELOG.md` section as the release note source.
 

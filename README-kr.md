@@ -117,7 +117,7 @@ git push origin "v${VERSION}"
 - `CHANGELOG.md` 최상단 항목 버전이 태그와 일치
 - 로컬 릴리스 게이트 통과
 - `uv build` 결과 생성
-- `PYPI_API_TOKEN`으로 PyPI 업로드
+- PyPI Trusted Publishing으로 PyPI 업로드
 - 같은 `CHANGELOG.md` 항목으로 GitHub 릴리스 노트 생성
 
 사용자 대상 공지와 체크포인트는 항상 `CHANGELOG.md`만 반영합니다. 배포 후 사용자 설치는 다음과 같이 진행합니다.

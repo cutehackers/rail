@@ -45,8 +45,8 @@ canonicalizing them for use.
 Release publishing is now defined as a tag-driven pipeline:
 
 - `.github/workflows/publish.yml` runs `scripts/release_gate.sh`, validates
-  tag/version/changelog alignment, builds artifacts, uploads to PyPI with
-  `PYPI_API_TOKEN`, and writes release notes from the same top `CHANGELOG.md`
+  tag/version/changelog alignment, builds artifacts, uploads to PyPI through
+  Trusted Publishing, and writes release notes from the same top `CHANGELOG.md`
   entry.
 
 Local verification:

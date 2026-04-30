@@ -148,7 +148,9 @@ def test_publish_pipeline_is_tag_driven_and_gate_gated():
     assert "scripts/release_gate.sh" in text
     assert "scripts/check_release_metadata.py" in text
     assert "CHANGELOG.md" in text
-    assert "PYPI_API_TOKEN" in text
+    assert "id-token: write" in text
+    assert "PYPI_API_TOKEN" not in text
+    assert "password:" not in text
     assert "pypa/gh-action-pypi-publish@release/v1" in text
     assert "softprops/action-gh-release@v3" in text
 

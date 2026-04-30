@@ -204,7 +204,7 @@ The workflow validates:
 - the top `CHANGELOG.md` entry matches the tag version
 - local release gate
 - package build
-- PyPI publish using `PYPI_API_TOKEN`
+- PyPI publish through PyPI Trusted Publishing
 - GitHub release notes generated from the same `CHANGELOG.md` section
 
 Use `CHANGELOG.md` as the only user-facing release note/changelog source.

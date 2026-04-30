@@ -1172,10 +1172,10 @@ Expected: PASS.
 Run:
 
 ```bash
-rg -n "rail\\.normalize_request|def normalize_request|sealed_codex|vault_codex|actor backend" src tests docs .harness skills assets scripts AGENTS.md
+uv run --python 3.12 pytest tests/docs/test_removed_runtime_surfaces.py -q
 ```
 
-Expected: no matches except explicitly historical file paths only if the docs guard permits them.
+Expected: PASS. Keep removed request API names, incorrect provider spellings, and stale runtime terms out of active product surfaces through allowlisted pytest guards rather than broad repository text searches that self-match historical plans.
 
 - [ ] **Step 6: Commit verification fixes if needed**
 

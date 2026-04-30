@@ -182,20 +182,17 @@ Release is now triggered by a version tag, not by local upload commands:
 
 Homebrew is used only for cleanup of old installs; it does not drive release.
 
-1) Add a release entry in `CHANGELOG.md` at the top with:
+1) Add a release entry in `CHANGELOG.md` at the top:
    `## v${VERSION} - <YYYY-MM-DD>`.
-2) Set `pyproject.toml` version to the same `${VERSION}` as that changelog heading.
-3) Run the local release gate once in a clean repo.
-4) Commit those changes, create a tag, and push.
+2) Run the publish script.
 
 ```bash
-VERSION=0.6.0
-scripts/release_gate.sh
-git commit -am "Prepare v${VERSION} release"
-git tag "v${VERSION}"
-git push origin main
-git push origin "v${VERSION}"
+./publish.sh v0.6.1
 ```
+
+The script validates release metadata, updates `pyproject.toml` and `uv.lock`,
+runs `scripts/release_gate.sh`, commits release metadata changes when needed,
+pushes `main`, and pushes the release tag.
 
 A GitHub tag push (`v*`) triggers `.github/workflows/publish.yml`.
 The workflow validates:
@@ -212,11 +209,4 @@ After publish, users install the version they need:
 
 ```bash
 uv tool install rail-sdk==${VERSION}
-```
-
-If you need to release manually, use `uv` and `twine` with your token:
-
-```bash
-uv build
-TWINE_USERNAME=__token__ TWINE_PASSWORD=<pypi_token> uvx twine upload dist/*
 ```

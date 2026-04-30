@@ -155,6 +155,21 @@ def test_publish_pipeline_is_tag_driven_and_gate_gated():
     assert "softprops/action-gh-release@v3" in text
 
 
+def test_publish_script_runs_release_gate_and_pushes_tag():
+    path = Path("publish.sh")
+
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+    assert "./publish.sh vX.Y.Z" in text
+    assert "scripts/check_release_metadata.py" in text
+    assert "scripts/release_gate.sh" in text
+    assert "git push origin HEAD:main" in text
+    assert 'git push origin "${TAG}"' in text
+    assert "PYPI_API_TOKEN" not in text
+    assert "TWINE_PASSWORD" not in text
+    assert "<pypi_token>" not in text
+
+
 def test_release_metadata_check_accepts_matching_tag_and_changelog(tmp_path: Path):
     pyproject = tmp_path / "pyproject.toml"
     changelog = tmp_path / "CHANGELOG.md"

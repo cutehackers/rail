@@ -42,6 +42,7 @@ draft = {
     "definition_of_done": ["Refresh completes reliably.", "Focused validation passes."],
 }
 
+request = rail.specify(draft)
 handle = rail.start_task(draft)
 rail.supervise(handle)
 result = rail.result(handle)

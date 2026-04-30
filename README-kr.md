@@ -17,6 +17,7 @@
 ```python
 import rail
 
+request = rail.specify(draft)
 handle = rail.start_task(draft)
 rail.supervise(handle)
 result = rail.result(handle)

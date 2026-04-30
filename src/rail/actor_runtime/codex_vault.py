@@ -50,6 +50,7 @@ _TRUSTED_SYSTEM_BINARY_ROOTS = (Path("/bin"), Path("/usr/bin"), Path("/usr/local
 _UNTRUSTED_TEMP_ROOTS = (Path("/tmp"), Path("/var/tmp"))
 _READ_ONLY_SHELL_EXECUTABLES = {"pwd", "ls", "find", "rg", "sed", "cat", "wc", "head", "tail", "stat", "test"}
 _SHELL_OPERATOR_PATTERN = re.compile(r"(\|\||&&|[|<>;&`])|\$\(")
+_SHELL_VARIABLE_PATTERN = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\})")
 
 CodexCommandResolver = Callable[[], Path | None]
 CodexCommandTrustChecker = Callable[[Path, Path, Path | None], str | None]
@@ -931,17 +932,29 @@ def _shell_event_policy_violation(
         if root_text and root_text in command_value:
             return "shell command references a forbidden root"
     for arg in args[1:]:
-        if _argument_references_forbidden_root(arg, forbidden_roots):
+        if _argument_references_forbidden_root(arg, cwd=cwd, sandbox_root=sandbox_root, forbidden_roots=forbidden_roots):
             return "shell argument references a forbidden root"
+        if _argument_escapes_sandbox(arg, cwd=cwd, sandbox_root=sandbox_root):
+            return "shell argument escapes sandbox"
     return None
 
 
-def _argument_references_forbidden_root(arg: str, forbidden_roots: list[Path]) -> bool:
+def _argument_references_forbidden_root(arg: str, *, cwd: Path, sandbox_root: Path, forbidden_roots: list[Path]) -> bool:
+    if _SHELL_VARIABLE_PATTERN.search(arg) or arg.startswith("~"):
+        return True
     path = Path(arg)
-    if not path.is_absolute():
-        return False
-    resolved = path.resolve(strict=False)
+    resolved = path.resolve(strict=False) if path.is_absolute() else (cwd / path).resolve(strict=False)
     return any(resolved == root or resolved.is_relative_to(root) for root in forbidden_roots)
+
+
+def _argument_escapes_sandbox(arg: str, *, cwd: Path, sandbox_root: Path) -> bool:
+    if arg.startswith("-") or arg in {".", ""}:
+        return False
+    path = Path(arg)
+    if not path.is_absolute() and ".." not in path.parts:
+        return False
+    resolved = path.resolve(strict=False) if path.is_absolute() else (cwd / path).resolve(strict=False)
+    return resolved != sandbox_root and not resolved.is_relative_to(sandbox_root)
 
 
 def _check_invocation_command_path(

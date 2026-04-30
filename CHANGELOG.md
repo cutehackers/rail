@@ -2,6 +2,23 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.6.1 - 2026-04-30
+
+### Changed
+
+- Updated release and build automation: remove changelog quality check.
+- Updated release and build automation: auto-create release changelog.
+- Updated release and build automation: guide release changelog authoring.
+- Updated release and build automation: add release publish script.
+- Updated release and build automation: use pypi trusted publishing.
+- Expanded release validation coverage: align workflow action version guard.
+- Updated release and build automation: update actions to node 24 runtime.
+- Updated release and build automation: opt actions into node 24.
+
+### Verification
+
+- `scripts/release_gate.sh`
+
 ## v0.6.0 - 2026-04-30
 
 ### Added

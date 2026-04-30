@@ -943,9 +943,11 @@ def _shell_event_policy_violation(
 
 
 def _write_capable_shell_flag_violation(executable: str, args: list[str]) -> str | None:
-    if executable == "find" and any(arg in {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fdelete"} for arg in args):
+    if executable == "find" and any(
+        arg in {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fdelete", "-fls", "-fprint", "-fprintf"} for arg in args
+    ):
         return f"shell executable uses write-capable flag: {executable}"
-    if executable == "sed" and any(arg == "-i" or arg.startswith("-i") for arg in args):
+    if executable == "sed" and any(arg == "-i" or arg.startswith("-i") or arg == "--in-place" or arg.startswith("--in-place=") for arg in args):
         return f"shell executable uses write-capable flag: {executable}"
     if executable == "test" and any(arg in {"-w", "-G", "-O", "-N"} for arg in args):
         return f"shell executable uses write-capable flag: {executable}"

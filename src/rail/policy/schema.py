@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-RuntimeProvider = Literal["openai_agents_sdk"]
+RuntimeProvider = Literal["codex_vault", "openai_agents_sdk"]
 MutationMode = Literal["patch_bundle", "read_only", "direct"]
 NetworkMode = Literal["disabled", "restricted", "enabled"]
 SandboxMode = Literal["external_worktree", "copy"]
@@ -106,7 +106,14 @@ class ActorRuntimePolicyV2(BaseModel):
     approval_policy: ApprovalPolicy
 
     @model_validator(mode="after")
-    def _reject_direct_mutation(self) -> ActorRuntimePolicyV2:
+    def _validate_closed_runtime_policy(self) -> ActorRuntimePolicyV2:
         if self.actor_runtime.direct_target_mutation:
             raise ValueError("direct_target_mutation is not allowed")
+        if self.runtime.provider == "openai_agents_sdk" and (
+            self.tools.shell.enabled
+            or self.tools.filesystem.enabled
+            or self.tools.network.enabled
+            or self.tools.mcp.enabled
+        ):
+            raise ValueError("openai_agents_sdk requires shell, filesystem, network, and MCP tools to be disabled")
         return self

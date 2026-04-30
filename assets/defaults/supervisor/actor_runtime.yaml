@@ -1,5 +1,5 @@
 runtime:
-  provider: openai_agents_sdk
+  provider: codex_vault
   model: gpt-5.2
   timeout_seconds: 180
 
@@ -14,8 +14,8 @@ workspace:
 
 tools:
   shell:
-    enabled: false
-    allowlist: []
+    enabled: true
+    allowlist: [pwd, ls, find, rg, sed, cat, wc, head, tail, stat, test]
     timeout_seconds: 30
     max_output_bytes: 4000
   filesystem:

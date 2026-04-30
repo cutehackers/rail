@@ -12,7 +12,7 @@ from scripts.check_python_package_assets import find_missing_assets
 
 
 def test_release_gate_runs_asset_alignment_checker():
-    gate = Path("scripts/python_release_gate.sh").read_text(encoding="utf-8")
+    gate = Path("scripts/release_gate.sh").read_text(encoding="utf-8")
 
     assert "scripts/check_package_asset_alignment.py" in gate
 
@@ -28,10 +28,11 @@ def test_installed_wheel_smoke_checks_console_entrypoints():
 
     assert "rail-sdk" in script
     assert "--version" in script
+    assert 'policy.runtime.provider == "codex_vault"' in script
 
 
 def test_release_gate_cleans_current_and_stale_egg_info():
-    gate = Path("scripts/python_release_gate.sh").read_text(encoding="utf-8")
+    gate = Path("scripts/release_gate.sh").read_text(encoding="utf-8")
 
     assert "src/rail_sdk.egg-info" in gate
     assert "src/rail_harness.egg-info" in gate

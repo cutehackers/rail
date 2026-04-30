@@ -63,7 +63,7 @@ policy = load_effective_policy(target)
 catalog = load_actor_catalog(target)
 
 assert request.goal == "Smoke installed wheel resources."
-assert policy.runtime.provider == "openai_agents_sdk"
+assert policy.runtime.provider == "codex_vault"
 assert catalog["planner"].prompt
 assert catalog["planner"].schema_source["type"] == "object"
 """

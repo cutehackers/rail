@@ -18,7 +18,7 @@ def test_terminal_summary_explains_blocked_environment_readiness(tmp_path, monke
 
     assert summary.outcome == "blocked"
     assert summary.blocked_category == "environment"
-    assert "credential" in summary.reason.lower() or "live actor runtime" in summary.reason.lower()
+    assert "auth" in summary.reason.lower() or "codex" in summary.reason.lower()
     assert "environment" in summary.next_step
     assert (handle.artifact_dir / "terminal_summary.yaml").is_file()
 

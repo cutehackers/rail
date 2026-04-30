@@ -17,7 +17,8 @@ API first, Rail skill first, and Actor Runtime based.
 
 ## Current Audit
 
-Status: release-ready criteria are closed for the mandatory local gate.
+Status: release-ready criteria are closed for the mandatory local gate. The
+distribution package name is `rail-sdk`.
 
 The post-audit blockers have been implemented and verified against
 `docs/SPEC.md`: packaged assets survive wheel installation, Actor Runtime

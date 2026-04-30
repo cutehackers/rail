@@ -2,11 +2,11 @@
 set -euo pipefail
 
 cleanup() {
-  rm -rf src/rail_harness.egg-info
+  rm -rf src/rail_sdk.egg-info src/rail_harness.egg-info
 }
 trap cleanup EXIT
 
-rm -rf dist src/rail_harness.egg-info
+rm -rf dist src/rail_sdk.egg-info src/rail_harness.egg-info
 uv run --python 3.12 python scripts/check_package_asset_alignment.py
 uv build
 uv run --python 3.12 python scripts/check_python_package_assets.py dist

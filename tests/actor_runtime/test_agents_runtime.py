@@ -65,6 +65,21 @@ def test_live_runner_is_ready_when_operator_credential_is_configured(tmp_path, m
     assert readiness.credential_source == "operator_env"
 
 
+def test_default_runner_auto_enables_live_with_operator_credential(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
+
+    runtime = AgentsActorRuntime(
+        project_root=Path("."),
+        policy=load_effective_policy(tmp_path),
+        credential_preflight=lambda _sources, _policy: None,
+    )
+
+    readiness = runtime.readiness()
+    assert readiness.ready is True
+    assert readiness.credential_source == "operator_env"
+
+
 def test_default_runner_blocks_before_actor_when_credentials_missing(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)

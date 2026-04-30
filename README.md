@@ -126,4 +126,14 @@ Optional live SDK smoke is operator-gated. Set `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1`
 
 ## Distribution
 
-The experimental distribution decision is a Python package exposing the Rail Python API and bundled Rail skill assets. There is no command surface as the product contract; wrapper UX may exist later only as a thin layer over the same API.
+The Python package distribution is `rail-sdk`. It exposes the Rail Python API and bundled Rail skill assets. There is no command surface as the product contract; wrapper UX may exist later only as a thin layer over the same API.
+
+User setup is intentionally short:
+
+```bash
+uv pip install rail-sdk==0.1.0
+export OPENAI_API_KEY=...
+scripts/migration_v0.1.0.sh
+```
+
+After that, use the Rail skill with a target repository path and a natural-language task. Normal users do not need to set runtime feature flags.

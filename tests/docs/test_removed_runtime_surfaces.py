@@ -111,7 +111,20 @@ def test_optional_live_smoke_and_distribution_are_documented():
     architecture = Path("docs/ARCHITECTURE.md").read_text(encoding="utf-8")
 
     assert "RAIL_ACTOR_RUNTIME_LIVE_SMOKE" in readme
+    assert "rail-sdk" in readme
     assert "Python package" in readme
     assert "package asset" in readme
     assert "package asset" in architecture
     assert "no command-line product contract" in architecture
+
+
+def test_python_rail_migration_script_exists():
+    path = Path("scripts/migration_v0.1.0.sh")
+
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+    assert "rail-sdk" in text
+    assert "rail-harness" in text
+    assert "OPENAI_API_KEY" in text
+    assert "skills/rail" in text
+    assert "export RAIL_ACTOR_RUNTIME_LIVE" not in text

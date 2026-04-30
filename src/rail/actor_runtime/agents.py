@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -259,8 +259,12 @@ def _structured_output(result: Any) -> dict[str, object]:
     raise ValueError("Agents SDK result did not include structured output")
 
 
-def _live_runtime_enabled() -> bool:
-    return os.environ.get("RAIL_ACTOR_RUNTIME_LIVE", "").strip().lower() in {"1", "true", "yes", "on"}
+def _live_runtime_enabled(environ: Mapping[str, str] | None = None) -> bool:
+    environ = environ or os.environ
+    explicit = environ.get("RAIL_ACTOR_RUNTIME_LIVE")
+    if explicit is not None and explicit.strip():
+        return explicit.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(environ.get("OPENAI_API_KEY", "").strip())
 
 
 def _run_config_int(run_config: dict[str, object], key: str, default: int) -> int:

@@ -223,6 +223,9 @@ digest-inconsistent.
 SDK credentials come from approved operator-controlled sources only.
 Target-local credential files and target-local environment requests are
 rejected.
+When an approved operator `OPENAI_API_KEY` is present, live Actor Runtime
+execution is enabled without requiring normal users to set internal runtime
+feature flags.
 
 Rail must not persist secret values in:
 

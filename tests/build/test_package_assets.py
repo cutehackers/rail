@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tarfile
+import tomllib
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -14,6 +15,19 @@ def test_release_gate_runs_asset_alignment_checker():
     gate = Path("scripts/python_release_gate.sh").read_text(encoding="utf-8")
 
     assert "scripts/check_package_asset_alignment.py" in gate
+
+
+def test_distribution_name_is_rail_sdk():
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+
+    assert project["name"] == "rail-sdk"
+
+
+def test_release_gate_cleans_current_and_stale_egg_info():
+    gate = Path("scripts/python_release_gate.sh").read_text(encoding="utf-8")
+
+    assert "src/rail_sdk.egg-info" in gate
+    assert "src/rail_harness.egg-info" in gate
 
 
 def test_release_gate_alignment_includes_repo_owned_skill_tree():

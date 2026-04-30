@@ -3,7 +3,14 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from rail.cli.setup_commands import build_setup_doctor_report, migrate_skill
+from rail.actor_runtime import codex_vault
+from rail.cli.setup_commands import (
+    build_codex_auth_doctor_report,
+    build_codex_auth_status_report,
+    build_setup_doctor_report,
+    login_codex_auth,
+    migrate_skill,
+)
 
 
 def test_console_scripts_expose_setup_commands():
@@ -25,7 +32,7 @@ def test_migrate_skill_installs_packaged_rail_skill(tmp_path):
     assert "Use this skill" in skill.read_text(encoding="utf-8")
 
 
-def test_setup_doctor_uses_current_project_and_reports_missing_key(tmp_path):
+def test_setup_doctor_with_codex_vault_default_does_not_require_openai_api_key(tmp_path):
     report = build_setup_doctor_report(
         project_root=tmp_path,
         codex_home=tmp_path,
@@ -35,7 +42,7 @@ def test_setup_doctor_uses_current_project_and_reports_missing_key(tmp_path):
 
     assert report.ready is False
     assert report.project_root == tmp_path.resolve()
-    assert "OPENAI_API_KEY is not configured" in report.errors
+    assert "OPENAI_API_KEY is not configured" not in report.errors
     assert "rail migrate" in report.next_steps
 
 
@@ -58,7 +65,7 @@ def test_setup_doctor_is_ready_after_migration_and_operator_key(tmp_path):
     assert report.errors == []
 
 
-def test_cli_main_runs_migrate_and_doctor_without_target_repo_argument(tmp_path, monkeypatch, capsys):
+def test_cli_main_runs_migrate_and_doctor_without_target_repo_argument(tmp_path, monkeypatch):
     from rail.cli.main import main
 
     monkeypatch.chdir(tmp_path)
@@ -66,6 +73,104 @@ def test_cli_main_runs_migrate_and_doctor_without_target_repo_argument(tmp_path,
     assert main(["migrate", "--codex-home", str(tmp_path)]) == 0
     assert (tmp_path / "skills" / "rail" / "SKILL.md").is_file()
 
-    assert main(["doctor", "--codex-home", str(tmp_path)]) == 1
-    output = capsys.readouterr().out
-    assert "OPENAI_API_KEY is not configured" in output
+    assert main(["doctor", "--codex-home", str(tmp_path)]) == 0
+
+
+def test_cli_exposes_auth_status_doctor_and_login(tmp_path, monkeypatch, capsys):
+    from rail.cli.main import main
+
+    rail_home = tmp_path / "rail-home"
+    auth_home = rail_home / "codex"
+    auth_home.mkdir(parents=True)
+    auth_file = auth_home / "auth.json"
+    auth_file.write_text("{}", encoding="utf-8")
+    auth_file.chmod(0o600)
+    monkeypatch.setenv("RAIL_HOME", str(rail_home))
+
+    commands: list[tuple[list[str], str]] = []
+
+    def fake_login_runner(command: list[str], env: dict[str, str]) -> int:
+        commands.append((command, env["CODEX_HOME"]))
+        return 0
+
+    monkeypatch.setattr("rail.cli.main.login_codex_auth", login_codex_auth)
+    monkeypatch.setattr("rail.cli.main.run_codex_login", fake_login_runner)
+    monkeypatch.setattr("rail.cli.main.resolve_codex_command", lambda: tmp_path / "bin" / "codex")
+    monkeypatch.setattr(
+        "rail.cli.main.check_trusted_codex_command",
+        lambda _path, _target_root, _artifact_dir: None,
+    )
+    monkeypatch.setattr(
+        "rail.cli.main.run_codex_command",
+        _ready_codex_runner(),
+    )
+
+    assert main(["auth", "status"]) == 0
+    status_output = capsys.readouterr().out
+    assert "rail codex auth status: ready" in status_output
+    assert str(auth_home) not in status_output
+    assert str(rail_home) not in status_output
+
+    assert main(["auth", "doctor", "--project-root", str(tmp_path)]) == 0
+    doctor_output = capsys.readouterr().out
+    assert "rail codex auth doctor: ready" in doctor_output
+    assert str(auth_home) not in doctor_output
+    assert str(rail_home) not in doctor_output
+
+    assert main(["auth", "login"]) == 0
+    assert commands == [(["codex", "login"], str(auth_home))]
+
+
+def test_codex_auth_status_and_doctor_outputs_are_sanitized(tmp_path):
+    rail_home = tmp_path / "private-rail-home"
+    auth_home = rail_home / "codex"
+
+    status = build_codex_auth_status_report(environ={"RAIL_HOME": str(rail_home)})
+    status_output = status.render()
+    assert status.ready is False
+    assert "missing auth.json" in status.errors
+    assert str(auth_home) not in status_output
+    assert str(rail_home) not in status_output
+
+    doctor = build_codex_auth_doctor_report(
+        project_root=tmp_path,
+        environ={"RAIL_HOME": str(rail_home)},
+        command_resolver=lambda: None,
+    )
+    doctor_output = doctor.render()
+    assert doctor.ready is False
+    assert any("Codex command" in error for error in doctor.errors)
+    assert str(auth_home) not in doctor_output
+    assert str(rail_home) not in doctor_output
+
+
+def test_codex_auth_login_sets_codex_home_to_rail_owned_auth_home(tmp_path):
+    rail_home = tmp_path / "rail-home"
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def runner(command: list[str], env: dict[str, str]) -> int:
+        calls.append((command, env))
+        return 0
+
+    report = login_codex_auth(environ={"RAIL_HOME": str(rail_home), "PATH": "/bin"}, runner=runner)
+
+    assert report.returncode == 0
+    assert calls[0][0] == ["codex", "login"]
+    assert calls[0][1]["CODEX_HOME"] == str(rail_home / "codex")
+    assert calls[0][1]["PATH"] == "/bin"
+    assert str(rail_home) not in report.render()
+
+
+def _ready_codex_runner():
+    def runner(command: list[str]) -> codex_vault.CodexCommandRunResult:
+        if command[1:] == ["--version"]:
+            return codex_vault.CodexCommandRunResult(stdout="codex-cli 0.124.0", stderr="", returncode=0)
+        if command[1:] == ["exec", "--help"]:
+            return codex_vault.CodexCommandRunResult(
+                stdout="\n".join(codex_vault.CODEX_EXEC_REQUIRED_HELP_FLAGS),
+                stderr="",
+                returncode=0,
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    return runner

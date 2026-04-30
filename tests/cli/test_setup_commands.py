@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -159,6 +160,57 @@ def test_codex_auth_login_sets_codex_home_to_rail_owned_auth_home(tmp_path):
     assert calls[0][1]["CODEX_HOME"] == str(rail_home / "codex")
     assert calls[0][1]["PATH"] == "/bin"
     assert str(rail_home) not in report.render()
+
+
+def test_codex_auth_login_reports_local_execution_failure(tmp_path):
+    rail_home = tmp_path / "rail-home"
+
+    def runner(_command: list[str], _env: dict[str, str]) -> int:
+        raise FileNotFoundError("codex")
+
+    report = login_codex_auth(environ={"RAIL_HOME": str(rail_home)}, runner=runner)
+
+    assert report.returncode == 1
+    assert "failed" in report.render()
+    assert str(rail_home) not in report.render()
+
+
+def test_run_codex_login_reports_subprocess_failure(monkeypatch):
+    def fail_run(*_args, **_kwargs):
+        raise subprocess.SubprocessError("boom")
+
+    monkeypatch.setattr("subprocess.run", fail_run)
+
+    from rail.cli.setup_commands import run_codex_login
+
+    assert run_codex_login(["codex", "login"], {}) == 1
+
+
+def test_codex_auth_doctor_renders_only_supported_version(tmp_path):
+    rail_home = tmp_path / "rail-home"
+    auth_home = rail_home / "codex"
+    auth_home.mkdir(parents=True)
+    auth_file = auth_home / "auth.json"
+    auth_file.write_text("{}", encoding="utf-8")
+    auth_file.chmod(0o600)
+
+    def bad_version_runner(command: list[str]) -> codex_vault.CodexCommandRunResult:
+        if command[1:] == ["--version"]:
+            return codex_vault.CodexCommandRunResult(stdout="host path /private/tmp/secret", stderr="", returncode=0)
+        raise AssertionError(f"unexpected command: {command}")
+
+    report = build_codex_auth_doctor_report(
+        project_root=tmp_path,
+        environ={"RAIL_HOME": str(rail_home)},
+        command_resolver=lambda: tmp_path / "bin" / "codex",
+        command_trust_checker=lambda _path, _target_root, _artifact_dir: None,
+        runner=bad_version_runner,
+    )
+
+    rendered = report.render()
+    assert report.ready is False
+    assert "host path" not in rendered
+    assert "/private/tmp/secret" not in rendered
 
 
 def _ready_codex_runner():

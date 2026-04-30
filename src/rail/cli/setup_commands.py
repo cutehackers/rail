@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import re
 from collections.abc import Callable, Mapping
 from importlib.metadata import PackageNotFoundError, version
 from importlib.resources import files
@@ -31,6 +32,7 @@ from rail.policy import load_effective_policy
 
 PACKAGE_NAME = "rail-sdk"
 CodexLoginRunner = Callable[[list[str], dict[str, str]], int]
+_CODEX_VERSION_RENDER_RE = re.compile(r"^codex-cli (0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
 
 class MigrationReport(BaseModel):
@@ -127,7 +129,7 @@ class CodexAuthDoctorReport(BaseModel):
             f"Codex command: {'ready' if self.command_ready else 'blocked'}",
             f"live validation: {'enabled' if self.live_validation else 'skipped'}",
         ]
-        if self.codex_version:
+        if self.codex_version and _CODEX_VERSION_RENDER_RE.fullmatch(self.codex_version):
             lines.append(f"Codex version: {self.codex_version}")
         lines.extend(f"Error: {error}" for error in self.errors)
         lines.extend(f"Warning: {warning}" for warning in self.warnings)
@@ -292,16 +294,25 @@ def login_codex_auth(
 ) -> CodexAuthLoginReport:
     environ = os.environ if environ is None else environ
     auth_home = codex_auth_home(environ=environ)
-    auth_home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    auth_home.chmod(0o700)
+    try:
+        auth_home.mkdir(mode=0o700, parents=True, exist_ok=True)
+        auth_home.chmod(0o700)
+    except OSError:
+        return CodexAuthLoginReport(returncode=1)
     env = dict(environ)
     env["CODEX_HOME"] = str(auth_home)
     login_runner = runner or run_codex_login
-    return CodexAuthLoginReport(returncode=login_runner(["codex", "login"], env))
+    try:
+        return CodexAuthLoginReport(returncode=login_runner(["codex", "login"], env))
+    except (OSError, subprocess.SubprocessError):
+        return CodexAuthLoginReport(returncode=1)
 
 
 def run_codex_login(command: list[str], env: dict[str, str]) -> int:
-    completed = subprocess.run(command, env=env, check=False)
+    try:
+        completed = subprocess.run(command, env=env, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return 1
     return completed.returncode
 
 

@@ -63,6 +63,10 @@ def codex_auth_home(*, environ: Mapping[str, str]) -> Path:
 
 def validate_codex_auth_material(auth_home: Path) -> list[Path]:
     if auth_home.exists():
+        if auth_home.is_symlink():
+            raise ValueError("auth home must not be symlinked")
+        if not auth_home.is_dir():
+            raise ValueError("auth home must be a directory")
         if auth_home.stat().st_mode & (stat.S_IWGRP | stat.S_IWOTH):
             raise ValueError("unsafe auth home permissions")
         material = list(auth_home.iterdir())
@@ -74,6 +78,8 @@ def validate_codex_auth_material(auth_home: Path) -> list[Path]:
         raise ValueError("unknown auth material")
 
     auth_file = auth_home / "auth.json"
+    if auth_file.is_symlink():
+        raise ValueError("auth material must not be symlinked")
     if not auth_file.is_file():
         raise ValueError("missing auth.json")
     if auth_file.stat().st_mode & (stat.S_IWGRP | stat.S_IWOTH):

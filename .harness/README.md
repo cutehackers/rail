@@ -36,6 +36,7 @@ Normal users interact through the Rail skill and Python API:
 ```python
 import rail
 
+request = rail.specify(draft)
 handle = rail.start_task(draft)
 rail.supervise(handle)
 projection = rail.result(handle)

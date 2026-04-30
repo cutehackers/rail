@@ -9,12 +9,12 @@ from rail.request import HarnessRequest, normalize_draft
 from rail.supervisor import supervise_artifact
 
 
-def normalize_request(draft: Any) -> HarnessRequest:
+def specify(draft: Any) -> HarnessRequest:
     return normalize_draft(draft)
 
 
 def start_task(draft: Any) -> ArtifactHandle:
-    request = normalize_request(draft)
+    request = specify(draft)
     return ArtifactStore.for_project(request.project_root).allocate(request)
 
 

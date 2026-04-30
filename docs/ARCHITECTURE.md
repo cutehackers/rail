@@ -8,7 +8,7 @@ The normal user contract is skill-first:
 
 1. the user describes the task in natural language
 2. the Rail skill creates a request draft
-3. `rail.normalize_request(draft)` produces a schema-valid request object
+3. `rail.specify(draft)` produces a schema-valid request object
 4. `rail.start_task(draft)` allocates an artifact handle
 5. `rail.supervise(handle)` runs the supervisor and Actor Runtime path
 6. `rail.result(handle)` projects the terminal outcome from artifacts only

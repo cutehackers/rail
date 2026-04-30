@@ -95,7 +95,7 @@ Fresh task:
 import rail
 from rail.artifacts.terminal_summary import project_terminal_summary
 
-request = rail.normalize_request(draft)
+request = rail.specify(draft)
 handle = rail.start_task(draft)
 rail.supervise(handle)
 result = rail.result(handle)

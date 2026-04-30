@@ -28,7 +28,7 @@ Rail must preserve this user contract:
 
 1. The user describes work in natural language through the Rail skill.
 2. The Rail skill creates a structured Python request draft.
-3. `rail.normalize_request(draft)` produces a schema-valid request.
+3. `rail.specify(draft)` produces a schema-valid request.
 4. `rail.start_task(draft)` allocates a fresh artifact handle for fresh work.
 5. `rail.supervise(handle)` runs a bounded supervisor workflow.
 6. `rail.status(handle)` and `rail.result(handle)` project state from artifacts

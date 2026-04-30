@@ -8,8 +8,8 @@ import pytest
 import rail
 
 
-def test_normalize_request_trims_and_defaults_canonical_fields():
-    request = rail.normalize_request(
+def test_specify_trims_and_defaults_canonical_fields():
+    request = rail.specify(
         {
             "request_version": " ",
             "project_root": " /absolute/path/to/target-repo ",
@@ -45,10 +45,10 @@ def test_normalize_request_trims_and_defaults_canonical_fields():
     assert request.validation_profile == "standard"
 
 
-def test_normalize_request_accepts_skill_feature_addition_fixture():
+def test_specify_accepts_skill_feature_addition_fixture():
     draft = json.loads(Path("tests/fixtures/skill_request_drafts/feature_addition.json").read_text(encoding="utf-8"))
 
-    request = rail.normalize_request(draft)
+    request = rail.specify(draft)
 
     assert request.request_version == "1"
     assert request.project_root == "/absolute/path/to/target-repo"
@@ -67,14 +67,14 @@ def test_normalize_request_accepts_skill_feature_addition_fixture():
         ("goal", {"project_root": "/absolute/path/to/target-repo", "task_type": "bug_fix"}),
     ],
 )
-def test_normalize_request_requires_project_root_and_goal(field, draft):
+def test_specify_requires_project_root_and_goal(field, draft):
     with pytest.raises(ValueError, match=field):
-        rail.normalize_request(draft)
+        rail.specify(draft)
 
 
-def test_normalize_request_rejects_unsupported_task_type():
+def test_specify_rejects_unsupported_task_type():
     with pytest.raises(ValueError, match="task_type"):
-        rail.normalize_request(
+        rail.specify(
             {
                 "project_root": "/absolute/path/to/target-repo",
                 "task_type": "review_only",

@@ -51,7 +51,7 @@ from rail.policy import load_effective_policy
 target = Path("target")
 target.mkdir()
 
-request = rail.normalize_request(
+request = rail.specify(
     {
         "project_root": str(target.resolve()),
         "task_type": "bug_fix",

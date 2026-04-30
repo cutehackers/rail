@@ -124,19 +124,50 @@ The gate proves the Rail runtime, package build, package asset inspection, insta
 
 Optional live SDK smoke is operator-gated. Set `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` with an operator-controlled `OPENAI_API_KEY`; the release gate then enables `RAIL_ACTOR_RUNTIME_LIVE=1` for the live smoke only.
 
-## Distribution
+## Installation
 
-The Python package distribution is `rail-sdk`. It exposes the Rail Python API and bundled Rail skill assets. There is no command surface as the product contract; wrapper UX may exist later only as a thin layer over the same API.
+The Python package distribution is `rail-sdk`. It exposes the Rail Python API,
+bundled Rail skill assets, and setup helpers. There is no command surface as
+the product contract; wrapper UX may exist later only as a thin layer over the
+same API.
 
-User setup is intentionally short:
+Install the package and configure the operator SDK credential:
 
 ```bash
 export OPENAI_API_KEY=...
 uv tool install rail-sdk
+```
+
+Install or refresh the local Rail skill, then check readiness:
+
+```bash
 rail migrate
 rail doctor
 ```
 
-If an older Homebrew `rail` binary is still first on `PATH`, use `rail-sdk migrate` and then remove the old formula with the command reported by `rail doctor`.
+If an older Homebrew `rail` binary is still first on `PATH`, use the package
+name entrypoint first:
 
-After that, open the target repository and use the Rail skill with a natural-language task. Normal users do not need to set runtime feature flags or repeat the target path when they are already working inside the target repository.
+```bash
+rail-sdk migrate
+rail-sdk doctor
+```
+
+Then remove the old formula with the command reported by `rail doctor`. The
+usual cleanup is:
+
+```bash
+brew uninstall rail
+brew cleanup rail
+```
+
+After setup, open the target repository and use the Rail skill with a
+natural-language task:
+
+```text
+Use the Rail skill.
+Fix the profile loading bug.
+```
+
+Normal users do not need to set runtime feature flags or repeat the target path
+when they are already working inside the target repository.

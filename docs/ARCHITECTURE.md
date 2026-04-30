@@ -71,9 +71,21 @@ Status and result projection read artifacts only. They do not call the SDK or in
 
 ## Release Gate
 
-`scripts/python_release_gate.sh` is the local release gate for the Rail control plane. It builds the Python package, inspects required package assets, runs an installed-wheel smoke, and runs the Python test suite, docs guards, removed-surface guards, lint, and typing checks. It does not prove that an arbitrary downstream target repository task succeeded.
+`scripts/release_gate.sh` is the local release gate for the Rail control plane. It builds the Python package, inspects required package assets, runs an installed-wheel smoke, and runs the Python test suite, docs guards, removed-surface guards, lint, and typing checks. It does not prove that an arbitrary downstream target repository task succeeded.
 
 When `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` and an operator-controlled SDK credential is present, the gate also runs the optional live SDK smoke. That smoke is skipped by default and is not part of normal CI. For normal task execution, an operator-controlled `OPENAI_API_KEY` is enough to enable live Actor Runtime execution; users do not need to set runtime feature flags.
+
+## Release Publishing
+
+Release publication is tag-driven. A `v*` tag push runs `.github/workflows/publish.yml`, which checks:
+
+- tag version matches `pyproject.toml`
+- top `CHANGELOG.md` entry version matches the tag
+- `scripts/release_gate.sh` passes
+- `uv build` succeeds
+- PyPI upload succeeds with `PYPI_API_TOKEN`
+
+The workflow uses the same top `CHANGELOG.md` section as the release note source.
 
 ## Distribution Boundary
 

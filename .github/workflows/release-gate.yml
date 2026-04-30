@@ -1,4 +1,4 @@
-name: python-ci
+name: release-gate
 
 on:
   pull_request:
@@ -12,4 +12,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: scripts/python_release_gate.sh
+      - run: scripts/release_gate.sh

@@ -30,7 +30,7 @@ uv run --python 3.12 mypy src/rail
 For release readiness, run:
 
 ```bash
-scripts/python_release_gate.sh
+scripts/release_gate.sh
 ```
 
 ## Python Naming Conventions

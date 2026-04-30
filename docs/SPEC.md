@@ -298,7 +298,7 @@ Rail is release-ready when all of the following are true:
 The mandatory local release gate is:
 
 ```bash
-scripts/python_release_gate.sh
+scripts/release_gate.sh
 ```
 
 The gate removes stale build artifacts, verifies repo `.harness`,
@@ -315,6 +315,27 @@ Optional live SDK smoke is skipped by default. When
 the gate enables live Actor Runtime execution and runs a narrow real-runner
 planner smoke to prove SDK adapter readiness. It is not evidence that an
 arbitrary downstream target repository task succeeded.
+
+## Release Publishing (operator)
+
+Public release is tag-driven. The operator performs this sequence:
+
+1. Add a top-of-file entry in `CHANGELOG.md` named `## v${VERSION} - <YYYY-MM-DD>`.
+2. Update `pyproject.toml` version to match the same `${VERSION}`.
+3. Run the local release gate:
+   `scripts/release_gate.sh`.
+4. Commit, tag `v${VERSION}`, and push the tag.
+
+`.github/workflows/publish.yml` is the canonical publishing pipeline.
+It must fail if:
+
+- `pyproject.toml` version and tag version differ.
+- the top `CHANGELOG.md` entry version and tag version differ.
+- the local release gate fails.
+- package build or PyPI publish fails.
+
+Use `CHANGELOG.md` as the only public release note/checkpoint source.
+The same top section is used for operator-triggered release notes.
 
 ## Non-Goals
 

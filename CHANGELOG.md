@@ -2,6 +2,24 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.6.0 - 2026-04-30
+
+### Added
+
+- Added tag-driven publish automation through `.github/workflows/publish.yml`.
+- Added release metadata validation for tag, package version, and top changelog entry alignment.
+- Added release documentation for the `rail-sdk` Python package publishing flow.
+
+### Changed
+
+- Renamed release workflow and gate surfaces to `release-gate.yml`, `publish.yml`, and `scripts/release_gate.sh`.
+- Updated release operator commands to use `VERSION=0.6.0` and shell-safe quoted tag commands.
+
+### Verification
+
+- `uv run --python 3.12 pytest -q tests/docs`
+- `uv run --python 3.12 ruff check scripts/check_release_metadata.py tests/docs/test_removed_runtime_surfaces.py`
+
 ## v0.5.5 - 2026-04-28
 
 ### Added

@@ -117,7 +117,7 @@ This repository owns the Python Rail Harness Runtime, bundled Rail skill, defaul
 Use the local release gate before treating this control-plane repository as release-ready:
 
 ```bash
-scripts/python_release_gate.sh
+scripts/release_gate.sh
 ```
 
 The gate proves the Rail runtime, package build, package asset inspection, installed-wheel smoke, docs guards, removed-surface guards, lint, and typing checks for this repository. It is not a downstream target application success proof.
@@ -171,3 +171,52 @@ Fix the profile loading bug.
 
 Normal users do not need to set runtime feature flags or repeat the target path
 when they are already working inside the target repository.
+
+## Release Publishing (operator)
+
+For public release publication, use one changelog source only:
+
+- [CHANGELOG.md](/absolute/path/to/rail/CHANGELOG.md)
+
+Release is now triggered by a version tag, not by local upload commands:
+
+Homebrew is used only for cleanup of old installs; it does not drive release.
+
+1) Add a release entry in `CHANGELOG.md` at the top with:
+   `## v${VERSION} - <YYYY-MM-DD>`.
+2) Set `pyproject.toml` version to the same `${VERSION}` as that changelog heading.
+3) Run the local release gate once in a clean repo.
+4) Commit those changes, create a tag, and push.
+
+```bash
+VERSION=0.6.0
+scripts/release_gate.sh
+git commit -am "Prepare v${VERSION} release"
+git tag "v${VERSION}"
+git push origin main
+git push origin "v${VERSION}"
+```
+
+A GitHub tag push (`v*`) triggers `.github/workflows/publish.yml`.
+The workflow validates:
+
+- `pyproject.toml` version equals tag version
+- the top `CHANGELOG.md` entry matches the tag version
+- local release gate
+- package build
+- PyPI publish using `PYPI_API_TOKEN`
+- GitHub release notes generated from the same `CHANGELOG.md` section
+
+Use `CHANGELOG.md` as the only user-facing release note/changelog source.
+After publish, users install the version they need:
+
+```bash
+uv tool install rail-sdk==${VERSION}
+```
+
+If you need to release manually, use `uv` and `twine` with your token:
+
+```bash
+uv build
+TWINE_USERNAME=__token__ TWINE_PASSWORD=<pypi_token> uvx twine upload dist/*
+```

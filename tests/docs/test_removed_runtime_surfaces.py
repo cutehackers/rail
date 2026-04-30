@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -89,8 +91,8 @@ def test_active_product_surfaces_do_not_reference_removed_runtime():
     assert findings == []
 
 
-def test_python_release_gate_exists_and_uses_python_runtime_only():
-    path = Path("scripts/python_release_gate.sh")
+def test_release_gate_exists_and_uses_python_runtime_only():
+    path = Path("scripts/release_gate.sh")
 
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
@@ -120,8 +122,8 @@ def test_optional_live_smoke_and_distribution_are_documented():
     assert "no command-line product contract" in architecture
 
 
-def test_python_rail_migration_script_exists():
-    path = Path("scripts/migration_v0.1.0.sh")
+def test_rail_migration_script_exists():
+    path = Path("scripts/migration_v0.6.0.sh")
 
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
@@ -131,3 +133,102 @@ def test_python_rail_migration_script_exists():
     assert "OPENAI_API_KEY" in text
     assert "skills/rail" in text
     assert "export RAIL_ACTOR_RUNTIME_LIVE" not in text
+
+
+def test_publish_pipeline_is_tag_driven_and_gate_gated():
+    path = Path(".github/workflows/publish.yml")
+
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+
+    assert "on:" in text
+    assert "push:" in text
+    assert "tags:" in text
+    assert '\"v*\"' in text
+    assert "scripts/release_gate.sh" in text
+    assert "scripts/check_release_metadata.py" in text
+    assert "CHANGELOG.md" in text
+    assert "PYPI_API_TOKEN" in text
+    assert "pypa/gh-action-pypi-publish@release/v1" in text
+    assert "softprops/action-gh-release@v2" in text
+
+
+def test_release_metadata_check_accepts_matching_tag_and_changelog(tmp_path: Path):
+    pyproject = tmp_path / "pyproject.toml"
+    changelog = tmp_path / "CHANGELOG.md"
+    github_output = tmp_path / "github_output"
+
+    pyproject.write_text(
+        '[project]\nname = "rail-sdk"\nversion = "1.2.3"\n',
+        encoding="utf-8",
+    )
+    changelog.write_text(
+        "# Changelog\n\n"
+        "## v1.2.3 - 2026-04-30\n\n"
+        "### Added\n\n"
+        "- Release metadata validation.\n"
+        "- Preserved release note formatting.\n\n"
+        "## v1.2.2 - 2026-04-29\n\n"
+        "- Previous release.\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_release_metadata.py",
+            "v1.2.3",
+            "--pyproject",
+            str(pyproject),
+            "--changelog",
+            str(changelog),
+            "--github-output",
+            str(github_output),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    output = github_output.read_text(encoding="utf-8")
+    assert "tag_version=1.2.3" in output
+    assert "release_notes<<EOF\n" in output
+    assert "### Added\n\n- Release metadata validation." in output
+    assert "\\n" not in output
+
+
+def test_release_metadata_check_rejects_top_changelog_mismatch(tmp_path: Path):
+    pyproject = tmp_path / "pyproject.toml"
+    changelog = tmp_path / "CHANGELOG.md"
+
+    pyproject.write_text(
+        '[project]\nname = "rail-sdk"\nversion = "1.2.3"\n',
+        encoding="utf-8",
+    )
+    changelog.write_text(
+        "# Changelog\n\n"
+        "## v1.2.2 - 2026-04-29\n\n"
+        "- Previous release.\n\n"
+        "## v1.2.3 - 2026-04-30\n\n"
+        "- Current release in the wrong position.\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_release_metadata.py",
+            "v1.2.3",
+            "--pyproject",
+            str(pyproject),
+            "--changelog",
+            str(changelog),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Top CHANGELOG entry is v1.2.2, expected v1.2.3." in result.stderr

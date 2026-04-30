@@ -84,3 +84,51 @@ Use the Rail skill.
 
 이미 target repository 안에서 작업 중이라면 일반 사용자는 runtime feature flag나
 target path를 따로 지정할 필요가 없습니다.
+
+## 릴리스 배포(운영자)
+
+공지/체크포인트는 단일 소스로 `CHANGELOG.md`만 사용합니다.
+
+- [CHANGELOG.md](/absolute/path/to/rail/CHANGELOG.md)
+
+릴리스는 이제 업로드 커맨드가 아니라 태그 푸시로 트리거됩니다.
+Homebrew는 더 이상 배포 실행 경로가 아니며, 기존 설치 정리는 종료용으로만 필요합니다.
+
+릴리스 트리거 권장 절차:
+
+1) `CHANGELOG.md` 상단에 `## v${VERSION} - <YYYY-MM-DD>` 형식의 릴리스 항목을 추가합니다.
+2) `pyproject.toml`의 버전을 동일한 `${VERSION}`으로 맞춥니다.
+3) 정리된 저장소에서 로컬 릴리스 게이트를 한 번 실행합니다.
+4) 변경분을 커밋하고 태그를 만든 뒤 push합니다.
+
+```bash
+VERSION=0.6.0
+scripts/release_gate.sh
+git commit -am "Prepare v${VERSION} release"
+git tag "v${VERSION}"
+git push origin main
+git push origin "v${VERSION}"
+```
+
+`v*` 태그 푸시가 `.github/workflows/publish.yml`을 실행합니다.
+워크플로우는 다음을 검증합니다.
+
+- 태그 버전과 `pyproject.toml` 버전이 일치
+- `CHANGELOG.md` 최상단 항목 버전이 태그와 일치
+- 로컬 릴리스 게이트 통과
+- `uv build` 결과 생성
+- `PYPI_API_TOKEN`으로 PyPI 업로드
+- 같은 `CHANGELOG.md` 항목으로 GitHub 릴리스 노트 생성
+
+사용자 대상 공지와 체크포인트는 항상 `CHANGELOG.md`만 반영합니다. 배포 후 사용자 설치는 다음과 같이 진행합니다.
+
+```bash
+uv tool install rail-sdk==${VERSION}
+```
+
+수동 배포가 필요한 경우에는 PyPI 토큰을 이용해 직접 업로드할 수 있습니다.
+
+```bash
+uv build
+TWINE_USERNAME=__token__ TWINE_PASSWORD=<pypi_token> uvx twine upload dist/*
+```

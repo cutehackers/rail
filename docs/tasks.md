@@ -29,7 +29,7 @@ blocked result projections distinguish runtime, validation, policy, and
 environment categories, evaluator pass is bound to a supervisor-provided
 evaluator input digest and validation evidence digest, repo `.harness` defaults
 stay aligned with packaged defaults, and the canonical gate is
-`scripts/python_release_gate.sh`. The final critical-review blockers are also
+`scripts/release_gate.sh`. The final critical-review blockers are also
 closed: the release gate directly runs the asset alignment checker, fake actor
 outputs and inline integration flow helpers live only in tests, patch apply
 rejects hardlink targets, policy load failures persist policy-blocked artifacts,
@@ -42,9 +42,16 @@ when accepted patch bundles replace files. Artifact handle validation rejects
 raw path-traversed `artifact_dir` and `project_root` values before
 canonicalizing them for use.
 
+Release publishing is now defined as a tag-driven pipeline:
+
+- `.github/workflows/publish.yml` runs `scripts/release_gate.sh`, validates
+  tag/version/changelog alignment, builds artifacts, uploads to PyPI with
+  `PYPI_API_TOKEN`, and writes release notes from the same top `CHANGELOG.md`
+  entry.
+
 Local verification:
 
-- `scripts/python_release_gate.sh` passed with optional live SDK smoke skipped
+- `scripts/release_gate.sh` passed with optional live SDK smoke skipped
   by default.
 - Optional live SDK smoke remains operator-gated by
   `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` plus operator SDK credentials.
@@ -66,7 +73,7 @@ Completed closure plans:
   exists in the repository checkout.
 
 - [x] Canonicalize packaging checks in the release gate
-  Done when `scripts/python_release_gate.sh` builds the Python distribution and
+  Done when `scripts/release_gate.sh` builds the Python distribution and
   fails if required package assets or installed-resource smoke checks are
   missing.
 
@@ -104,9 +111,14 @@ Completed closure plans:
   `assets/defaults`, and package assets still match `assets/defaults`.
 
 - [x] Canonicalize `docs/SPEC.md` release gate text
-  Done when `docs/SPEC.md` points to `scripts/python_release_gate.sh` and lists
+  Done when `docs/SPEC.md` points to `scripts/release_gate.sh` and lists
   build, package asset, installed-wheel, repo `.harness` alignment, test, lint,
   typing, deterministic smoke, and optional live smoke behavior.
+
+- [x] Add tag-driven publish pipeline
+  Done when release publication is bound to a tag push through
+  `.github/workflows/publish.yml`, with enforced `pyproject.toml` version,
+  top `CHANGELOG.md` version, and gate-first publishing behavior.
 
 ## Done
 

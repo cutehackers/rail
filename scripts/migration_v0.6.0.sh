@@ -3,7 +3,7 @@ set -euo pipefail
 
 PACKAGE_NAME="rail-sdk"
 OLD_PACKAGE_NAME="rail-harness"
-VERSION="0.1.0"
+VERSION="0.6.0"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
 

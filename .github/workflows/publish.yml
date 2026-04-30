@@ -1,0 +1,45 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Validate tag and changelog alignment
+        id: release-metadata
+        run: >-
+          python3 scripts/check_release_metadata.py "${GITHUB_REF_NAME}"
+          --pyproject pyproject.toml
+          --changelog CHANGELOG.md
+          --github-output "${GITHUB_OUTPUT}"
+
+      - name: Run release gate
+        run: scripts/release_gate.sh
+
+      - name: Build artifacts
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: dist/
+
+      - name: Publish release notes from CHANGELOG
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: |
+            ## Release notes
+            ${{ steps.release-metadata.outputs.release_notes }}

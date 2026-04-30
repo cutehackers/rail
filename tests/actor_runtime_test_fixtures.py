@@ -77,6 +77,7 @@ def scripted_agents_runtime(
             operations = []
             if patch_path is not None:
                 operations.append({"op": "write", "path": patch_path, "content": patch_content or ""})
+            output.pop("patch_bundle_ref", None)
             output["patch_bundle"] = {
                 "schema_version": "1",
                 "base_tree_digest": tree_digest(target_root),

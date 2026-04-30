@@ -64,6 +64,7 @@ class _InlinePatchRuntime:
                 output["evaluated_input_digest"] = evaluator_input_digest
         if invocation.actor == "generator":
             output["changed_files"] = [self.relative_path]
+            output.pop("patch_bundle_ref", None)
             output["patch_bundle"] = {
                 "schema_version": "1",
                 "base_tree_digest": tree_digest(self.target_root),

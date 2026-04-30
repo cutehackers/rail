@@ -68,6 +68,10 @@ def prepare_release_repo(tmp_path: Path, release_gate: str) -> tuple[Path, Path,
     scripts = repo / "scripts"
     scripts.mkdir()
     shutil.copy2(PROJECT_ROOT / "scripts/check_release_metadata.py", scripts)
+    shutil.copy2(PROJECT_ROOT / "scripts/prepare_changelog.py", scripts)
+    docs = repo / "docs"
+    docs.mkdir()
+    shutil.copy2(PROJECT_ROOT / "docs/SPEC.md", docs)
     gate = scripts / "release_gate.sh"
     gate.write_text(release_gate, encoding="utf-8")
     make_executable(gate)
@@ -75,7 +79,10 @@ def prepare_release_repo(tmp_path: Path, release_gate: str) -> tuple[Path, Path,
     (repo / "CHANGELOG.md").write_text(
         "# Changelog\n\n"
         "## v1.2.3 - 2026-04-30\n\n"
-        "- Test release.\n\n"
+        "### Added\n\n"
+        "- Added test release automation.\n\n"
+        "### Verification\n\n"
+        "- `scripts/release_gate.sh`\n\n"
         "## v1.2.2 - 2026-04-29\n\n"
         "- Previous release.\n",
         encoding="utf-8",
@@ -158,3 +165,111 @@ def test_publish_script_refuses_renamed_or_copied_release_files(tmp_path: Path):
 
     assert result.returncode == 1
     assert "Refusing to publish with renamed or copied file:" in result.stderr
+
+
+def test_publish_script_stops_with_agent_changelog_guide_when_entry_is_missing(
+    tmp_path: Path,
+):
+    repo, _remote, env = prepare_release_repo(
+        tmp_path,
+        "#!/usr/bin/env bash\nset -euo pipefail\n",
+    )
+    (repo / "CHANGELOG.md").write_text(
+        "# Changelog\n\n"
+        "## v1.2.2 - 2026-04-29\n\n"
+        "### Changed\n\n"
+        "- Previous release.\n",
+        encoding="utf-8",
+    )
+    run(["git", "add", "CHANGELOG.md"], cwd=repo)
+    run(["git", "commit", "-m", "remove target changelog entry"], cwd=repo)
+    run(["git", "push", "origin", "main"], cwd=repo)
+
+    result = run(["./publish.sh", "v1.2.3"], cwd=repo, env=env, check=False)
+
+    assert result.returncode == 1
+    assert "CHANGELOG.md has no top entry for v1.2.3." in result.stdout
+    assert "Agent task:" in result.stdout
+    assert "Do not edit any file other than CHANGELOG.md." in result.stdout
+    assert "Release range:" in result.stdout
+    assert 'version = "0.0.0"' in (repo / "pyproject.toml").read_text(encoding="utf-8")
+    assert run(["git", "tag", "--list", "v1.2.3"], cwd=repo).stdout.strip() == ""
+
+
+def test_publish_script_rejects_low_quality_changelog_entry(tmp_path: Path):
+    repo, _remote, env = prepare_release_repo(
+        tmp_path,
+        "#!/usr/bin/env bash\nset -euo pipefail\n",
+    )
+    (repo / "CHANGELOG.md").write_text(
+        "# Changelog\n\n"
+        "## v1.2.3 - 2026-04-30\n\n"
+        "### Changed\n\n"
+        "- TODO: maybe publish this release.\n\n"
+        "## v1.2.2 - 2026-04-29\n\n"
+        "### Changed\n\n"
+        "- Previous release.\n",
+        encoding="utf-8",
+    )
+    run(["git", "add", "CHANGELOG.md"], cwd=repo)
+    run(["git", "commit", "-m", "add weak changelog entry"], cwd=repo)
+    run(["git", "push", "origin", "main"], cwd=repo)
+
+    result = run(["./publish.sh", "v1.2.3"], cwd=repo, env=env, check=False)
+
+    assert result.returncode == 1
+    assert "contains forbidden text" in result.stderr
+    assert 'version = "0.0.0"' in (repo / "pyproject.toml").read_text(encoding="utf-8")
+    assert run(["git", "tag", "--list", "v1.2.3"], cwd=repo).stdout.strip() == ""
+
+
+def test_publish_script_rejects_linux_home_paths(tmp_path: Path):
+    repo, _remote, env = prepare_release_repo(
+        tmp_path,
+        "#!/usr/bin/env bash\nset -euo pipefail\n",
+    )
+    (repo / "CHANGELOG.md").write_text(
+        "# Changelog\n\n"
+        "## v1.2.3 - 2026-04-30\n\n"
+        "### Changed\n\n"
+        "- Wrote notes from /home/alice/workspace/rail.\n\n"
+        "## v1.2.2 - 2026-04-29\n\n"
+        "### Changed\n\n"
+        "- Previous release.\n",
+        encoding="utf-8",
+    )
+    run(["git", "add", "CHANGELOG.md"], cwd=repo)
+    run(["git", "commit", "-m", "add home path changelog entry"], cwd=repo)
+    run(["git", "push", "origin", "main"], cwd=repo)
+
+    result = run(["./publish.sh", "v1.2.3"], cwd=repo, env=env, check=False)
+
+    assert result.returncode == 1
+    assert "contains forbidden text" in result.stderr
+    assert 'version = "0.0.0"' in (repo / "pyproject.toml").read_text(encoding="utf-8")
+
+
+def test_publish_script_requires_verification_section(tmp_path: Path):
+    repo, _remote, env = prepare_release_repo(
+        tmp_path,
+        "#!/usr/bin/env bash\nset -euo pipefail\n",
+    )
+    (repo / "CHANGELOG.md").write_text(
+        "# Changelog\n\n"
+        "## v1.2.3 - 2026-04-30\n\n"
+        "### Changed\n\n"
+        "- Added release notes without verification evidence.\n\n"
+        "## v1.2.2 - 2026-04-29\n\n"
+        "### Changed\n\n"
+        "- Previous release.\n",
+        encoding="utf-8",
+    )
+    run(["git", "add", "CHANGELOG.md"], cwd=repo)
+    run(["git", "commit", "-m", "add unverifiable changelog entry"], cwd=repo)
+    run(["git", "push", "origin", "main"], cwd=repo)
+
+    result = run(["./publish.sh", "v1.2.3"], cwd=repo, env=env, check=False)
+
+    assert result.returncode == 1
+    assert "must include Verification" in result.stderr
+    assert 'version = "0.0.0"' in (repo / "pyproject.toml").read_text(encoding="utf-8")

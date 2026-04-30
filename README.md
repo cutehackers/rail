@@ -182,17 +182,21 @@ Release is now triggered by a version tag, not by local upload commands:
 
 Homebrew is used only for cleanup of old installs; it does not drive release.
 
-1) Add a release entry in `CHANGELOG.md` at the top:
-   `## v${VERSION} - <YYYY-MM-DD>`.
-2) Run the publish script.
+1) Run the publish script.
 
 ```bash
 ./publish.sh v0.6.1
 ```
 
-The script validates release metadata, updates `pyproject.toml` and `uv.lock`,
-runs `scripts/release_gate.sh`, commits release metadata changes when needed,
-pushes `main`, and pushes the release tag.
+If the top `CHANGELOG.md` entry for that version is missing, the script prints
+an agent-ready changelog guide built from the previous tag, commit summary,
+changed files, release contract, and recent changelog style, then stops before
+changing release metadata. Have the agent update only `CHANGELOG.md`, review the
+diff, and rerun the same command.
+
+When the changelog entry is present, the script validates changelog quality,
+updates `pyproject.toml` and `uv.lock`, runs `scripts/release_gate.sh`, commits
+release metadata changes when needed, pushes `main`, and pushes the release tag.
 
 A GitHub tag push (`v*`) triggers `.github/workflows/publish.yml`.
 The workflow validates:

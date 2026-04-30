@@ -320,17 +320,28 @@ arbitrary downstream target repository task succeeded.
 
 Public release is tag-driven. The operator performs this sequence:
 
-1. Add a top-of-file entry in `CHANGELOG.md` named `## v${VERSION} - <YYYY-MM-DD>`.
-2. Update `pyproject.toml` version to match the same `${VERSION}`.
-3. Run the local release gate:
+1. Run `./publish.sh v${VERSION}` from the release HEAD intended for `main`.
+2. If the top-of-file `CHANGELOG.md` entry named
+   `## v${VERSION} - <YYYY-MM-DD>` is missing, the script must stop before
+   changing release metadata and print an agent-ready changelog guide based on
+   the previous release tag, commit summary, changed files, this release
+   contract, and recent changelog style.
+3. The operator has the agent update only `CHANGELOG.md`, reviews the diff, and
+   reruns `./publish.sh v${VERSION}`.
+4. When the changelog entry exists, the script validates changelog quality,
+   updates `pyproject.toml` version to match `${VERSION}`, updates `uv.lock`,
+   and runs the local release gate:
    `scripts/release_gate.sh`.
-4. Commit, tag `v${VERSION}`, and push the tag.
+5. The script commits release metadata changes when needed, pushes `main`, tags
+   `v${VERSION}`, and pushes the tag.
 
 `.github/workflows/publish.yml` is the canonical publishing pipeline.
 It must fail if:
 
 - `pyproject.toml` version and tag version differ.
 - the top `CHANGELOG.md` entry version and tag version differ.
+- the top `CHANGELOG.md` entry is empty or contains unresolved draft language,
+  secret-like text, or home-directory paths.
 - the local release gate fails.
 - package build or PyPI publish fails.
 

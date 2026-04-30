@@ -6,8 +6,12 @@ usage() {
 Usage:
   ./publish.sh vX.Y.Z
 
-Before running, add the release notes at the top of CHANGELOG.md:
+The release notes must exist at the top of CHANGELOG.md before metadata is
+changed:
   ## vX.Y.Z - YYYY-MM-DD
+
+If that CHANGELOG entry is missing, the script prints an agent-ready changelog
+authoring guide and stops before changing release metadata.
 
 The script updates pyproject.toml and uv.lock, runs the release gate, commits
 release metadata changes when needed, pushes main, and pushes the release tag.
@@ -58,25 +62,6 @@ assert_only_release_files_are_dirty() {
   done <<< "${status}"
 }
 
-assert_changelog_top_entry() {
-  python3 - "${TAG}" <<'PY'
-from pathlib import Path
-import sys
-
-tag = sys.argv[1]
-for line in Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines():
-    if not line.startswith("## v"):
-        continue
-    if line.startswith(f"## {tag} - "):
-        raise SystemExit(0)
-    raise SystemExit(
-        f"Top CHANGELOG entry must be {tag}. Found: {line}. "
-        "Add the new release notes at the top before publishing."
-    )
-raise SystemExit("CHANGELOG.md has no release entry.")
-PY
-}
-
 update_pyproject_version() {
   python3 - "${VERSION}" <<'PY'
 from pathlib import Path
@@ -100,7 +85,6 @@ PY
 
 echo "Preparing ${TAG}."
 assert_only_release_files_are_dirty
-assert_changelog_top_entry
 
 git fetch origin main --tags
 if ! git merge-base --is-ancestor origin/main HEAD; then
@@ -116,6 +100,9 @@ if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; t
   echo "Remote tag already exists: ${TAG}" >&2
   exit 1
 fi
+
+python3 scripts/prepare_changelog.py "${TAG}" --changelog CHANGELOG.md --spec docs/SPEC.md
+assert_only_release_files_are_dirty
 
 update_pyproject_version
 uv lock

@@ -209,7 +209,7 @@ Validation rules:
 Expose request normalization through the Python API:
 
 ```python
-request = rail.normalize_request(draft)
+request = rail.specify(draft)
 ```
 
 Do not require a target-local `.harness/requests/request.yaml` handoff for
@@ -1124,7 +1124,7 @@ git commit -m "refactor: remove go and codex cli runtime"
 
 ## Final Acceptance
 
-- [x] `rail.normalize_request(draft)` creates a schema-valid request object.
+- [x] `rail.specify(draft)` creates a schema-valid request object.
 - [x] `start_task(draft)` allocates an artifact and returns an artifact handle.
 - [x] Existing artifact operations use the artifact handle without composing a
       new request or allocating a new artifact.

@@ -138,7 +138,7 @@ func TestActorRuntimeReadinessRejectsMissingCodexOnSealedPath(t *testing.T) {
 
     err := CheckActorRuntimeReadinessForDoctor(t.TempDir())
     if err == nil || !strings.Contains(err.Error(), "unsafe_codex_path") {
-        t.Fatalf("expected sealed codex path readiness failure, got %v", err)
+        t.Fatalf("expected codex_vault path readiness failure, got %v", err)
     }
 }
 
@@ -786,7 +786,7 @@ Expected: PASS.
 
 Use focused commits in this order:
 
-1. `fix(runtime): preflight sealed codex command in auth doctor`
+1. `fix(runtime): preflight codex_vault command in auth doctor`
 2. `fix(runtime): allow marked system skills in sealed actor home`
 3. `fix(request): reject command-like validation targets`
 4. `docs(skill): clarify rail task identity flow`

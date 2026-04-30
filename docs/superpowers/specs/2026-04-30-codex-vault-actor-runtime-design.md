@@ -1,4 +1,4 @@
-# Sealed Codex Actor Runtime Design
+# Codex Vault Actor Runtime Design
 
 **Date:** 2026-04-30
 
@@ -8,7 +8,7 @@ Make Rail usable through Codex login without depending on an operator OpenAI API
 quota, while preserving actor isolation and Rail's Python-first governance
 contract.
 
-The default local user path should become the `sealed_codex` Actor Runtime. The
+The default local user path should become the `codex_vault` Actor Runtime. The
 OpenAI Agents SDK Actor Runtime remains available for operator-controlled API
 key, CI, and live smoke environments.
 
@@ -21,11 +21,11 @@ Rail adopts these official product terms:
 - **Actor Runtime:** the component that executes one Rail actor invocation.
 - **`rail.specify`:** the public API that turns a skill-produced draft into a
   schema-valid Rail request.
-- **`sealed_codex`:** the default local-user Actor Runtime provider.
+- **`codex_vault`:** the default local-user Actor Runtime provider.
 - **`openai_agents_sdk`:** an optional Actor Runtime provider for API-key
   environments.
 
-`rail.normalize_request` becomes a legacy alias during migration. New docs,
+`rail.specify` is the request-specification API. New docs,
 skills, tests, and examples should use `rail.specify`.
 
 ## Problem
@@ -72,9 +72,9 @@ success only through artifact evidence, validation evidence, and evaluator gates
 
 ## Runtime Providers
 
-### `sealed_codex`
+### `codex_vault`
 
-`sealed_codex` is the default local user provider. It uses Codex execution while
+`codex_vault` is the default local user provider. It uses Codex execution while
 preventing actor inheritance from the parent or user's normal Codex environment.
 
 Required properties:
@@ -120,7 +120,7 @@ The preferred flow:
 
 1. `rail auth login` runs Codex login with the Rail-owned Codex auth home.
 2. `rail auth status` checks that same auth home.
-3. `rail auth doctor` verifies both auth readiness and `sealed_codex` runtime
+3. `rail auth doctor` verifies both auth readiness and `codex_vault` runtime
    readiness.
 4. Actor execution creates an artifact-local `CODEX_HOME`.
 5. Rail copies only required auth material into the artifact-local
@@ -176,7 +176,7 @@ allowlisted materialization.
 
 ## Capability Rules
 
-The default `sealed_codex` Actor Runtime policy is:
+The default `codex_vault` Actor Runtime policy is:
 
 - user skills: disabled
 - user rules: disabled
@@ -221,19 +221,16 @@ Policy violations include:
 Event audit is a secondary defense. Rail must not rely on event audit as the
 only isolation boundary.
 
-## API Migration
+## API Rename
 
 Add `rail.specify(draft)` as the official public API for request specification.
 
-Migration rules:
+Rename rules:
 
-1. `rail.specify(draft)` calls the existing request normalization behavior.
+1. `rail.specify(draft)` calls the existing request validation behavior.
 2. `rail.start_task(draft)` uses `rail.specify`.
-3. `rail.normalize_request(draft)` remains as a compatibility alias for at
-   least one release.
-4. New skills, docs, and examples use `rail.specify`.
-5. Tests should cover both the new API and the legacy alias until the alias is
-   removed.
+3. New skills, docs, and examples use `rail.specify`.
+4. Request API tests should validate `rail.specify` end-to-end with fresh and rejected drafts.
 
 The API rename is product-facing and must update:
 
@@ -265,7 +262,7 @@ It should express:
 Rail/operator defaults remain the trust root. Target-local policy may narrow but
 must not broaden capabilities or select a less isolated runtime posture.
 
-The default provider should become `sealed_codex`. `openai_agents_sdk` should be
+The default provider should become `codex_vault`. `openai_agents_sdk` should be
 selectable only when the operator environment explicitly allows it.
 
 ## Failure Modes
@@ -294,9 +291,9 @@ Tests must prove isolation before live execution is considered release-ready.
 
 Required deterministic tests:
 
-- `rail.specify` returns the same request contract as the legacy alias
+- `rail.specify` returns the canonical request contract
 - `rail.start_task` uses `rail.specify`
-- default Actor Runtime provider loads as `sealed_codex`
+- default Actor Runtime provider loads as `codex_vault`
 - `openai_agents_sdk` remains available when explicitly selected
 - actor runtime policy rejects unknown provider values
 - target-local policy cannot select `openai_agents_sdk` without Rail/operator
@@ -317,14 +314,14 @@ Live checks should be narrow and opt-in:
 
 - `rail auth login`
 - `rail auth doctor`
-- a non-mutating `sealed_codex` smoke actor in a temporary target
+- a non-mutating `codex_vault` smoke actor in a temporary target
 
 ## Documentation Updates
 
 Update canonical docs and skills together:
 
 - `docs/SPEC.md` becomes the source of truth for `rail.specify` and
-  `sealed_codex`
+  `codex_vault`
 - `docs/ARCHITECTURE.md` describes Codex login based Actor Runtime execution as
   the default local user path
 - `docs/CONVENTIONS.md` keeps Actor Runtime terminology
@@ -338,7 +335,7 @@ Docs and examples must not contain machine-specific home directory paths.
 ## Rollout Plan
 
 1. Update canonical docs and public API naming around `rail.specify`.
-2. Add typed Actor Runtime provider policy with `sealed_codex` and
+2. Add typed Actor Runtime provider policy with `codex_vault` and
    `openai_agents_sdk`.
 3. Add Rail-owned Codex auth home commands and readiness checks.
 4. Add sealed actor environment materialization.
@@ -356,7 +353,7 @@ Docs and examples must not contain machine-specific home directory paths.
 - Which Codex isolation flags are stable enough to require in release checks?
 - Should `rail auth doctor` include a minimal non-mutating Codex execution smoke
   by default, or only under an explicit live-check flag?
-- How long should `rail.normalize_request` remain as a compatibility alias?
+
 
 ## Acceptance Criteria
 

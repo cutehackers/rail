@@ -67,7 +67,7 @@ Use focused pytest targets while developing, then run the full checks before cla
 Use the lightest validation that proves the change.
 
 - For API, schema, or runtime changes, run focused tests for the touched package and then the full Python test suite.
-- For request-shape changes, validate via `rail.normalize_request(...)` or a focused request test.
+- For request-shape changes, validate via `rail.specify(...)` or a focused request test.
 - For routing or artifact changes, exercise the smallest relevant supervisor flow and inspect the produced artifact output.
 - If a task changes documented launch behavior or supervisor outcomes, update the matching docs and skill references.
 

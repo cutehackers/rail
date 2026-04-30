@@ -639,7 +639,7 @@ type CodexCLIExecutor struct{}
 func (CodexCLIExecutor) RunActor(ctx context.Context, invocation ActorInvocation) (ActorResult, error) {
     // normalize profile
     // prepare sealed runtime
-    // execute sealed codex command
+    // execute codex_vault command
     // audit events
     // decode last message
 }

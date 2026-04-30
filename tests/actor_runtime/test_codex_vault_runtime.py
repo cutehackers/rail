@@ -325,6 +325,48 @@ def test_codex_vault_runtime_blocks_sed_addressed_write_commands(tmp_path):
     assert "write-capable flag" in result.structured_output["error"]
 
 
+def test_codex_vault_runtime_blocks_sed_compact_write_commands(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "sed 1wout.txt app.txt"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "write-capable flag" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_sed_read_file_commands(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "sed 1r ../secret.txt app.txt"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "write-capable flag" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_blocks_shell_newline_chaining(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(

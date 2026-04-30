@@ -949,14 +949,14 @@ def _write_capable_shell_flag_violation(executable: str, args: list[str]) -> str
         return f"shell executable uses write-capable flag: {executable}"
     if executable == "sed" and any(arg == "-i" or arg.startswith("-i") or arg == "--in-place" or arg.startswith("--in-place=") for arg in args):
         return f"shell executable uses write-capable flag: {executable}"
-    if executable == "sed" and _sed_script_can_write(args):
+    if executable == "sed" and _sed_script_uses_unsafe_command(args):
         return f"shell executable uses write-capable flag: {executable}"
     if executable == "test" and any(arg in {"-w", "-G", "-O", "-N"} for arg in args):
         return f"shell executable uses write-capable flag: {executable}"
     return None
 
 
-def _sed_script_can_write(args: list[str]) -> bool:
+def _sed_script_uses_unsafe_command(args: list[str]) -> bool:
     scripts: list[str] = []
     index = 0
     while index < len(args):
@@ -979,11 +979,15 @@ def _sed_script_can_write(args: list[str]) -> bool:
             scripts.append(arg)
             break
         index += 1
-    return any(_sed_script_contains_write_command(script) for script in scripts)
+    return any(_sed_script_contains_unsafe_command(script) for script in scripts)
 
 
-def _sed_script_contains_write_command(script: str) -> bool:
-    return re.search(r"(^|[;{}\s\d,$!])w(?:\s|$)", script) is not None or "/w" in script
+def _sed_script_contains_unsafe_command(script: str) -> bool:
+    # r/R reads arbitrary files, w/W writes files, and e executes commands.
+    # The initial codex_vault shell subset is read-only inspection, so these
+    # sed commands are denied even when their target path is embedded in the
+    # sed program instead of a normal shell argument.
+    return re.search(r"(^|[;{}\s\d,$!/])(?:r|R|w|W|e)", script) is not None
 
 
 def _argument_references_forbidden_root(arg: str, *, cwd: Path, sandbox_root: Path, forbidden_roots: list[Path]) -> bool:

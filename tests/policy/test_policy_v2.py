@@ -132,6 +132,21 @@ def test_operator_default_policy_path_must_not_be_inside_target_repo(tmp_path, m
         load_effective_policy(target)
 
 
+def test_operator_default_policy_path_rejects_target_symlink_parent(tmp_path, monkeypatch):
+    target = tmp_path / "target"
+    target.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    policy_path = external / "operator-policy.yaml"
+    policy_path.write_text(yaml.safe_dump(load_effective_policy(Path(".")).model_dump(mode="json")), encoding="utf-8")
+    target_link = target / "policy-parent"
+    target_link.symlink_to(external, target_is_directory=True)
+    monkeypatch.setenv("RAIL_OPERATOR_ACTOR_RUNTIME_POLICY", str(target_link / "operator-policy.yaml"))
+
+    with pytest.raises(ValueError, match="target"):
+        load_effective_policy(target)
+
+
 @pytest.mark.parametrize("writable_bit", [stat.S_IWGRP, stat.S_IWOTH])
 def test_operator_default_policy_path_must_not_be_group_or_world_writable(tmp_path, monkeypatch, writable_bit):
     target = tmp_path / "target"

@@ -13,6 +13,7 @@ from rail.actor_runtime.agents import (
 from rail.actor_runtime.runtime import build_invocation
 from rail.auth.credentials import CredentialSource
 from rail.policy import load_effective_policy
+from rail.policy.schema import ActorRuntimePolicyV2
 from pydantic import BaseModel
 
 
@@ -20,7 +21,7 @@ def test_default_runner_requires_ready_credentials(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
 
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path))
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(tmp_path))
 
     readiness = runtime.readiness()
     assert readiness.ready is False
@@ -43,7 +44,7 @@ def test_injected_runner_is_ready_without_live_credentials(tmp_path, monkeypatch
             trace_id="trace-ready",
         )
 
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path), runner=runner)
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(tmp_path), runner=runner)
 
     readiness = runtime.readiness()
     assert readiness.ready is True
@@ -56,7 +57,7 @@ def test_live_runner_is_ready_when_operator_credential_is_configured(tmp_path, m
 
     runtime = AgentsActorRuntime(
         project_root=Path("."),
-        policy=load_effective_policy(tmp_path),
+        policy=_sdk_policy(tmp_path),
         credential_preflight=lambda _sources, _policy: None,
     )
 
@@ -71,7 +72,7 @@ def test_default_runner_auto_enables_live_with_operator_credential(tmp_path, mon
 
     runtime = AgentsActorRuntime(
         project_root=Path("."),
-        policy=load_effective_policy(tmp_path),
+        policy=_sdk_policy(tmp_path),
         credential_preflight=lambda _sources, _policy: None,
     )
 
@@ -84,7 +85,7 @@ def test_default_runner_blocks_before_actor_when_credentials_missing(tmp_path, m
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path))
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(tmp_path))
 
     result = runtime.run(build_invocation(handle, "planner"))
 
@@ -104,7 +105,7 @@ def test_live_runner_blocks_invalid_operator_credential_before_actor_work(tmp_pa
 
     monkeypatch.setattr("agents.Runner.run", fail_if_called)
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(tmp_path))
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(tmp_path))
 
     result = runtime.run(build_invocation(handle, "planner"))
 
@@ -129,7 +130,7 @@ def test_live_runner_blocks_failed_credential_preflight_before_actor_work(tmp_pa
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runtime = AgentsActorRuntime(
         project_root=Path("."),
-        policy=load_effective_policy(tmp_path),
+        policy=_sdk_policy(tmp_path),
         credential_preflight=lambda _sources, _policy: "operator SDK invalid credential is configured",
     )
 
@@ -155,7 +156,7 @@ def test_live_credential_preflight_uses_policy_timeout(tmp_path, monkeypatch):
             self.models = FakeModels()
 
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
-    base_policy = load_effective_policy(tmp_path)
+    base_policy = _sdk_policy(tmp_path)
     policy = base_policy.model_copy(
         update={"runtime": base_policy.runtime.model_copy(update={"timeout_seconds": 7})}
     )
@@ -183,7 +184,7 @@ def test_agents_runtime_builds_prompt_schema_and_validates_output(tmp_path):
             trace_id="trace-123",
         )
 
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")), runner=runner)
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(Path(".")), runner=runner)
 
     result = runtime.run(build_invocation(handle, "planner"))
 
@@ -204,7 +205,7 @@ def test_agents_runtime_maps_sdk_errors_to_interruption(tmp_path):
     def runner(_agent, _prompt, *, run_config):
         raise RuntimeError("sdk unavailable")
 
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")), runner=runner)
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(Path(".")), runner=runner)
 
     result = runtime.run(build_invocation(handle, "planner"))
 
@@ -218,7 +219,7 @@ def test_agents_runtime_maps_unexpected_sdk_errors_to_redacted_interruption(tmp_
     def runner(_agent, _prompt, *, run_config):
         raise Exception("OPENAI_API_KEY=sk-secret-value")
 
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")), runner=runner)
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(Path(".")), runner=runner)
 
     result = runtime.run(build_invocation(handle, "planner"))
 
@@ -242,7 +243,7 @@ def test_agents_runtime_redacts_secret_events(tmp_path):
             trace_id="sk-secret",
         )
 
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")), runner=runner)
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(Path(".")), runner=runner)
 
     result = runtime.run(build_invocation(handle, "evaluator"))
 
@@ -251,14 +252,14 @@ def test_agents_runtime_redacts_secret_events(tmp_path):
     assert "[REDACTED]" in evidence
 
 
-def test_policy_default_constructs_no_host_tools():
-    policy = load_effective_policy(Path("."))
+def test_sdk_policy_constructs_no_host_tools():
+    policy = _sdk_policy(Path("."))
 
     assert build_sdk_tools(policy) == []
 
 
 def test_offline_real_sdk_adapter_construction_does_not_require_network():
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")))
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(Path(".")))
 
     agent = runtime.build_agent("planner")
 
@@ -303,7 +304,7 @@ def test_agents_runtime_rejects_invalid_final_output(tmp_path):
     def runner(_agent, _prompt, *, run_config):
         return SDKRunResult(final_output={"wrong": True}, trace_id="trace-invalid")
 
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")), runner=runner)
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(Path(".")), runner=runner)
 
     result = runtime.run(build_invocation(handle, "planner"))
 
@@ -326,7 +327,7 @@ def test_agents_runtime_rejects_invalid_evaluator_digest_shape(tmp_path):
             trace_id="trace-invalid-digest",
         )
 
-    runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(Path(".")), runner=runner)
+    runtime = AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(Path(".")), runner=runner)
 
     result = runtime.run(build_invocation(handle, "evaluator"))
 
@@ -351,3 +352,11 @@ def _draft(target: Path) -> dict[str, object]:
 
 def _credential_sources(value: str) -> list[CredentialSource]:
     return [CredentialSource(category="operator_env", name="OPENAI_API_KEY", value=value)]
+
+
+def _sdk_policy(project_root: Path) -> ActorRuntimePolicyV2:
+    data = load_effective_policy(project_root).model_dump(mode="json")
+    data["runtime"]["provider"] = "openai_agents_sdk"
+    data["tools"]["shell"]["enabled"] = False
+    data["tools"]["shell"]["allowlist"] = []
+    return ActorRuntimePolicyV2.model_validate(data)

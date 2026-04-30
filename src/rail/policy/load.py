@@ -46,8 +46,15 @@ def _validate_operator_policy_path(path: Path, project_root: Path) -> None:
         raise ValueError(f"{_OPERATOR_POLICY_ENV} must point to a file")
     if path.is_symlink():
         raise ValueError(f"{_OPERATOR_POLICY_ENV} must not be symlinked")
+    target_root = project_root.resolve(strict=False)
     try:
-        path.resolve(strict=True).relative_to(project_root.resolve(strict=False))
+        path.absolute().relative_to(target_root)
+    except ValueError:
+        pass
+    else:
+        raise ValueError(f"{_OPERATOR_POLICY_ENV} must not be inside the target repository")
+    try:
+        path.resolve(strict=True).relative_to(target_root)
     except ValueError:
         pass
     else:

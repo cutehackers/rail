@@ -150,7 +150,7 @@ def test_publish_pipeline_is_tag_driven_and_gate_gated():
     assert "CHANGELOG.md" in text
     assert "PYPI_API_TOKEN" in text
     assert "pypa/gh-action-pypi-publish@release/v1" in text
-    assert "softprops/action-gh-release@v2" in text
+    assert "softprops/action-gh-release@v3" in text
 
 
 def test_release_metadata_check_accepts_matching_tag_and_changelog(tmp_path: Path):

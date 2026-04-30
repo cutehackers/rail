@@ -41,7 +41,7 @@ def materialize_vault_environment(
 
     _prepare_actor_runtime_dir(actor_runtime_dir)
     _prepare_empty_directory(codex_home, mode=0o700)
-    evidence_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_empty_directory(evidence_dir, mode=0o700)
     _prepare_empty_directory(temp_dir, mode=0o700)
 
     copied_auth_material: list[str] = []

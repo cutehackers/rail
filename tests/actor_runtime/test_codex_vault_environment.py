@@ -125,6 +125,25 @@ def test_materialize_vault_env_rejects_preexisting_auth_destination_symlink(tmp_
         )
 
 
+def test_materialize_vault_env_rejects_symlinked_evidence_dir(tmp_path):
+    artifact_dir = tmp_path / "artifact"
+    evidence_dir = artifact_dir / "actor_runtime" / "evidence"
+    evidence_dir.parent.mkdir(parents=True)
+    outside_evidence = tmp_path / "outside-evidence"
+    outside_evidence.mkdir()
+    evidence_dir.symlink_to(outside_evidence, target_is_directory=True)
+    auth_home = tmp_path / "auth"
+    auth_home.mkdir()
+    (auth_home / "auth.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsafe vault material"):
+        materialize_vault_environment(
+            artifact_dir=artifact_dir,
+            auth_home=auth_home,
+            base_environ={},
+        )
+
+
 def test_materialize_vault_env_rejects_config_toml_in_auth_home(tmp_path):
     artifact_dir = tmp_path / "artifact"
     auth_home = tmp_path / "auth"

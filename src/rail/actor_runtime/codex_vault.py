@@ -97,12 +97,20 @@ class CodexVaultActorRuntime:
                 CodexCommandReadiness(
                     ready=False,
                     reason=trust_failure,
-                    command_path=command_path,
                     blocked_category="environment",
                 )
             )
 
-        version_result = self.runner([command_path.as_posix(), "--version"])
+        version_result = self._run_readiness_command([command_path.as_posix(), "--version"])
+        if version_result.returncode < 0:
+            return self._cache_readiness(
+                CodexCommandReadiness(
+                    ready=False,
+                    reason="Codex command version check failed",
+                    command_path=command_path,
+                    blocked_category="environment",
+                )
+            )
         version_stdout = version_result.stdout.strip()
         if version_result.returncode != 0:
             return self._cache_readiness(
@@ -136,7 +144,17 @@ class CodexVaultActorRuntime:
                 )
             )
 
-        help_result = self.runner([command_path.as_posix(), "exec", "--help"])
+        help_result = self._run_readiness_command([command_path.as_posix(), "exec", "--help"])
+        if help_result.returncode < 0:
+            return self._cache_readiness(
+                CodexCommandReadiness(
+                    ready=False,
+                    reason="Codex command exec help check failed",
+                    command_path=command_path,
+                    codex_version=version_stdout,
+                    blocked_category="environment",
+                )
+            )
         help_output = f"{help_result.stdout}\n{help_result.stderr}"
         if help_result.returncode != 0:
             return self._cache_readiness(
@@ -173,9 +191,16 @@ class CodexVaultActorRuntime:
         self._readiness_cache = readiness
         return readiness
 
+    def _run_readiness_command(self, command: list[str]) -> CodexCommandRunResult:
+        try:
+            return self.runner(command)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return CodexCommandRunResult(stdout="", stderr=type(exc).__name__, returncode=-1)
+
     def run(self, invocation: ActorInvocation) -> ActorResult:
         readiness = self.readiness()
         if not readiness.ready:
+            command_path_status = _command_path_status(readiness)
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.actor,
@@ -188,7 +213,7 @@ class CodexVaultActorRuntime:
                         "runtime_provider": self.policy.runtime.provider,
                         "runtime_project_root": self.project_root.as_posix(),
                         "target_root": invocation.target_root.as_posix(),
-                        "command_path": readiness.command_path.as_posix() if readiness.command_path else None,
+                        "command_path_status": command_path_status,
                         "codex_version": readiness.codex_version,
                     }
                 ),
@@ -299,3 +324,11 @@ def _parse_codex_version(value: str) -> tuple[int, int, int] | None:
 
 def _path_is_under_any(path: Path, roots: tuple[Path, ...]) -> bool:
     return any(path == root or path.is_relative_to(root) for root in roots)
+
+
+def _command_path_status(readiness: CodexCommandReadiness) -> str:
+    if readiness.command_path is not None:
+        return "trusted"
+    if "not found" in readiness.reason:
+        return "missing"
+    return "untrusted"

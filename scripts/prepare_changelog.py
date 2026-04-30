@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import re
 import subprocess
 import sys
@@ -136,104 +137,117 @@ def git_diff_name_status(previous_tag: str | None) -> str:
     return run_git(["diff", "--name-status", range_arg])
 
 
-def recent_changelog_style(changelog_path: Path) -> str:
-    sections = read_release_sections(changelog_path)[:2]
-    if not sections:
-        return "(No previous CHANGELOG sections found.)"
-    return "\n\n".join(f"{heading}\n\n{body}".strip() for heading, body in sections)
+def commit_subjects(previous_tag: str | None) -> list[str]:
+    return [
+        line.split(" ", 1)[1].strip() if " " in line else line.strip()
+        for line in git_log(previous_tag).splitlines()
+        if line.strip()
+    ]
 
 
-def release_contract_excerpt(spec_path: Path) -> str:
-    text = spec_path.read_text(encoding="utf-8")
-    marker = "## Release Publishing (operator)"
-    start = text.find(marker)
-    if start == -1:
-        return "(Release Publishing section not found in docs/SPEC.md.)"
-    end = text.find("\n## ", start + len(marker))
-    return text[start : end if end != -1 else len(text)].strip()
+def release_note_for_commit(subject: str) -> tuple[str, str]:
+    lowered = subject.lower()
+    if lowered.startswith(("feat:", "add:", "added ")):
+        return "Added", f"Added {subject.split(':', 1)[-1].strip()}."
+    if lowered.startswith("fix:"):
+        return "Fixed", f"Fixed {subject.split(':', 1)[-1].strip()}."
+    if lowered.startswith(("ci:", "build:")):
+        note = f"Updated release and build automation: {subject.split(':', 1)[-1].strip()}."
+        return "Changed", note
+    if lowered.startswith(("docs:", "doc:")):
+        note = f"Updated release documentation: {subject.split(':', 1)[-1].strip()}."
+        return "Changed", note
+    if lowered.startswith("test:"):
+        note = f"Expanded release validation coverage: {subject.split(':', 1)[-1].strip()}."
+        return "Changed", note
+    return "Changed", f"Updated {subject.rstrip('.')}."
 
 
-def print_agent_guide(tag_name: str, changelog_path: Path, spec_path: Path) -> None:
-    previous_tag = find_previous_tag(tag_name)
-    range_label = f"{previous_tag}..HEAD" if previous_tag else "HEAD"
-    print(
-        f"""CHANGELOG.md has no top entry for {tag_name}.
+def generated_release_section(tag_name: str, previous_tag: str | None) -> str:
+    grouped: dict[str, list[str]] = {"Added": [], "Changed": [], "Fixed": []}
+    for subject in commit_subjects(previous_tag):
+        title, note = release_note_for_commit(subject)
+        if note not in grouped.setdefault(title, []):
+            grouped[title].append(note)
 
-Stop before publishing. Ask the agent to write the new top CHANGELOG section,
-then rerun:
+    if not any(grouped.values()):
+        range_label = f"{previous_tag}..HEAD" if previous_tag else "HEAD"
+        grouped["Changed"].append(
+            f"Prepared release metadata for changes in `{range_label}`."
+        )
 
-  ./publish.sh {tag_name}
+    lines = [f"## {tag_name} - {dt.date.today().isoformat()}", ""]
+    for title in ("Added", "Changed", "Fixed"):
+        notes = grouped.get(title, [])
+        if not notes:
+            continue
+        lines.extend([f"### {title}", ""])
+        lines.extend(f"- {note}" for note in notes)
+        lines.append("")
+    lines.extend(["### Verification", "", "- `scripts/release_gate.sh`", ""])
+    return "\n".join(lines)
 
-Agent task:
-Write the top CHANGELOG.md section for {tag_name}. Use the context below.
-Do not edit any file other than CHANGELOG.md.
 
-Required format:
-
-## {tag_name} - YYYY-MM-DD
-
-### Added
-- User- or operator-visible change.
-
-### Changed
-- User- or operator-visible change.
-
-### Fixed
-- User- or operator-visible fix.
-
-### Migration
-- Include only when users need action.
-
-### Verification
-- `scripts/release_gate.sh`
-
-Rules:
-- Use only sections that are relevant.
-- Summarize user/operator impact; do not dump commit hashes.
-- Do not claim release-ready status except through actual gate evidence.
-- Include Migration only when installation or upgrade behavior changed.
-- Verification must list commands that were or will be run by this publish flow.
-- Do not include TODO, TBD, maybe, probably, secrets, tokens, or home paths.
-- Keep the style consistent with the recent CHANGELOG examples.
-
-Release range: {range_label}
-
-Commits:
-{git_log(previous_tag) or "(No commits found.)"}
-
-Changed files:
-{git_diff_name_status(previous_tag) or "(No changed files found.)"}
-
-Release contract excerpt:
-{release_contract_excerpt(spec_path)}
-
-Recent CHANGELOG style:
-{recent_changelog_style(changelog_path)}
-"""
+def insert_top_release_section(changelog_path: Path, section: str) -> None:
+    text = changelog_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    insert_at = next(
+        (idx for idx, line in enumerate(lines) if line.startswith("## v")),
+        len(lines),
     )
+    updated_lines = lines[:insert_at]
+    while updated_lines and updated_lines[-1] == "":
+        updated_lines.pop()
+    remaining_lines = lines[insert_at:]
+    while remaining_lines and remaining_lines[0] == "":
+        remaining_lines.pop(0)
+    new_text = "\n".join(
+        [*updated_lines, "", section.rstrip(), "", *remaining_lines]
+    ).rstrip()
+    changelog_path.write_text(f"{new_text}\n", encoding="utf-8")
+
+
+def ensure_changelog_section(changelog_path: Path, tag_name: str) -> bool:
+    if read_target_section(changelog_path, tag_name) is not None:
+        return False
+    previous_tag = find_previous_tag(tag_name)
+    insert_top_release_section(changelog_path, generated_release_section(tag_name, previous_tag))
+    return True
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Guide and validate release CHANGELOG authoring."
+        description="Generate and validate release CHANGELOG authoring."
     )
     parser.add_argument("tag_name")
     parser.add_argument("--changelog", default="CHANGELOG.md")
     parser.add_argument("--spec", default="docs/SPEC.md")
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Validate the committed changelog entry without creating one.",
+    )
     args = parser.parse_args()
 
     try:
         version_from_tag(args.tag_name)
         changelog_path = Path(args.changelog)
-        spec_path = Path(args.spec)
-        if read_target_section(changelog_path, args.tag_name) is None:
-            print_agent_guide(args.tag_name, changelog_path, spec_path)
-            return 1
+        if args.check_only and read_target_section(changelog_path, args.tag_name) is None:
+            raise ValueError(
+                f"CHANGELOG.md does not have a top entry for {args.tag_name}."
+            )
+        created = (
+            False
+            if args.check_only
+            else ensure_changelog_section(changelog_path, args.tag_name)
+        )
         validate_changelog_section(changelog_path, args.tag_name)
     except (RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
+    if created:
+        print(f"Created CHANGELOG.md entry for {args.tag_name}.")
     print(f"CHANGELOG.md is ready for {args.tag_name}.")
     return 0
 

@@ -188,15 +188,12 @@ Homebrew is used only for cleanup of old installs; it does not drive release.
 ./publish.sh v0.6.1
 ```
 
-If the top `CHANGELOG.md` entry for that version is missing, the script prints
-an agent-ready changelog guide built from the previous tag, commit summary,
-changed files, release contract, and recent changelog style, then stops before
-changing release metadata. Have the agent update only `CHANGELOG.md`, review the
-diff, and rerun the same command.
-
-When the changelog entry is present, the script validates changelog quality,
-updates `pyproject.toml` and `uv.lock`, runs `scripts/release_gate.sh`, commits
-release metadata changes when needed, pushes `main`, and pushes the release tag.
+If the top `CHANGELOG.md` entry for that version is missing, the script creates
+one from changes since the previous release tag, then validates changelog
+quality. If the entry already exists, the script keeps it and validates it.
+After that it updates `pyproject.toml` and `uv.lock`, runs
+`scripts/release_gate.sh`, commits release metadata changes when needed, pushes
+`main`, and pushes the release tag.
 
 A GitHub tag push (`v*`) triggers `.github/workflows/publish.yml`.
 The workflow validates:

@@ -322,15 +322,12 @@ Public release is tag-driven. The operator performs this sequence:
 
 1. Run `./publish.sh v${VERSION}` from the release HEAD intended for `main`.
 2. If the top-of-file `CHANGELOG.md` entry named
-   `## v${VERSION} - <YYYY-MM-DD>` is missing, the script must stop before
-   changing release metadata and print an agent-ready changelog guide based on
-   the previous release tag, commit summary, changed files, this release
-   contract, and recent changelog style.
-3. The operator has the agent update only `CHANGELOG.md`, reviews the diff, and
-   reruns `./publish.sh v${VERSION}`.
-4. When the changelog entry exists, the script validates changelog quality,
-   updates `pyproject.toml` version to match `${VERSION}`, updates `uv.lock`,
-   and runs the local release gate:
+   `## v${VERSION} - <YYYY-MM-DD>` is missing, the script must create it from
+   changes since the previous release tag before changing package metadata.
+3. If the changelog entry already exists, the script must preserve it and only
+   validate its quality.
+4. The script validates changelog quality, updates `pyproject.toml` version to
+   match `${VERSION}`, updates `uv.lock`, and runs the local release gate:
    `scripts/release_gate.sh`.
 5. The script commits release metadata changes when needed, pushes `main`, tags
    `v${VERSION}`, and pushes the tag.

@@ -21,6 +21,7 @@ jobs:
           python3 scripts/prepare_changelog.py "${GITHUB_REF_NAME}"
           --changelog CHANGELOG.md
           --spec docs/SPEC.md
+          --check-only
 
       - name: Validate tag and changelog alignment
         id: release-metadata

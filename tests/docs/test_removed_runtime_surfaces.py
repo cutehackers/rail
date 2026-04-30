@@ -146,6 +146,7 @@ def test_publish_pipeline_is_tag_driven_and_gate_gated():
     assert "tags:" in text
     assert '\"v*\"' in text
     assert "scripts/prepare_changelog.py" in text
+    assert "--check-only" in text
     assert "scripts/release_gate.sh" in text
     assert "scripts/check_release_metadata.py" in text
     assert "CHANGELOG.md" in text
@@ -172,17 +173,16 @@ def test_publish_script_runs_release_gate_and_pushes_tag():
     assert "<pypi_token>" not in text
 
 
-def test_changelog_preparation_guides_agent_without_token_uploads():
+def test_changelog_preparation_generates_notes_without_token_uploads():
     path = Path("scripts/prepare_changelog.py")
 
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
-    assert "Agent task:" in text
-    assert "Do not edit any file other than CHANGELOG.md" in text
     assert "git_log(previous_tag)" in text
-    assert "git_diff_name_status(previous_tag)" in text
-    assert "release_contract_excerpt" in text
-    assert "recent_changelog_style" in text
+    assert "generated_release_section" in text
+    assert "insert_top_release_section" in text
+    assert "Created CHANGELOG.md entry" in text
+    assert "scripts/release_gate.sh" in text
     assert "TODO" in text
     assert "TBD" in text
     assert "/Users/" in text

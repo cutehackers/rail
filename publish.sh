@@ -6,12 +6,11 @@ usage() {
 Usage:
   ./publish.sh vX.Y.Z
 
-The release notes must exist at the top of CHANGELOG.md before metadata is
-changed:
+The release notes are kept at the top of CHANGELOG.md:
   ## vX.Y.Z - YYYY-MM-DD
 
-If that CHANGELOG entry is missing, the script prints an agent-ready changelog
-authoring guide and stops before changing release metadata.
+If that CHANGELOG entry is missing, the script creates it from changes since
+the previous release tag before changing release metadata.
 
 The script updates pyproject.toml and uv.lock, runs the release gate, commits
 release metadata changes when needed, pushes main, and pushes the release tag.

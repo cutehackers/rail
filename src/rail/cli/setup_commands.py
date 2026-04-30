@@ -294,6 +294,8 @@ def login_codex_auth(
 ) -> CodexAuthLoginReport:
     environ = os.environ if environ is None else environ
     auth_home = codex_auth_home(environ=environ)
+    if auth_home.is_symlink():
+        return CodexAuthLoginReport(returncode=1)
     try:
         auth_home.mkdir(mode=0o700, parents=True, exist_ok=True)
         auth_home.chmod(0o700)

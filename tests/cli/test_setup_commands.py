@@ -175,6 +175,27 @@ def test_codex_auth_login_reports_local_execution_failure(tmp_path):
     assert str(rail_home) not in report.render()
 
 
+def test_codex_auth_login_rejects_symlinked_auth_home(tmp_path):
+    rail_home = tmp_path / "rail-home"
+    real_auth = tmp_path / "real-auth"
+    real_auth.mkdir()
+    auth_home = rail_home / "codex"
+    auth_home.parent.mkdir()
+    auth_home.symlink_to(real_auth, target_is_directory=True)
+    called = False
+
+    def runner(_command: list[str], _env: dict[str, str]) -> int:
+        nonlocal called
+        called = True
+        return 0
+
+    report = login_codex_auth(environ={"RAIL_HOME": str(rail_home)}, runner=runner)
+
+    assert report.returncode == 1
+    assert called is False
+    assert str(rail_home) not in report.render()
+
+
 def test_run_codex_login_reports_subprocess_failure(monkeypatch):
     def fail_run(*_args, **_kwargs):
         raise subprocess.SubprocessError("boom")

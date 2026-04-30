@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from rail.workspace.patch_bundle import PatchBundle
 
@@ -55,6 +55,12 @@ class ImplementationResultOutput(BaseModel):
     known_limits: list[str]
     patch_bundle_ref: str | None = None
     patch_bundle: PatchBundle | None = None
+
+    @model_validator(mode="after")
+    def _single_patch_source(self) -> ImplementationResultOutput:
+        if self.patch_bundle_ref and self.patch_bundle is not None:
+            raise ValueError("generator output must include exactly one patch source or no patch when read-only")
+        return self
 
 
 class ExecutionTestsOutput(BaseModel):

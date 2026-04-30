@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
 
 import rail
 from rail.resources import load_default_asset_yaml
+from rail.actor_runtime import codex_vault
+from rail.actor_runtime.codex_vault import CodexVaultActorRuntime
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
+from rail.actor_runtime.vault_env import VaultEnvironment
+from rail.policy import load_effective_policy
 from rail.supervisor.graph import SUPERVISOR_GRAPH
 from rail.supervisor.router import route_next
 from rail.supervisor.state import SupervisorState
@@ -182,6 +187,27 @@ def test_supervise_applies_generator_patch_bundle_inside_supervision(tmp_path):
     assert (target / "app.txt").read_text(encoding="utf-8") == "new\n"
 
 
+def test_supervise_applies_codex_vault_generator_patch_bundle_through_rail_validation(tmp_path):
+    target = _target_repo(tmp_path)
+    (target / "app.txt").write_text("old\n", encoding="utf-8")
+    handle = rail.start_task(_draft(target))
+    runner = CodexVaultFlowRunner(target)
+    runtime = CodexVaultActorRuntime(
+        project_root=Path("."),
+        policy=load_effective_policy(tmp_path),
+        command_resolver=lambda: _fake_codex_command(tmp_path),
+        command_trust_checker=lambda _path, _target_root, _artifact_dir: None,
+        runner=runner,
+        environment_materializer=_fake_vault_environment,
+    )
+
+    result = rail.supervise(handle, runtime=runtime)
+
+    assert result.outcome == "pass"
+    assert (target / "app.txt").read_text(encoding="utf-8") == "new\n"
+    assert all(command[command.index("--cd") + 1] != target.as_posix() for command in runner.exec_commands)
+
+
 def test_supervise_uses_policy_validation_command_and_blocks_when_missing(tmp_path):
     target = tmp_path / "target-without-validation"
     target.mkdir()
@@ -355,6 +381,88 @@ class PatchRuntime(PassingRuntime):
         return result.model_copy(update={"structured_output": output})
 
 
+class CodexVaultFlowRunner:
+    def __init__(self, target: Path) -> None:
+        self.target = target
+        self.exec_commands: list[list[str]] = []
+
+    def __call__(self, command: list[str], *, stdin: str | None = None, environ=None, timeout=None):
+        if command[1:] == ["--version"]:
+            return codex_vault.CodexCommandRunResult(stdout="codex-cli 0.124.0", stderr="", returncode=0)
+        if command[1:] == ["exec", "--help"]:
+            return codex_vault.CodexCommandRunResult(
+                stdout="\n".join(codex_vault.CODEX_EXEC_REQUIRED_HELP_FLAGS),
+                stderr="",
+                returncode=0,
+            )
+        if command[1:3] == ["exec", "--json"]:
+            self.exec_commands.append(command)
+            output = self._output_for_prompt(stdin or "")
+            return codex_vault.CodexCommandRunResult(
+                stdout=json.dumps({"type": "final_output", "output": output}, sort_keys=True) + "\n",
+                stderr="",
+                returncode=0,
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    def _output_for_prompt(self, prompt: str) -> dict[str, object]:
+        if "Run Rail actor planner" in prompt:
+            return {
+                "summary": "Plan",
+                "likely_files": ["app.txt"],
+                "substeps": ["Patch app.txt"],
+                "risks": [],
+                "acceptance_criteria_refined": ["app.txt changes"],
+            }
+        if "Run Rail actor context_builder" in prompt:
+            return {
+                "relevant_files": [{"path": "app.txt", "why": "target file"}],
+                "repo_patterns": [],
+                "forbidden_changes": [],
+            }
+        if "Run Rail actor critic" in prompt:
+            return {
+                "priority_focus": ["patch"],
+                "missing_requirements": [],
+                "risk_hypotheses": [],
+                "validation_expectations": ["policy command passes"],
+                "generator_guardrails": ["patch bundle only"],
+                "blocked_assumptions": [],
+            }
+        if "Run Rail actor generator" in prompt:
+            return {
+                "changed_files": ["app.txt"],
+                "patch_summary": ["Update app.txt"],
+                "tests_added_or_updated": [],
+                "known_limits": [],
+                "patch_bundle": {
+                    "schema_version": "1",
+                    "base_tree_digest": tree_digest(self.target),
+                    "operations": [{"op": "write", "path": "app.txt", "content": "new\n"}],
+                },
+            }
+        if "Run Rail actor executor" in prompt:
+            return {
+                "format": "pass",
+                "analyze": "pass",
+                "tests": {"total": 1, "passed": 1, "failed": 0},
+                "failure_details": [],
+                "logs": [],
+            }
+        if "Run Rail actor evaluator" in prompt:
+            marker = '"evaluator_input_digest": "'
+            start = prompt.index(marker) + len(marker)
+            digest = prompt[start : prompt.index('"', start)]
+            return {
+                "decision": "pass",
+                "evaluated_input_digest": digest,
+                "findings": [],
+                "reason_codes": [],
+                "quality_confidence": "high",
+            }
+        raise AssertionError(f"unknown prompt: {prompt}")
+
+
 def _write_runtime_files(invocation: ActorInvocation, status: str) -> None:
     runs_dir = invocation.artifact_dir / "runs"
     runs_dir.mkdir(exist_ok=True)
@@ -371,6 +479,36 @@ def _write_noop_patch_bundle(invocation: ActorInvocation) -> None:
         yaml.safe_dump({"schema_version": "1", "base_tree_digest": tree_digest(target_root), "operations": []}),
         encoding="utf-8",
     )
+
+
+def _fake_vault_environment(*, artifact_dir: Path, auth_home: Path, base_environ) -> VaultEnvironment:
+    codex_home = artifact_dir / "actor_runtime" / "codex_home"
+    evidence_dir = artifact_dir / "actor_runtime" / "evidence"
+    temp_dir = artifact_dir / "actor_runtime" / "tmp"
+    for path in (codex_home, evidence_dir, temp_dir):
+        path.mkdir(parents=True, exist_ok=True)
+    return VaultEnvironment(
+        codex_home=codex_home,
+        evidence_dir=evidence_dir,
+        temp_dir=temp_dir,
+        environ={
+            "PATH": "/usr/bin",
+            "HOME": str(codex_home),
+            "CODEX_HOME": str(codex_home),
+            "TMPDIR": str(temp_dir),
+            "TMP": str(temp_dir),
+            "TEMP": str(temp_dir),
+        },
+        copied_auth_material=["auth.json"],
+    )
+
+
+def _fake_codex_command(tmp_path: Path) -> Path:
+    command = tmp_path / "trusted-bin" / "codex"
+    command.parent.mkdir(exist_ok=True)
+    command.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    command.chmod(0o755)
+    return command
 
 
 def _write_validation_policy(target: Path) -> None:

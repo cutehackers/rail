@@ -9,6 +9,7 @@ Produce the smallest correct patch that satisfies the plan.
 - Follow existing project patterns from `Context Builder`.
 - Prefer minimal diff and avoid opportunistic refactors.
 - Add or update focused tests when behavior changes.
+- Do not mutate the target repository directly. Return a Rail patch bundle when changes are needed.
 
 ## Input
 - `user_request`
@@ -26,6 +27,8 @@ Return:
 - `patch_summary`
 - `tests_added_or_updated`
 - `known_limits`
+- exactly one of `patch_bundle_ref` or inline `patch_bundle` when changes are needed
+- neither patch field when the correct result is read-only
 
 ## Coding heuristics
 - Reuse existing abstractions before creating new ones.

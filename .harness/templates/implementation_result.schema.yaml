@@ -26,3 +26,58 @@ properties:
     items:
       type: string
 
+  patch_bundle_ref:
+    type: string
+
+  patch_bundle:
+    type: object
+    required:
+      - schema_version
+      - base_tree_digest
+      - operations
+    properties:
+      schema_version:
+        type: string
+        enum:
+          - "1"
+      base_tree_digest:
+        type: string
+      operations:
+        type: array
+        items:
+          type: object
+          required:
+            - op
+            - path
+            - content
+          properties:
+            op:
+              type: string
+              enum:
+                - write
+            path:
+              type: string
+            content:
+              type: string
+            executable:
+              type: boolean
+            binary:
+              type: boolean
+
+oneOf:
+  - required:
+      - patch_bundle_ref
+    not:
+      required:
+        - patch_bundle
+  - required:
+      - patch_bundle
+    not:
+      required:
+        - patch_bundle_ref
+  - not:
+      anyOf:
+        - required:
+            - patch_bundle_ref
+        - required:
+            - patch_bundle

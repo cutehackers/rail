@@ -983,7 +983,7 @@ def _sed_script_can_write(args: list[str]) -> bool:
 
 
 def _sed_script_contains_write_command(script: str) -> bool:
-    return re.search(r"(^|[;{}\s])w(?:\s|$)", script) is not None or "/w" in script
+    return re.search(r"(^|[;{}\s\d,$!])w(?:\s|$)", script) is not None or "/w" in script
 
 
 def _argument_references_forbidden_root(arg: str, *, cwd: Path, sandbox_root: Path, forbidden_roots: list[Path]) -> bool:

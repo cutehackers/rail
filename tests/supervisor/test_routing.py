@@ -206,7 +206,8 @@ def test_supervise_routes_evaluator_revise_back_to_generator(tmp_path):
 
 
 def test_actor_invocation_contains_request_and_prior_outputs(tmp_path):
-    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    target = _target_repo(tmp_path)
+    handle = rail.start_task(_draft(target))
     runtime = CapturingRuntime()
 
     rail.supervise(handle, runtime=runtime)
@@ -218,6 +219,8 @@ def test_actor_invocation_contains_request_and_prior_outputs(tmp_path):
     assert "validation/evidence.yaml" in evaluator_invocation.input["evidence_refs"]
     assert "validation_evidence_digest" in evaluator_invocation.input
     assert "evaluator_input_digest" in evaluator_invocation.input
+    assert context_invocation.target_root == target
+    assert context_invocation.target_root != Path.cwd()
 
 
 def test_supervise_blocks_evaluator_output_digest_mismatch(tmp_path):

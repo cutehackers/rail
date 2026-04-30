@@ -17,6 +17,7 @@ class ActorInvocation(BaseModel):
     actor: str
     artifact_id: str
     artifact_dir: Path
+    target_root: Path
     prompt: str
     input: dict[str, object]
     policy_digest: str
@@ -50,6 +51,7 @@ def build_invocation(
         actor=actor,
         artifact_id=handle.artifact_id,
         artifact_dir=handle.artifact_dir,
+        target_root=handle.project_root,
         prompt=f"Run Rail actor {actor} for task goal: {request.get('goal', '')}",
         input={
             "artifact_id": handle.artifact_id,

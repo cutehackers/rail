@@ -9,7 +9,7 @@ from rail.artifacts.digests import digest_payload
 from rail.artifacts.terminal_summary import write_terminal_summary
 from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.events import normalize_sdk_event
-from rail.actor_runtime.agents import AgentsActorRuntime
+from rail.actor_runtime.factory import build_actor_runtime
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult, ActorRuntime, build_invocation
 from rail.auth.redaction import redact_secrets
 from rail.evaluator.gate import EvaluatorGateInput, evaluate_gate
@@ -44,7 +44,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
         return state
     handle = bind_effective_policy(handle, policy)
     effective_policy_digest = handle.effective_policy_digest or digest_policy(policy)
-    runtime = runtime or AgentsActorRuntime(project_root=_rail_root(), policy=policy)
+    runtime = runtime or build_actor_runtime(project_root=_rail_root(), policy=policy)
     visited: list[str] = []
     patch_digest = "sha256:no-patch"
     actor_invocation_digest = "sha256:no-actor"

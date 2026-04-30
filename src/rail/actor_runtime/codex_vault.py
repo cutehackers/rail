@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.events import normalize_sdk_event
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
-from rail.actor_runtime.vault_env import materialize_vault_environment
+from rail.actor_runtime.vault_env import VaultEnvironment, materialize_vault_environment
 from rail.auth.credentials import codex_auth_home
 from rail.policy.schema import ActorRuntimePolicyV2
 
@@ -43,6 +43,7 @@ _UNTRUSTED_TEMP_ROOTS = (Path("/tmp"), Path("/var/tmp"))
 CodexCommandResolver = Callable[[], Path | None]
 CodexCommandTrustChecker = Callable[[Path, Path, Path | None], str | None]
 CodexCommandRunner = Callable[[list[str]], "CodexCommandRunResult"]
+VaultEnvironmentMaterializer = Callable[..., VaultEnvironment]
 
 
 class CodexCommandReadiness(BaseModel):
@@ -72,12 +73,14 @@ class CodexVaultActorRuntime:
         command_resolver: CodexCommandResolver | None = None,
         command_trust_checker: CodexCommandTrustChecker | None = None,
         runner: CodexCommandRunner | None = None,
+        environment_materializer: VaultEnvironmentMaterializer | None = None,
     ) -> None:
         self.project_root = project_root
         self.policy = policy
         self.command_resolver = command_resolver or resolve_codex_command
         self.command_trust_checker = command_trust_checker or check_trusted_codex_command
         self.runner = runner or run_codex_command
+        self.environment_materializer = environment_materializer or materialize_vault_environment
         self._readiness_cache: CodexCommandReadiness | None = None
 
     def readiness(self) -> CodexCommandReadiness:
@@ -229,12 +232,12 @@ class CodexVaultActorRuntime:
                 blocked_category=readiness.blocked_category,
             )
         try:
-            vault_environment = materialize_vault_environment(
+            vault_environment = self.environment_materializer(
                 artifact_dir=invocation.artifact_dir,
                 auth_home=codex_auth_home(environ=os.environ),
                 base_environ=os.environ,
             )
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             reason = f"Codex Vault Actor Runtime environment materialization failed: {exc}"
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
@@ -272,8 +275,8 @@ class CodexVaultActorRuntime:
                     "runtime_provider": self.policy.runtime.provider,
                     "runtime_project_root": self.project_root.as_posix(),
                     "target_root": invocation.target_root.as_posix(),
-                    "vault_codex_home": vault_environment.codex_home.as_posix(),
-                    "vault_evidence_dir": vault_environment.evidence_dir.as_posix(),
+                    "vault_codex_home_ref": vault_environment.codex_home.relative_to(invocation.artifact_dir).as_posix(),
+                    "vault_evidence_dir_ref": vault_environment.evidence_dir.relative_to(invocation.artifact_dir).as_posix(),
                     "copied_auth_material": vault_environment.copied_auth_material,
                 }
             ),

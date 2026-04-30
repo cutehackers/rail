@@ -49,7 +49,7 @@ _TRUSTED_RESOLVED_COMMAND_ROOTS = (
 _TRUSTED_SYSTEM_BINARY_ROOTS = (Path("/bin"), Path("/usr/bin"), Path("/usr/local/bin"), Path("/opt/homebrew/bin"))
 _UNTRUSTED_TEMP_ROOTS = (Path("/tmp"), Path("/var/tmp"))
 _READ_ONLY_SHELL_EXECUTABLES = {"pwd", "ls", "find", "rg", "sed", "cat", "wc", "head", "tail", "stat", "test"}
-_SHELL_OPERATOR_PATTERN = re.compile(r"(\|\||&&|[|<>;&`])|\$\(")
+_SHELL_OPERATOR_PATTERN = re.compile(r"(\|\||&&|[|<>;&`\n\r])|\$\(")
 _SHELL_VARIABLE_PATTERN = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\})")
 
 CodexCommandResolver = Callable[[], Path | None]
@@ -944,14 +944,46 @@ def _shell_event_policy_violation(
 
 def _write_capable_shell_flag_violation(executable: str, args: list[str]) -> str | None:
     if executable == "find" and any(
-        arg in {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fdelete", "-fls", "-fprint", "-fprintf"} for arg in args
+        arg in {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fdelete", "-fls", "-fprint", "-fprint0", "-fprintf"} for arg in args
     ):
         return f"shell executable uses write-capable flag: {executable}"
     if executable == "sed" and any(arg == "-i" or arg.startswith("-i") or arg == "--in-place" or arg.startswith("--in-place=") for arg in args):
         return f"shell executable uses write-capable flag: {executable}"
+    if executable == "sed" and _sed_script_can_write(args):
+        return f"shell executable uses write-capable flag: {executable}"
     if executable == "test" and any(arg in {"-w", "-G", "-O", "-N"} for arg in args):
         return f"shell executable uses write-capable flag: {executable}"
     return None
+
+
+def _sed_script_can_write(args: list[str]) -> bool:
+    scripts: list[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in {"-f", "--file"} or arg.startswith("--file="):
+            return True
+        if arg in {"-e", "--expression"} and index + 1 < len(args):
+            scripts.append(args[index + 1])
+            index += 2
+            continue
+        if arg.startswith("-e") and len(arg) > 2:
+            scripts.append(arg[2:])
+            index += 1
+            continue
+        if arg.startswith("--expression="):
+            scripts.append(arg.split("=", 1)[1])
+            index += 1
+            continue
+        if not arg.startswith("-"):
+            scripts.append(arg)
+            break
+        index += 1
+    return any(_sed_script_contains_write_command(script) for script in scripts)
+
+
+def _sed_script_contains_write_command(script: str) -> bool:
+    return re.search(r"(^|[;{}\s])w(?:\s|$)", script) is not None or "/w" in script
 
 
 def _argument_references_forbidden_root(arg: str, *, cwd: Path, sandbox_root: Path, forbidden_roots: list[Path]) -> bool:

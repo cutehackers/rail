@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import stat
@@ -13,6 +14,8 @@ from pydantic import BaseModel, ConfigDict
 from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.events import normalize_sdk_event
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
+from rail.actor_runtime.vault_env import materialize_vault_environment
+from rail.auth.credentials import codex_auth_home
 from rail.policy.schema import ActorRuntimePolicyV2
 
 CODEX_COMMAND_NAME = "codex"
@@ -225,7 +228,38 @@ class CodexVaultActorRuntime:
                 runtime_evidence_ref=evidence_ref,
                 blocked_category=readiness.blocked_category,
             )
-        reason = "Codex Vault Actor Runtime environment readiness is not implemented; credential and command checks are pending"
+        try:
+            vault_environment = materialize_vault_environment(
+                artifact_dir=invocation.artifact_dir,
+                auth_home=codex_auth_home(environ=os.environ),
+                base_environ=os.environ,
+            )
+        except ValueError as exc:
+            reason = f"Codex Vault Actor Runtime environment materialization failed: {exc}"
+            events_ref, evidence_ref = write_runtime_evidence(
+                invocation.artifact_dir,
+                invocation.actor,
+                normalize_sdk_event(
+                    {
+                        "status": "interrupted",
+                        "actor": invocation.actor,
+                        "error": reason,
+                        "blocked_category": "environment",
+                        "runtime_provider": self.policy.runtime.provider,
+                        "runtime_project_root": self.project_root.as_posix(),
+                        "target_root": invocation.target_root.as_posix(),
+                    }
+                ),
+            )
+            return ActorResult(
+                status="interrupted",
+                structured_output={"error": reason},
+                events_ref=events_ref,
+                runtime_evidence_ref=evidence_ref,
+                blocked_category="environment",
+            )
+
+        reason = "Codex Vault Actor Runtime execution is not implemented; command and environment readiness passed"
         events_ref, evidence_ref = write_runtime_evidence(
             invocation.artifact_dir,
             invocation.actor,
@@ -238,6 +272,9 @@ class CodexVaultActorRuntime:
                     "runtime_provider": self.policy.runtime.provider,
                     "runtime_project_root": self.project_root.as_posix(),
                     "target_root": invocation.target_root.as_posix(),
+                    "vault_codex_home": vault_environment.codex_home.as_posix(),
+                    "vault_evidence_dir": vault_environment.evidence_dir.as_posix(),
+                    "copied_auth_material": vault_environment.copied_auth_material,
                 }
             ),
         )

@@ -47,7 +47,7 @@ def build_actor_environment(sources: list[CredentialSource], project_root: Path)
 
 
 def discover_sdk_credential_sources(environ: Mapping[str, str] | None = None) -> list[CredentialSource]:
-    environ = environ or os.environ
+    environ = os.environ if environ is None else environ
     value = environ.get("OPENAI_API_KEY", "").strip()
     if not value:
         return []

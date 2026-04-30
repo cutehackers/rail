@@ -131,9 +131,12 @@ The Python package distribution is `rail-sdk`. It exposes the Rail Python API an
 User setup is intentionally short:
 
 ```bash
-uv pip install rail-sdk==0.1.0
 export OPENAI_API_KEY=...
-scripts/migration_v0.1.0.sh
+uv tool install rail-sdk
+rail migrate
+rail doctor
 ```
 
-After that, use the Rail skill with a target repository path and a natural-language task. Normal users do not need to set runtime feature flags.
+If an older Homebrew `rail` binary is still first on `PATH`, use `rail-sdk migrate` and then remove the old formula with the command reported by `rail doctor`.
+
+After that, open the target repository and use the Rail skill with a natural-language task. Normal users do not need to set runtime feature flags or repeat the target path when they are already working inside the target repository.

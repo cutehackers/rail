@@ -23,6 +23,13 @@ def test_distribution_name_is_rail_sdk():
     assert project["name"] == "rail-sdk"
 
 
+def test_installed_wheel_smoke_checks_console_entrypoints():
+    script = Path("scripts/check_installed_wheel.py").read_text(encoding="utf-8")
+
+    assert "rail-sdk" in script
+    assert "--version" in script
+
+
 def test_release_gate_cleans_current_and_stale_egg_info():
     gate = Path("scripts/python_release_gate.sh").read_text(encoding="utf-8")
 

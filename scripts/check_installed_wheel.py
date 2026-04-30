@@ -23,8 +23,12 @@ def main(argv: list[str]) -> int:
         venv = temp_dir / ".venv"
         subprocess.run(["uv", "venv", "--python", "3.12", str(venv)], check=True)
         python = venv / "bin" / "python"
+        rail = venv / "bin" / "rail"
+        rail_sdk = venv / "bin" / "rail-sdk"
         subprocess.run(["uv", "pip", "install", "--python", str(python), str(wheel)], check=True)
         subprocess.run([str(python), "-c", _SMOKE_CODE], cwd=temp_dir, check=True)
+        subprocess.run([str(rail), "--version"], cwd=temp_dir, check=True)
+        subprocess.run([str(rail_sdk), "--version"], cwd=temp_dir, check=True)
 
     print("Installed wheel smoke passed.")
     return 0

@@ -18,7 +18,8 @@ API first, Rail skill first, and Actor Runtime based.
 ## Current Audit
 
 Status: release-ready criteria are closed for the mandatory local gate. The
-distribution package name is `rail-sdk`.
+distribution package name is `rail-sdk`, with setup entrypoints for
+`rail migrate`, `rail doctor`, and `rail-sdk migrate`.
 
 The post-audit blockers have been implemented and verified against
 `docs/SPEC.md`: packaged assets survive wheel installation, Actor Runtime

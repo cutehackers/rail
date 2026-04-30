@@ -112,6 +112,8 @@ def test_optional_live_smoke_and_distribution_are_documented():
 
     assert "RAIL_ACTOR_RUNTIME_LIVE_SMOKE" in readme
     assert "rail-sdk" in readme
+    assert "rail migrate" in readme
+    assert "rail doctor" in readme
     assert "Python package" in readme
     assert "package asset" in readme
     assert "package asset" in architecture
@@ -125,6 +127,7 @@ def test_python_rail_migration_script_exists():
     text = path.read_text(encoding="utf-8")
     assert "rail-sdk" in text
     assert "rail-harness" in text
+    assert "rail.cli.main" in text
     assert "OPENAI_API_KEY" in text
     assert "skills/rail" in text
     assert "export RAIL_ACTOR_RUNTIME_LIVE" not in text

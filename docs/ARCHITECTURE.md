@@ -77,7 +77,7 @@ When `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` and an operator-controlled SDK credential
 
 ## Distribution Boundary
 
-The release artifact is the `rail-sdk` Python package with the Rail Python API and bundled Rail skill assets. There is no command-line product contract; any future wrapper must remain a thin caller of the Python API.
+The release artifact is the `rail-sdk` Python package with the Rail Python API, bundled Rail skill assets, and setup-only console entrypoints. `rail migrate` installs or refreshes the Codex skill, and `rail doctor` checks local setup readiness. There is still no command-line product contract for task execution. Task execution remains governed by the Python API and Rail skill contract; any wrapper must remain a thin caller of the Python API.
 
 ## `.harness`
 

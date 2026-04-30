@@ -254,6 +254,17 @@ machine-specific secret paths.
 Normal users interact through the Rail skill and Python API. They should not
 need to hand-write harness files.
 
+The `rail-sdk` package may expose setup-only console entrypoints:
+
+- `rail migrate` installs or refreshes the local Rail Codex skill.
+- `rail doctor` checks package, skill, credential, and old Homebrew setup
+  readiness.
+- `rail-sdk migrate` is available when an older Homebrew `rail` binary still
+  shadows the new console entrypoint.
+
+These setup commands do not replace the Python API or Rail skill as the product
+contract for task execution.
+
 ## Release-Ready Criteria
 
 Rail is release-ready when all of the following are true:

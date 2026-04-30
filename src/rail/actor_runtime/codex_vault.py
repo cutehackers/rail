@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 import re
 import shlex
 import shutil
@@ -9,7 +9,7 @@ import stat
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError
@@ -367,7 +367,7 @@ class CodexVaultActorRuntime:
             )
 
         entry = self.catalog[invocation.actor]
-        output_schema_ref, output_schema_path, output_schema_digest = _materialize_output_schema(invocation, entry.output_model)
+        output_schema_ref, output_schema_path, output_schema_digest = _materialize_output_schema(invocation, entry.schema_source)
         prompt = (
             f"{invocation.prompt}\n\n"
             f"Policy digest: {invocation.policy_digest}\n\n"
@@ -701,12 +701,12 @@ def build_required_codex_exec_args(*, output_schema: Path, sandbox: Path) -> lis
     return args
 
 
-def _materialize_output_schema(invocation: ActorInvocation, output_model: type[BaseModel]) -> tuple[Path, Path, str]:
+def _materialize_output_schema(invocation: ActorInvocation, schema_source: dict[str, Any]) -> tuple[Path, Path, str]:
     schema_ref = Path("actor_runtime") / "schemas" / f"{invocation.actor}.schema.json"
     schema_path = invocation.artifact_dir / schema_ref
     schema_path.parent.mkdir(parents=True, exist_ok=True)
     schema_path.write_text(
-        json.dumps(output_model.model_json_schema(), sort_keys=True, indent=2),
+        json.dumps(schema_source, sort_keys=True, indent=2),
         encoding="utf-8",
     )
     return schema_ref, schema_path, digest_file(schema_path)
@@ -746,7 +746,58 @@ def _structured_output_from_event(event: dict[str, object]) -> dict[str, object]
         value = message.get("structured_output") or message.get("final_output")
         if isinstance(value, dict):
             return value
+    item = event.get("item")
+    if isinstance(item, dict):
+        value = _structured_output_from_event_item(item)
+        if value is not None:
+            return value
     return None
+
+
+def _structured_output_from_event_item(item: dict[str, object]) -> dict[str, object] | None:
+    for key in ("final_output", "structured_output", "output"):
+        value = item.get(key)
+        if isinstance(value, dict):
+            return value
+    for text in _event_item_text_values(item):
+        parsed = _json_object_from_text(text)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _event_item_text_values(item: dict[str, object]) -> list[str]:
+    values: list[str] = []
+    for key in ("text", "output_text"):
+        value = item.get(key)
+        if isinstance(value, str):
+            values.append(value)
+    content = item.get("content")
+    if isinstance(content, str):
+        values.append(content)
+    elif isinstance(content, list):
+        for part in content:
+            if isinstance(part, str):
+                values.append(part)
+            elif isinstance(part, dict):
+                for key in ("text", "output_text", "content"):
+                    value = part.get(key)
+                    if isinstance(value, str):
+                        values.append(value)
+    return values
+
+
+def _json_object_from_text(text: str) -> dict[str, object] | None:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 3 and lines[-1].strip() == "```":
+            stripped = "\n".join(lines[1:-1]).strip()
+    try:
+        decoded = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    return decoded if isinstance(decoded, dict) else None
 
 
 def _codex_event_policy_violation(
@@ -777,8 +828,11 @@ def _codex_event_policy_violation(
         if tool_type == "validation":
             return "validation execution is not allowed"
         if tool_type == "shell":
+            shell_event = _shell_event_from_codex_event(event)
+            if shell_event is None:
+                return "shell event is not parseable"
             reason = _shell_event_policy_violation(
-                event,
+                shell_event,
                 sandbox_root=sandbox_root,
                 forbidden_roots=forbidden_roots,
                 shell_allowlist=shell_allowlist,
@@ -790,13 +844,17 @@ def _codex_event_policy_violation(
 
 
 def _event_tool_type(event: dict[str, object]) -> str | None:
-    values = [
-        event.get("type"),
-        event.get("event"),
-        event.get("kind"),
-        event.get("tool"),
-        event.get("name"),
-    ]
+    values: list[object] = []
+    for mapping in _event_dicts(event):
+        values.extend(
+            [
+                mapping.get("type"),
+                mapping.get("event"),
+                mapping.get("kind"),
+                mapping.get("tool"),
+                mapping.get("name"),
+            ]
+        )
     lowered = " ".join(str(value).lower() for value in values if value is not None)
     if "mcp" in lowered:
         return "mcp"
@@ -804,8 +862,33 @@ def _event_tool_type(event: dict[str, object]) -> str | None:
         return "plugin"
     if "validation" in lowered:
         return "validation"
-    if "shell" in lowered or ("command" in event and "cwd" in event):
+    if "shell" in lowered or "command_execution" in lowered or _shell_event_from_codex_event(event) is not None:
         return "shell"
+    return None
+
+
+def _event_dicts(event: dict[str, object]) -> list[dict[str, object]]:
+    dicts = [event]
+    item = event.get("item")
+    if isinstance(item, dict):
+        dicts.append(item)
+    message = event.get("message")
+    if isinstance(message, dict):
+        dicts.append(message)
+    return dicts
+
+
+def _shell_event_from_codex_event(event: dict[str, object]) -> dict[str, object] | None:
+    for mapping in _event_dicts(event):
+        command = mapping.get("command")
+        cwd = mapping.get("cwd") or mapping.get("working_dir") or mapping.get("working_directory")
+        if isinstance(command, list):
+            command = " ".join(str(part) for part in command)
+        if isinstance(command, str):
+            if not isinstance(cwd, str):
+                cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
+            if isinstance(cwd, str):
+                return {"command": command, "cwd": cwd}
     return None
 
 

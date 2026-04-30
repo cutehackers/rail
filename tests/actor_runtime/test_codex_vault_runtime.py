@@ -62,6 +62,27 @@ def test_codex_vault_runtime_validates_actor_output_and_writes_evidence(tmp_path
     assert evidence["normalized_events"]
 
 
+def test_codex_vault_runtime_parses_codex_item_message_text_output(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    output = {
+        "summary": "Plan from message item",
+        "likely_files": [],
+        "substeps": [],
+        "risks": [],
+        "acceptance_criteria_refined": [],
+    }
+    runner = FakeCodexRunner(
+        final_output=output,
+        final_event_shape="item_message_text",
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "succeeded"
+    assert result.structured_output["summary"] == "Plan from message item"
+
+
 def test_codex_vault_runtime_blocks_invalid_actor_output(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(final_output={"wrong": True})
@@ -136,6 +157,48 @@ def test_codex_vault_runtime_blocks_write_capable_shell_event(tmp_path):
     assert evidence["policy_violation"]["reason"] == "shell executable is not allowed: touch"
 
 
+def test_codex_vault_runtime_blocks_nested_command_execution_event(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "item.started", "item": {"type": "command_execution", "cwd": "__SANDBOX__", "command": "touch app.txt"}}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell executable is not allowed" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_nested_mcp_tool_call_event(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "item.started", "item": {"type": "mcp_tool_call", "server": "filesystem"}}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "MCP invocation is not allowed" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_rejects_generator_output_with_multiple_patch_sources(tmp_path):
     target = _target_repo(tmp_path)
     handle = rail.start_task(_draft(target))
@@ -160,6 +223,8 @@ def test_codex_vault_runtime_rejects_generator_output_with_multiple_patch_source
     assert result.status == "interrupted"
     assert result.blocked_category == "runtime"
     assert "exactly one patch source" in result.structured_output["error"]
+    schema = json.loads((handle.artifact_dir / "actor_runtime" / "schemas" / "generator.schema.json").read_text(encoding="utf-8"))
+    assert "oneOf" in schema
 
 
 class FakeCodexRunner:
@@ -169,10 +234,12 @@ class FakeCodexRunner:
         final_output: dict[str, Any],
         extra_events: list[dict[str, Any]] | None = None,
         before_result=None,
+        final_event_shape: str = "top_level_output",
     ) -> None:
         self.final_output = final_output
         self.extra_events = extra_events or []
         self.before_result = before_result
+        self.final_event_shape = final_event_shape
         self.commands: list[list[str]] = []
         self.exec_commands: list[list[str]] = []
         self.prompts: list[str] = []
@@ -206,7 +273,7 @@ class FakeCodexRunner:
             ]
             if self.before_result is not None:
                 self.before_result()
-            events.append({"type": "final_output", "output": self.final_output})
+            events.append(self._final_event())
             return codex_vault.CodexCommandRunResult(
                 stdout="\n".join(json.dumps(event, sort_keys=True) for event in events),
                 stderr="",
@@ -214,9 +281,28 @@ class FakeCodexRunner:
             )
         raise AssertionError(f"unexpected command: {command}")
 
+    def _final_event(self) -> dict[str, object]:
+        if self.final_event_shape == "item_message_text":
+            return {
+                "type": "item.completed",
+                "item": {
+                    "type": "agent_message",
+                    "content": [{"type": "output_text", "text": json.dumps(self.final_output, sort_keys=True)}],
+                },
+            }
+        return {"type": "final_output", "output": self.final_output}
+
 
 def _replace_sandbox(event: dict[str, Any], sandbox_root: str) -> dict[str, Any]:
-    return {key: (sandbox_root if value == "__SANDBOX__" else value) for key, value in event.items()}
+    replaced: dict[str, Any] = {}
+    for key, value in event.items():
+        if value == "__SANDBOX__":
+            replaced[key] = sandbox_root
+        elif isinstance(value, dict):
+            replaced[key] = _replace_sandbox(value, sandbox_root)
+        else:
+            replaced[key] = value
+    return replaced
 
 
 def _runtime(tmp_path: Path, *, command: Path, runner: FakeCodexRunner) -> CodexVaultActorRuntime:

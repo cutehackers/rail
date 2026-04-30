@@ -923,6 +923,9 @@ def _shell_event_policy_violation(
     executable = executable_path.name
     if executable not in shell_allowlist:
         return f"shell executable is not allowed: {executable}"
+    write_flag_violation = _write_capable_shell_flag_violation(executable, args[1:])
+    if write_flag_violation is not None:
+        return write_flag_violation
     if executable_path.is_absolute():
         resolved_executable = executable_path.resolve(strict=False)
         if not _path_is_under_any(resolved_executable, _TRUSTED_SYSTEM_BINARY_ROOTS):
@@ -936,6 +939,16 @@ def _shell_event_policy_violation(
             return "shell argument references a forbidden root"
         if _argument_escapes_sandbox(arg, cwd=cwd, sandbox_root=sandbox_root):
             return "shell argument escapes sandbox"
+    return None
+
+
+def _write_capable_shell_flag_violation(executable: str, args: list[str]) -> str | None:
+    if executable == "find" and any(arg in {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fdelete"} for arg in args):
+        return f"shell executable uses write-capable flag: {executable}"
+    if executable == "sed" and any(arg == "-i" or arg.startswith("-i") for arg in args):
+        return f"shell executable uses write-capable flag: {executable}"
+    if executable == "test" and any(arg in {"-w", "-G", "-O", "-N"} for arg in args):
+        return f"shell executable uses write-capable flag: {executable}"
     return None
 
 

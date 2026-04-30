@@ -241,6 +241,27 @@ def test_codex_vault_runtime_blocks_shell_relative_sandbox_escape(tmp_path):
     assert "shell argument escapes sandbox" in result.structured_output["error"]
 
 
+def test_codex_vault_runtime_blocks_write_capable_allowed_shell_flags(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "find . -delete"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "write-capable flag" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_rejects_generator_output_with_multiple_patch_sources(tmp_path):
     target = _target_repo(tmp_path)
     handle = rail.start_task(_draft(target))

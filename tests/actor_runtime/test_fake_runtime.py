@@ -26,6 +26,7 @@ def test_fake_actor_runtime_returns_contract_result(tmp_path):
         actor="generator",
         artifact_id=handle.artifact_id,
         artifact_dir=handle.artifact_dir,
+        target_root=handle.project_root,
         prompt="Generate a patch bundle.",
         input={"goal": "test"},
         policy_digest="sha256:test",

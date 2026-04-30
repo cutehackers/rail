@@ -9,6 +9,7 @@ from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.agents import AgentsActorRuntime, SDKRunResult
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
 from rail.policy import load_effective_policy
+from rail.policy.schema import ActorRuntimePolicyV2
 from rail.workspace.isolation import tree_digest
 
 
@@ -83,7 +84,7 @@ def scripted_agents_runtime(
             }
         return SDKRunResult(final_output=output, trace_id=f"trace-{actor}")
 
-    return AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(target_root), runner=runner)
+    return AgentsActorRuntime(project_root=Path("."), policy=_sdk_policy(target_root), runner=runner)
 
 
 class FakeActorRuntime:
@@ -148,3 +149,11 @@ def _ensure_validation_policy(target_root: Path) -> None:
         "version: 2\nvalidation:\n  commands:\n    - python -c \"import pathlib; assert pathlib.Path('.').exists()\"\n",
         encoding="utf-8",
     )
+
+
+def _sdk_policy(target_root: Path) -> ActorRuntimePolicyV2:
+    data = load_effective_policy(target_root).model_dump(mode="json")
+    data["runtime"]["provider"] = "openai_agents_sdk"
+    data["tools"]["shell"]["enabled"] = False
+    data["tools"]["shell"]["allowlist"] = []
+    return ActorRuntimePolicyV2.model_validate(data)

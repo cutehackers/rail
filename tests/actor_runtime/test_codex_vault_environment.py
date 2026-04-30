@@ -88,6 +88,24 @@ def test_materialize_vault_env_rejects_preexisting_codex_surfaces(tmp_path):
         )
 
 
+def test_materialize_vault_env_rejects_symlinked_actor_runtime_parent(tmp_path):
+    artifact_dir = tmp_path / "artifact"
+    artifact_dir.mkdir()
+    outside_runtime = tmp_path / "outside-runtime"
+    outside_runtime.mkdir()
+    (artifact_dir / "actor_runtime").symlink_to(outside_runtime, target_is_directory=True)
+    auth_home = tmp_path / "auth"
+    auth_home.mkdir()
+    (auth_home / "auth.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsafe vault material"):
+        materialize_vault_environment(
+            artifact_dir=artifact_dir,
+            auth_home=auth_home,
+            base_environ={},
+        )
+
+
 def test_materialize_vault_env_rejects_preexisting_auth_destination_symlink(tmp_path):
     artifact_dir = tmp_path / "artifact"
     codex_home = artifact_dir / "actor_runtime" / "codex_home"
@@ -187,6 +205,33 @@ def test_runtime_materialization_failure_blocks_without_crashing(tmp_path):
     assert result.status == "interrupted"
     assert result.blocked_category == "environment"
     assert "environment materialization failed" in result.structured_output["error"]
+    assert "cannot create vault" not in result.structured_output["error"]
+
+
+def test_runtime_materialization_failure_does_not_leak_host_paths(tmp_path):
+    target = _target_repo(tmp_path)
+    handle = rail.start_task(_draft(target))
+    private_path = tmp_path / "private-auth" / "auth.json"
+
+    def fail_materialization(**_kwargs):
+        raise PermissionError(f"permission denied: {private_path}")
+
+    runtime = CodexVaultActorRuntime(
+        project_root=Path("."),
+        policy=load_effective_policy(tmp_path),
+        command_resolver=lambda: tmp_path / "bin" / "codex",
+        command_trust_checker=lambda _path, _target_root, _artifact_dir: None,
+        runner=_ready_codex_runner(),
+        environment_materializer=fail_materialization,
+    )
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
+    serialized = json.dumps(evidence)
+    assert str(private_path) not in serialized
+    assert str(private_path) not in result.structured_output["error"]
+    assert evidence["error_type"] == "PermissionError"
 
 
 def test_runtime_evidence_uses_relative_vault_refs(tmp_path, monkeypatch):

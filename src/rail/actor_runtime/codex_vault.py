@@ -238,7 +238,7 @@ class CodexVaultActorRuntime:
                 base_environ=os.environ,
             )
         except (OSError, ValueError) as exc:
-            reason = f"Codex Vault Actor Runtime environment materialization failed: {exc}"
+            reason = "Codex Vault Actor Runtime environment materialization failed"
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.actor,
@@ -251,6 +251,7 @@ class CodexVaultActorRuntime:
                         "runtime_provider": self.policy.runtime.provider,
                         "runtime_project_root": self.project_root.as_posix(),
                         "target_root": invocation.target_root.as_posix(),
+                        "error_type": type(exc).__name__,
                     }
                 ),
             )

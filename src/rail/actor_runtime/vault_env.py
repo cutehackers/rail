@@ -39,7 +39,7 @@ def materialize_vault_environment(
     if unexpected_material:
         raise ValueError("unknown auth material")
 
-    actor_runtime_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_actor_runtime_dir(actor_runtime_dir)
     _prepare_empty_directory(codex_home, mode=0o700)
     evidence_dir.mkdir(parents=True, exist_ok=True)
     _prepare_empty_directory(temp_dir, mode=0o700)
@@ -79,6 +79,16 @@ def _prepare_empty_directory(path: Path, *, mode: int) -> None:
     path.chmod(mode)
     if path.stat().st_mode & (stat.S_IWGRP | stat.S_IWOTH):
         raise ValueError("unsafe vault material permissions")
+
+
+def _prepare_actor_runtime_dir(path: Path) -> None:
+    if path.is_symlink():
+        raise ValueError("unsafe vault material")
+    if path.exists() and not path.is_dir():
+        raise ValueError("unsafe vault material")
+    path.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise ValueError("unsafe vault material")
 
 
 def _scrub_vault_environment(base_environ: Mapping[str, str], *, codex_home: Path, temp_dir: Path) -> dict[str, str]:

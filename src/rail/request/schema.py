@@ -62,7 +62,7 @@ class RequestDraft(BaseModel):
 
     @field_validator("request_version", mode="before")
     @classmethod
-    def _normalize_request_version(cls, value: Any) -> str:
+    def _validate_request_version(cls, value: Any) -> str:
         version = _trim_optional_string(value) or DEFAULT_REQUEST_VERSION
         if version != DEFAULT_REQUEST_VERSION:
             raise ValueError("unsupported request_version")

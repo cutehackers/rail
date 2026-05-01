@@ -71,7 +71,7 @@ Modify:
 - Modify: `assets/skill/Rail/SKILL.md`
 - Modify: `src/rail/package_assets/skill/Rail/SKILL.md`
 
-- [ ] **Step 1: Write or confirm the public API smoke test**
+- [x] **Step 1: Write or confirm the public API smoke test**
 
 Ensure `tests/test_api_smoke.py` asserts:
 
@@ -85,7 +85,7 @@ def test_public_api_exports_harness_operations():
     assert callable(rail.result)
 ```
 
-- [ ] **Step 2: Run the focused API tests and verify they fail before implementation**
+- [x] **Step 2: Run the focused API tests and verify they fail before implementation**
 
 Run:
 
@@ -95,7 +95,7 @@ uv run --python 3.12 pytest tests/test_api_smoke.py tests/request/test_compose_r
 
 Expected before implementation: FAIL if the removed request API is still exported or tests still call it.
 
-- [ ] **Step 3: Implement the API rename**
+- [x] **Step 3: Implement the API rename**
 
 Expose only:
 
@@ -106,11 +106,11 @@ def specify(draft: Any) -> HarnessRequest:
 
 Make `start_task(draft)` call `specify(draft)`. Remove the old request API export from `src/rail/__init__.py`.
 
-- [ ] **Step 4: Keep the internal request-version validator scoped**
+- [x] **Step 4: Keep the internal request-version validator scoped**
 
-In `src/rail/request/schema.py`, `_normalize_request_version` may remain as the internal Pydantic validator name. Do not reintroduce the removed public request API function or export.
+In `src/rail/request/schema.py`, keep the request-version validator named `_validate_request_version`. Do not reintroduce the removed public request API function or export.
 
-- [ ] **Step 5: Update docs, skills, package smoke, and active examples**
+- [x] **Step 5: Update docs, skills, package smoke, and active examples**
 
 Replace active user-facing examples with:
 
@@ -118,7 +118,7 @@ Replace active user-facing examples with:
 request = rail.specify(draft)
 ```
 
-- [ ] **Step 6: Run focused checks**
+- [x] **Step 6: Run focused checks**
 
 Run:
 
@@ -127,9 +127,9 @@ uv run --python 3.12 pytest tests/test_api_smoke.py tests/request/test_compose_r
 rg -n "rail\\.normalize_request|def normalize_request|from rail\\.api import .*normalize_request|\\\"normalize_request\\\"" src tests docs skills assets scripts AGENTS.md
 ```
 
-Expected: pytest PASS. `rg` returns no public API, docs, skill, script, or test call sites for the removed request API. The internal Pydantic request-version validator name is allowed.
+Expected: pytest PASS. `rg` returns no public API, docs, skill, script, or test call sites for the removed request API. The request-version validator uses `_validate_request_version`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/rail/api.py src/rail/__init__.py src/rail/request/schema.py tests/request/test_compose_request.py tests/test_api_smoke.py scripts/check_installed_wheel.py docs/SPEC.md docs/ARCHITECTURE.md skills/rail/SKILL.md assets/skill/Rail/SKILL.md src/rail/package_assets/skill/Rail/SKILL.md
@@ -151,7 +151,7 @@ git commit -m "refactor: rename request API to specify"
 - Modify: `tests/build/test_package_assets.py`
 - Modify: `scripts/check_installed_wheel.py`
 
-- [ ] **Step 1: Write failing provider tests**
+- [x] **Step 1: Write failing provider tests**
 
 Add tests:
 
@@ -211,7 +211,7 @@ def test_target_policy_cannot_change_provider_to_openai_agents_sdk(tmp_path):
         narrow_policy(base, overlay)
 ```
 
-- [ ] **Step 2: Run provider tests and verify they fail**
+- [x] **Step 2: Run provider tests and verify they fail**
 
 Run:
 
@@ -221,7 +221,7 @@ uv run --python 3.12 pytest tests/policy/test_policy_v2.py tests/build/test_pack
 
 Expected before implementation: FAIL because `RuntimeProvider` does not allow `codex_vault` and default YAML still uses `openai_agents_sdk`.
 
-- [ ] **Step 3: Add provider values and provider-specific tool validation**
+- [x] **Step 3: Add provider values and provider-specific tool validation**
 
 Change:
 
@@ -233,7 +233,7 @@ Add a model validator that rejects `openai_agents_sdk` when shell, filesystem, n
 
 Keep `narrow_policy()` rejecting any target-local provider change.
 
-- [ ] **Step 4: Add trusted operator default policy loading**
+- [x] **Step 4: Add trusted operator default policy loading**
 
 In `src/rail/policy/load.py`, support:
 
@@ -251,7 +251,7 @@ Rules:
 - when unset, Rail uses packaged defaults
 - target-local `.harness/supervisor/actor_runtime.yaml` still only narrows the selected base policy
 
-- [ ] **Step 5: Change default policy assets**
+- [x] **Step 5: Change default policy assets**
 
 In all three default policy files, change `runtime.provider` from `openai_agents_sdk` to `codex_vault`. Preserve the existing `model`, `timeout_seconds`, `actor_runtime`, `workspace`, `capabilities`, and `approval_policy` sections.
 
@@ -275,7 +275,7 @@ runtime:
   timeout_seconds: 180
 ```
 
-- [ ] **Step 6: Update installed-wheel smoke**
+- [x] **Step 6: Update installed-wheel smoke**
 
 In `scripts/check_installed_wheel.py`, assert:
 
@@ -283,7 +283,7 @@ In `scripts/check_installed_wheel.py`, assert:
 assert policy.runtime.provider == "codex_vault"
 ```
 
-- [ ] **Step 7: Run focused policy checks**
+- [x] **Step 7: Run focused policy checks**
 
 Run:
 
@@ -293,7 +293,7 @@ uv run --python 3.12 pytest tests/policy/test_policy_v2.py tests/build/test_pack
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/rail/policy/schema.py src/rail/policy/load.py src/rail/policy/validate.py .harness/supervisor/actor_runtime.yaml assets/defaults/supervisor/actor_runtime.yaml src/rail/package_assets/defaults/supervisor/actor_runtime.yaml tests/policy/test_policy_v2.py tests/build/test_package_assets.py scripts/check_installed_wheel.py
@@ -312,7 +312,7 @@ git commit -m "feat: add codex vault runtime provider policy"
 - Test: `tests/actor_runtime/test_runtime_factory.py`
 - Test: `tests/supervisor/test_routing.py`
 
-- [ ] **Step 1: Write failing factory tests**
+- [x] **Step 1: Write failing factory tests**
 
 Create `tests/actor_runtime/test_runtime_factory.py`:
 
@@ -345,7 +345,7 @@ def test_factory_rejects_unknown_provider_shape(tmp_path):
         build_actor_runtime(project_root=Path("."), policy=policy)
 ```
 
-- [ ] **Step 2: Run factory tests and verify they fail**
+- [x] **Step 2: Run factory tests and verify they fail**
 
 Run:
 
@@ -355,7 +355,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_runtime_factory.py -q
 
 Expected: FAIL because `factory.py` and `CodexVaultActorRuntime` do not exist.
 
-- [ ] **Step 3: Add factory**
+- [x] **Step 3: Add factory**
 
 Implement:
 
@@ -368,7 +368,7 @@ def build_actor_runtime(*, project_root: Path, policy: ActorRuntimePolicyV2) -> 
     raise ValueError(f"unsupported runtime provider: {policy.runtime.provider}")
 ```
 
-- [ ] **Step 4: Add target root to actor invocation**
+- [x] **Step 4: Add target root to actor invocation**
 
 In `src/rail/actor_runtime/runtime.py`, add:
 
@@ -378,11 +378,11 @@ target_root: Path
 
 to `ActorInvocation`. Set it from `handle.project_root` in `build_invocation()`. Add a focused assertion in `tests/supervisor/test_routing.py` that captured actor invocations include the target repository root, not the Rail source root.
 
-- [ ] **Step 5: Add temporary safe-blocking `CodexVaultActorRuntime` skeleton**
+- [x] **Step 5: Add temporary safe-blocking `CodexVaultActorRuntime` skeleton**
 
 In `src/rail/actor_runtime/codex_vault.py`, add a runtime whose `run()` writes runtime evidence and returns interrupted with `blocked_category="environment"` until readiness is implemented.
 
-- [ ] **Step 6: Wire supervisor**
+- [x] **Step 6: Wire supervisor**
 
 Replace direct `AgentsActorRuntime(...)` construction in `supervise_artifact()` with:
 
@@ -390,7 +390,7 @@ Replace direct `AgentsActorRuntime(...)` construction in `supervise_artifact()` 
 runtime = runtime or build_actor_runtime(project_root=_rail_root(), policy=policy)
 ```
 
-- [ ] **Step 7: Run focused supervisor/factory tests**
+- [x] **Step 7: Run focused supervisor/factory tests**
 
 Run:
 
@@ -400,7 +400,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_runtime_factory.py tests/su
 
 Expected: PASS. Default supervision blocks safely, not terminal pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/rail/actor_runtime/factory.py src/rail/actor_runtime/codex_vault.py src/rail/actor_runtime/runtime.py src/rail/actor_runtime/__init__.py src/rail/supervisor/supervise.py tests/actor_runtime/test_runtime_factory.py tests/supervisor/test_routing.py
@@ -415,7 +415,7 @@ git commit -m "feat: select actor runtime from policy"
 - Modify: `src/rail/actor_runtime/codex_vault.py`
 - Test: `tests/actor_runtime/test_codex_vault_readiness.py`
 
-- [ ] **Step 1: Write failing readiness tests**
+- [x] **Step 1: Write failing readiness tests**
 
 Add tests for:
 
@@ -464,7 +464,7 @@ def _fake_codex_command(tmp_path: Path) -> Path:
 
 Use injected fakes. Do not require real Codex in deterministic tests.
 
-- [ ] **Step 2: Run readiness tests and verify they fail**
+- [x] **Step 2: Run readiness tests and verify they fail**
 
 Run:
 
@@ -474,7 +474,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_codex_vault_readiness.py -q
 
 Expected: FAIL because readiness injection points are missing.
 
-- [ ] **Step 3: Implement readiness model and injected command adapter**
+- [x] **Step 3: Implement readiness model and injected command adapter**
 
 Add:
 
@@ -505,7 +505,7 @@ Use these concrete readiness rules:
 - command path safety rule: the unresolved and resolved command paths must exist, must not be group-writable or world-writable, and must not live under a temporary directory such as `/tmp` or `/var/tmp`
 - local calibration note: local Codex CLI `0.124.0` supports the listed `exec` flags; readiness tests remain authoritative for release behavior
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run:
 
@@ -515,7 +515,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_codex_vault_readiness.py -q
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/rail/actor_runtime/codex_vault.py tests/actor_runtime/test_codex_vault_readiness.py
@@ -535,7 +535,7 @@ git commit -m "feat: preflight codex vault command readiness"
 - Test: `tests/auth/test_codex_auth.py`
 - Test: `tests/cli/test_setup_commands.py`
 
-- [ ] **Step 1: Write failing auth tests**
+- [x] **Step 1: Write failing auth tests**
 
 Add deterministic tests:
 
@@ -564,7 +564,7 @@ def test_auth_material_rejects_group_or_world_writable_auth_file(tmp_path):
         validate_codex_auth_material(auth_home)
 ```
 
-- [ ] **Step 2: Run auth tests and verify they fail**
+- [x] **Step 2: Run auth tests and verify they fail**
 
 Run:
 
@@ -574,7 +574,7 @@ uv run --python 3.12 pytest tests/auth/test_codex_auth.py tests/cli/test_setup_c
 
 Expected: FAIL because Codex auth helpers and `rail auth` commands do not exist.
 
-- [ ] **Step 3: Implement auth-home helpers**
+- [x] **Step 3: Implement auth-home helpers**
 
 Add functions with no user-home paths in docs:
 
@@ -600,7 +600,7 @@ def validate_codex_auth_material(auth_home: Path) -> list[Path]:
 
 The initial auth-material allowlist is exactly `auth.json`. Unknown material blocks readiness. The auth home and `auth.json` must not be group-writable or world-writable. Missing `auth.json` blocks readiness. Future Codex auth shapes must be added by changing this allowlist and tests explicitly.
 
-- [ ] **Step 4: Add setup-only `rail auth` commands**
+- [x] **Step 4: Add setup-only `rail auth` commands**
 
 Add:
 
@@ -612,11 +612,11 @@ rail auth doctor
 
 `rail auth login` runs `codex login` with `CODEX_HOME` set to the Rail-owned Codex auth home. `rail auth status` checks local auth material and permissions only. `rail auth doctor` checks auth material plus command readiness and may run a minimal auth validation only behind an explicit live-check flag. Do not add task execution commands. All reports must be secret-safe.
 
-- [ ] **Step 5: Remove default API-key requirement from setup doctor**
+- [x] **Step 5: Remove default API-key requirement from setup doctor**
 
 `rail doctor` should not require `OPENAI_API_KEY` when default provider is `codex_vault`. It may warn or diagnose SDK credentials only when policy selects `openai_agents_sdk`.
 
-- [ ] **Step 6: Run focused auth/CLI tests**
+- [x] **Step 6: Run focused auth/CLI tests**
 
 Run:
 
@@ -626,7 +626,7 @@ uv run --python 3.12 pytest tests/auth/test_codex_auth.py tests/cli/test_setup_c
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/rail/auth/credentials.py src/rail/actor_runtime/codex_vault.py src/rail/cli/main.py src/rail/cli/setup_commands.py src/rail/cli/doctor.py tests/auth/test_codex_auth.py tests/cli/test_setup_commands.py
@@ -642,7 +642,7 @@ git commit -m "feat: add codex vault auth diagnostics"
 - Modify: `src/rail/actor_runtime/codex_vault.py`
 - Test: `tests/actor_runtime/test_codex_vault_environment.py`
 
-- [ ] **Step 1: Write failing environment tests**
+- [x] **Step 1: Write failing environment tests**
 
 Add tests:
 
@@ -675,7 +675,7 @@ def test_materialize_vault_env_does_not_copy_user_codex_surfaces_from_environmen
         assert not (env.codex_home / name).exists()
 ```
 
-- [ ] **Step 2: Run environment tests and verify they fail**
+- [x] **Step 2: Run environment tests and verify they fail**
 
 Run:
 
@@ -685,7 +685,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_codex_vault_environment.py 
 
 Expected: FAIL because `vault_env.py` does not exist.
 
-- [ ] **Step 3: Implement materialization**
+- [x] **Step 3: Implement materialization**
 
 Create an artifact-local layout:
 
@@ -698,11 +698,11 @@ Copy only allowlisted auth files. Generate minimal config only if the supported 
 
 For the initial implementation, copy only `auth.json`. Do not copy `config.toml`; actor execution uses `--ignore-user-config` and explicit flags instead.
 
-- [ ] **Step 4: Scrub process environment**
+- [x] **Step 4: Scrub process environment**
 
 Only preserve required process variables such as `PATH`, `TMPDIR`, and explicit Rail-controlled paths. Set `HOME` and `CODEX_HOME` to the artifact-local Codex home.
 
-- [ ] **Step 5: Run focused environment tests**
+- [x] **Step 5: Run focused environment tests**
 
 Run:
 
@@ -712,7 +712,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_codex_vault_environment.py 
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/rail/actor_runtime/vault_env.py src/rail/actor_runtime/codex_vault.py tests/actor_runtime/test_codex_vault_environment.py
@@ -736,7 +736,7 @@ git commit -m "feat: materialize codex vault environment"
 - Test: `tests/actor_runtime/test_codex_vault_runtime.py`
 - Test: `tests/supervisor/test_routing.py`
 
-- [ ] **Step 1: Write failing execution tests**
+- [x] **Step 1: Write failing execution tests**
 
 Use a fake runner that returns JSON events and a final structured output:
 
@@ -759,7 +759,7 @@ def test_codex_vault_runtime_validates_actor_output_and_writes_evidence(tmp_path
 
 Add a second test where fake Codex returns invalid output and runtime blocks.
 
-- [ ] **Step 2: Run execution tests and verify they fail**
+- [x] **Step 2: Run execution tests and verify they fail**
 
 Run:
 
@@ -769,7 +769,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_codex_vault_runtime.py -q
 
 Expected: FAIL because execution adapter does not parse output.
 
-- [ ] **Step 3: Create actor sandbox before Codex execution**
+- [x] **Step 3: Create actor sandbox before Codex execution**
 
 Use `rail.workspace.sandbox.create_sandbox(invocation.target_root)` or an equivalent Rail-owned helper. The Codex process must run with `--cd` set to the resolved sandbox root, never the target root. Runtime evidence must record:
 
@@ -782,7 +782,7 @@ If the target tree digest changes before Rail applies a validated patch bundle, 
 
 Perform per-invocation path safety here, not in global `readiness()`: the unresolved and resolved Codex command paths must not be inside `invocation.artifact_dir`, must not be inside the target repository, and must not be inside the sandbox root.
 
-- [ ] **Step 4: Align generator patch-bundle output contract**
+- [x] **Step 4: Align generator patch-bundle output contract**
 
 Update generator prompt and schema copies so the Generator is explicitly allowed to return exactly one of:
 
@@ -792,7 +792,7 @@ Update generator prompt and schema copies so the Generator is explicitly allowed
 
 Keep direct target mutation forbidden. Add or update tests proving a generator-produced patch bundle from `codex_vault` is accepted only through Rail patch validation and then applied by supervisor.
 
-- [ ] **Step 5: Materialize actor output schema file**
+- [x] **Step 5: Materialize actor output schema file**
 
 Before running Codex, write the actor output JSON schema to:
 
@@ -805,7 +805,7 @@ Use the actor catalog's schema source or the output model's JSON schema. Runtime
 - `output_schema_ref`
 - `output_schema_digest`
 
-- [ ] **Step 6: Implement subprocess adapter behind injection seam**
+- [x] **Step 6: Implement subprocess adapter behind injection seam**
 
 Default adapter runs the trusted Codex command with the sealed environment and timeout from policy:
 
@@ -815,7 +815,7 @@ codex exec --json --output-schema /absolute/path/to/actor-output-schema.json --i
 
 The prompt is passed on stdin. Deterministic tests use an injected fake. Do not depend on real Codex in unit tests.
 
-- [ ] **Step 7: Gate Codex tool and shell use**
+- [x] **Step 7: Gate Codex tool and shell use**
 
 For the initial implementation, `codex_vault` allows only Rail-gated read-only repository inspection inside the sandbox. Do not pass `--full-auto`. Do not pass `--dangerously-bypass-approvals-and-sandbox`.
 
@@ -829,11 +829,11 @@ Allowed shell events must satisfy all of these checks:
 
 Block MCP invocation, plugin invocation, validation command execution, write-capable shell events, and any shell event that cannot be parsed as read-only. Validation remains Rail-owned.
 
-- [ ] **Step 8: Validate structured output using actor catalog**
+- [x] **Step 8: Validate structured output using actor catalog**
 
 Use the same actor catalog output validation behavior as `AgentsActorRuntime`.
 
-- [ ] **Step 9: Persist raw/normalized events**
+- [x] **Step 9: Persist raw/normalized events**
 
 Runtime evidence must include:
 
@@ -846,7 +846,7 @@ Runtime evidence must include:
 - structured output or blocked reason
 - policy violation evidence when applicable
 
-- [ ] **Step 10: Run focused runtime tests**
+- [x] **Step 10: Run focused runtime tests**
 
 Run:
 
@@ -856,7 +856,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_codex_vault_runtime.py -q
 
 Expected: PASS.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/rail/actor_runtime/codex_vault.py src/rail/actor_runtime/evidence.py .harness/actors/generator.md .harness/templates/implementation_result.schema.yaml assets/defaults/actors/generator.md assets/defaults/templates/implementation_result.schema.yaml src/rail/package_assets/defaults/actors/generator.md src/rail/package_assets/defaults/templates/implementation_result.schema.yaml tests/actor_runtime/test_codex_vault_runtime.py tests/supervisor/test_routing.py
@@ -875,7 +875,7 @@ git commit -m "feat: execute actors through codex vault"
 - Test: `tests/evaluator/test_gate.py`
 - Test: `tests/supervisor/test_routing.py`
 
-- [ ] **Step 1: Write failing contamination tests**
+- [x] **Step 1: Write failing contamination tests**
 
 Add tests for fake event/materialization evidence:
 
@@ -896,7 +896,7 @@ def test_plugin_or_mcp_contamination_blocks_actor(tmp_path):
     assert "MCP" in result.structured_output["error"]
 ```
 
-- [ ] **Step 2: Run audit tests and verify they fail**
+- [x] **Step 2: Run audit tests and verify they fail**
 
 Run:
 
@@ -906,7 +906,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_codex_vault_runtime.py test
 
 Expected: FAIL because contamination audit is missing.
 
-- [ ] **Step 3: Implement audit**
+- [x] **Step 3: Implement audit**
 
 Detect:
 
@@ -923,11 +923,11 @@ Add focused tests for unsupported isolation flags, unsafe auth-home permissions,
 
 Return a policy-blocked `ActorResult` before evaluator routing.
 
-- [ ] **Step 4: Ensure evaluator cannot pass after policy violation**
+- [x] **Step 4: Ensure evaluator cannot pass after policy violation**
 
 If a runtime policy violation reaches evidence, evaluator gate must block terminal success. Prefer blocking at actor runtime before evaluator; add evaluator gate coverage for defense in depth.
 
-- [ ] **Step 5: Run focused audit/gate tests**
+- [x] **Step 5: Run focused audit/gate tests**
 
 Run:
 
@@ -937,7 +937,7 @@ uv run --python 3.12 pytest tests/actor_runtime/test_codex_vault_runtime.py test
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/rail/actor_runtime/vault_audit.py src/rail/actor_runtime/codex_vault.py src/rail/evaluator/gate.py tests/actor_runtime/test_codex_vault_runtime.py tests/evaluator/test_gate.py tests/supervisor/test_routing.py
@@ -956,7 +956,7 @@ git commit -m "feat: block codex vault contamination"
 - Test: `tests/artifacts/test_projection.py`
 - Test: `tests/artifacts/test_terminal_summary.py`
 
-- [ ] **Step 1: Write failing projection tests**
+- [x] **Step 1: Write failing projection tests**
 
 Add tests proving:
 
@@ -965,7 +965,7 @@ Add tests proving:
 - terminal pass is not recorded after runtime policy violation
 - no secret values appear in result projection or terminal summary
 
-- [ ] **Step 2: Run projection tests and verify they fail**
+- [x] **Step 2: Run projection tests and verify they fail**
 
 Run:
 
@@ -975,11 +975,11 @@ uv run --python 3.12 pytest tests/supervisor/test_routing.py tests/artifacts/tes
 
 Expected: FAIL where result labels or summaries do not yet distinguish Codex Vault readiness/policy failures.
 
-- [ ] **Step 3: Implement projection updates**
+- [x] **Step 3: Implement projection updates**
 
 Keep projection artifact-only. Do not call Codex or SDK from projection code. Add only stable blocked labels and secret-safe reason projection.
 
-- [ ] **Step 4: Run focused projection tests**
+- [x] **Step 4: Run focused projection tests**
 
 Run:
 
@@ -989,7 +989,7 @@ uv run --python 3.12 pytest tests/supervisor/test_routing.py tests/artifacts/tes
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/rail/supervisor/supervise.py src/rail/artifacts/projection.py src/rail/artifacts/terminal_summary.py tests/supervisor/test_routing.py tests/artifacts/test_projection.py tests/artifacts/test_terminal_summary.py
@@ -1010,14 +1010,36 @@ git commit -m "feat: project codex vault blocked outcomes"
 - Modify: `tests/docs/test_removed_runtime_surfaces.py`
 - Modify: `tests/docs/test_no_home_paths.py`
 
-- [ ] **Step 1: Write docs guard tests**
+- [x] **Step 1: Write docs guard tests**
 
 Extend active-doc guards:
 
 ```python
 def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
-    forbidden = ["rail.normalize_request", "def normalize_request", "sealed_codex", "vault_codex", "actor backend"]
-    active_docs = [Path("docs/SPEC.md"), Path("docs/ARCHITECTURE.md"), Path("skills/rail/SKILL.md")]
+    forbidden = [
+        "rail.normalize_request",
+        "def normalize_request",
+        "sealed_codex",
+        "vault_codex",
+        "actor backend",
+        "SDK-backed actors",
+        "SDK-powered",
+        "SDK traces",
+        "SDK trace",
+        "SDK Actor Runtime",
+        "SDK-adapter",
+        "SDK adapter",
+    ]
+    active_docs = [
+        Path("README.md"),
+        Path("README-kr.md"),
+        Path("docs/SPEC.md"),
+        Path("docs/ARCHITECTURE.md"),
+        Path("docs/CONVENTIONS.md"),
+        Path("skills/rail/SKILL.md"),
+        Path("assets/skill/Rail/SKILL.md"),
+        Path("src/rail/package_assets/skill/Rail/SKILL.md"),
+    ]
     for path in active_docs:
         text = path.read_text(encoding="utf-8")
         for term in forbidden:
@@ -1026,7 +1048,7 @@ def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
 
 Keep historical docs allowed only when explicitly framed as historical records.
 
-- [ ] **Step 2: Run docs tests and verify they fail before docs cleanup**
+- [x] **Step 2: Run docs tests and verify they fail before docs cleanup**
 
 Run:
 
@@ -1036,7 +1058,7 @@ uv run --python 3.12 pytest tests/docs/test_removed_runtime_surfaces.py tests/do
 
 Expected before cleanup: FAIL if any active doc still has removed terms or home-directory examples.
 
-- [ ] **Step 3: Update canonical docs**
+- [x] **Step 3: Update canonical docs**
 
 Document:
 
@@ -1046,22 +1068,22 @@ Document:
 - target mutation remains patch-bundle only
 - `rail.specify` is the only public request API
 
-- [ ] **Step 4: Update Rail skill copies**
+- [x] **Step 4: Update Rail skill copies**
 
 Keep all three copies aligned. Normal user flow should not require request YAML, wrapper details, API keys, or runtime flags.
 
-- [ ] **Step 5: Run docs/skill checks**
+- [x] **Step 5: Run docs/skill checks**
 
 Run:
 
 ```bash
 uv run --python 3.12 pytest tests/docs/test_removed_runtime_surfaces.py tests/docs/test_no_home_paths.py tests/build/test_package_assets.py -q
-rg -n "rail\\.normalize_request|def normalize_request|sealed_codex|vault_codex|actor backend" docs/SPEC.md docs/ARCHITECTURE.md docs/CONVENTIONS.md skills/rail assets/skill/Rail src/rail/package_assets/skill/Rail
+rg -n "rail\\.normalize_request|def normalize_request|sealed_codex|vault_codex|actor backend|SDK-backed actors|SDK-powered|SDK traces|SDK trace|SDK Actor Runtime|SDK-adapter|SDK adapter" README.md README-kr.md docs/SPEC.md docs/ARCHITECTURE.md docs/CONVENTIONS.md skills/rail/SKILL.md assets/skill/Rail/SKILL.md src/rail/package_assets/skill/Rail/SKILL.md
 ```
 
 Expected: pytest PASS. `rg` returns no matches.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/SPEC.md docs/ARCHITECTURE.md docs/CONVENTIONS.md skills/rail/SKILL.md assets/skill/Rail/SKILL.md src/rail/package_assets/skill/Rail/SKILL.md tests/docs/test_removed_runtime_surfaces.py tests/docs/test_no_home_paths.py tests/build/test_package_assets.py
@@ -1076,7 +1098,7 @@ git commit -m "docs: document codex vault runtime contract"
 - Modify: `tests/e2e/test_optional_live_sdk_smoke.py` or create `tests/e2e/test_optional_codex_vault_smoke.py`
 - Modify: `scripts/release_gate.sh`
 
-- [ ] **Step 1: Write opt-in smoke test**
+- [x] **Step 1: Write opt-in smoke test**
 
 Create a test that skips unless an explicit environment flag is set:
 
@@ -1089,7 +1111,7 @@ pytestmark = pytest.mark.skipif(
 
 The smoke must be non-mutating and use a temporary target.
 
-- [ ] **Step 2: Run without flag**
+- [x] **Step 2: Run without flag**
 
 Run:
 
@@ -1099,11 +1121,11 @@ uv run --python 3.12 pytest tests/e2e/test_optional_codex_vault_smoke.py -q
 
 Expected: SKIPPED.
 
-- [ ] **Step 3: Add release-gate hook**
+- [x] **Step 3: Add release-gate hook**
 
 Only run the live smoke when `RAIL_CODEX_VAULT_LIVE_SMOKE=1`. Do not make local release checks require live Codex by default.
 
-- [ ] **Step 4: Run focused e2e checks**
+- [x] **Step 4: Run focused e2e checks**
 
 Run:
 
@@ -1113,7 +1135,7 @@ uv run --python 3.12 pytest tests/e2e/test_optional_codex_vault_smoke.py -q
 
 Expected without flag: SKIPPED.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/e2e/test_optional_codex_vault_smoke.py scripts/release_gate.sh
@@ -1127,7 +1149,7 @@ git commit -m "test: add optional codex vault live smoke"
 **Files:**
 - No implementation files unless verification exposes a bug.
 
-- [ ] **Step 1: Run focused suite**
+- [x] **Step 1: Run focused suite**
 
 Run:
 
@@ -1137,7 +1159,7 @@ uv run --python 3.12 pytest tests/request/test_compose_request.py tests/policy/t
 
 Expected: PASS.
 
-- [ ] **Step 2: Run full test suite**
+- [x] **Step 2: Run full test suite**
 
 Run:
 
@@ -1147,7 +1169,7 @@ uv run --python 3.12 pytest -q
 
 Expected: PASS.
 
-- [ ] **Step 3: Run lint**
+- [x] **Step 3: Run lint**
 
 Run:
 
@@ -1157,7 +1179,7 @@ uv run --python 3.12 ruff check src tests
 
 Expected: PASS.
 
-- [ ] **Step 4: Run typing**
+- [x] **Step 4: Run typing**
 
 Run:
 
@@ -1167,7 +1189,7 @@ uv run --python 3.12 mypy src/rail
 
 Expected: PASS.
 
-- [ ] **Step 5: Run docs/string guards**
+- [x] **Step 5: Run docs/string guards**
 
 Run:
 
@@ -1177,7 +1199,7 @@ uv run --python 3.12 pytest tests/docs/test_removed_runtime_surfaces.py -q
 
 Expected: PASS. Keep removed request API names, incorrect provider spellings, and stale runtime terms out of active product surfaces through allowlisted pytest guards rather than broad repository text searches that self-match historical plans.
 
-- [ ] **Step 6: Commit verification fixes if needed**
+- [x] **Step 6: Commit verification fixes if needed**
 
 Stage the files changed by verification fixes and commit them with:
 
@@ -1189,15 +1211,15 @@ git commit -m "fix: stabilize codex vault runtime checks"
 
 ## Final Acceptance
 
-- [ ] `rail.specify(draft)` is the only public request specification API.
-- [ ] The removed request API is not exported, documented, or used in active product code.
-- [ ] `codex_vault` is the default local Actor Runtime provider in repo and packaged policy defaults.
-- [ ] Incorrect provider spellings and old provider names do not appear in active product surfaces.
-- [ ] `openai_agents_sdk` remains available for explicit operator/API-key environments.
-- [ ] Target-local policy cannot select or switch runtime provider.
-- [ ] Missing Codex command, unsupported version, unsupported isolation capability, missing auth, unknown auth material, and contamination block before actor execution or evaluator success.
-- [ ] Actor execution uses artifact-local `CODEX_HOME` and does not inherit parent/user skills, plugins, MCP config, hooks, rules, or general config.
-- [ ] Runtime evidence records readiness, environment summary, auth materialization, event stream, structured output, and policy violations without leaking secrets.
-- [ ] Target mutation remains patch-bundle only.
-- [ ] `rail auth` remains setup/diagnostics only.
-- [ ] No Go CLI/runtime path is revived.
+- [x] `rail.specify(draft)` is the only public request specification API.
+- [x] The removed request API is not exported, documented, or used in active product code.
+- [x] `codex_vault` is the default local Actor Runtime provider in repo and packaged policy defaults.
+- [x] Incorrect provider spellings and old provider names do not appear in active product surfaces.
+- [x] `openai_agents_sdk` remains available for explicit operator/API-key environments.
+- [x] Target-local policy cannot select or switch runtime provider.
+- [x] Missing Codex command, unsupported version, unsupported isolation capability, missing auth, unknown auth material, and contamination block before actor execution or evaluator success.
+- [x] Actor execution uses artifact-local `CODEX_HOME` and does not inherit parent/user skills, plugins, MCP config, hooks, rules, or general config.
+- [x] Runtime evidence records readiness, environment summary, auth materialization, event stream, structured output, and policy violations without leaking secrets.
+- [x] Target mutation remains patch-bundle only.
+- [x] `rail auth` remains setup/diagnostics only.
+- [x] No Go CLI/runtime path is revived.

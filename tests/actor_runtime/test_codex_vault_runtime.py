@@ -346,6 +346,27 @@ def test_codex_vault_runtime_blocks_content_array_command_only_shell_event(tmp_p
     assert "shell executable is not allowed" in result.structured_output["error"]
 
 
+def test_codex_vault_runtime_uses_parent_cwd_for_nested_content_command(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"msg": {"type": "item.started", "cwd": "/etc", "content": [{"command": "cat passwd"}]}}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell cwd must stay inside sandbox" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_blocks_shell_auth_home_variable_reference(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(

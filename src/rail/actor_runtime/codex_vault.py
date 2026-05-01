@@ -860,7 +860,7 @@ def _codex_event_policy_violation(
 
 def _event_tool_type(event: dict[str, object]) -> str | None:
     values: list[object] = []
-    for mapping in _event_dicts(event):
+    for mapping, _cwd in _event_dicts(event):
         values.extend(
             [
                 mapping.get("type"),
@@ -881,44 +881,48 @@ def _event_tool_type(event: dict[str, object]) -> str | None:
         "shell" in lowered
         or "command_execution" in lowered
         or "exec_command" in lowered
-        or any("command" in mapping for mapping in _event_dicts(event))
+        or any("command" in mapping for mapping, _cwd in _event_dicts(event))
     ):
         return "shell"
     return None
 
 
-def _event_dicts(event: dict[str, object]) -> list[dict[str, object]]:
-    dicts: list[dict[str, object]] = []
-    _append_event_dicts(event, dicts)
+def _event_dicts(event: dict[str, object]) -> list[tuple[dict[str, object], str | None]]:
+    dicts: list[tuple[dict[str, object], str | None]] = []
+    _append_event_dicts(event, dicts, inherited_cwd=None)
     return dicts
 
 
-def _append_event_dicts(event: dict[str, object], dicts: list[dict[str, object]]) -> None:
-    dicts.append(event)
+def _append_event_dicts(event: dict[str, object], dicts: list[tuple[dict[str, object], str | None]], *, inherited_cwd: str | None) -> None:
+    cwd = _event_cwd(event) or inherited_cwd
+    dicts.append((event, cwd))
     for key in ("item", "message", "msg"):
         child = event.get(key)
         if isinstance(child, dict):
-            _append_event_dicts(child, dicts)
+            _append_event_dicts(child, dicts, inherited_cwd=cwd)
         elif isinstance(child, list):
             for item in child:
                 if isinstance(item, dict):
-                    _append_event_dicts(item, dicts)
+                    _append_event_dicts(item, dicts, inherited_cwd=cwd)
     content = event.get("content")
     if isinstance(content, list):
         for item in content:
             if isinstance(item, dict):
-                _append_event_dicts(item, dicts)
+                _append_event_dicts(item, dicts, inherited_cwd=cwd)
+
+
+def _event_cwd(event: dict[str, object]) -> str | None:
+    value = event.get("cwd") or event.get("working_dir") or event.get("working_directory")
+    return value if isinstance(value, str) else None
 
 
 def _shell_event_from_codex_event(event: dict[str, object], *, default_cwd: Path | None = None) -> dict[str, object] | None:
-    for mapping in _event_dicts(event):
+    for mapping, inherited_cwd in _event_dicts(event):
         command = mapping.get("command")
-        cwd = mapping.get("cwd") or mapping.get("working_dir") or mapping.get("working_directory")
+        cwd = _event_cwd(mapping) or inherited_cwd
         if isinstance(command, list):
             command = " ".join(str(part) for part in command)
         if isinstance(command, str):
-            if not isinstance(cwd, str):
-                cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
             if not isinstance(cwd, str) and default_cwd is not None:
                 cwd = default_cwd.as_posix()
             if isinstance(cwd, str):

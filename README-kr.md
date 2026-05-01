@@ -27,7 +27,7 @@ result = rail.result(handle)
 
 ## Actor Runtime
 
-Actor Runtime은 SDK 기반 actor 실행 경계다. Rail은 prompt, output schema, policy, evidence, routing을 소유한다. actor는 target repository를 직접 수정하지 않는다.
+Actor Runtime은 provider 선택 기반의 actor 실행 경계다. 기본 로컬 provider는 `codex_vault`이고, `openai_agents_sdk`는 operator/API-key 환경에서만 선택적으로 사용한다. Rail은 prompt, output schema, policy, evidence, routing을 소유한다. actor는 target repository를 직접 수정하지 않는다.
 
 ## Mutation Boundary
 

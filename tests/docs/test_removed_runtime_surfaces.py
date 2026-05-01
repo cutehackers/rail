@@ -99,11 +99,15 @@ def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
         "vault_codex",
         "actor backend",
         "SDK-backed actors",
+        "SDK-powered",
+        "SDK 기반",
         "SDK traces",
         "SDK trace",
         "SDK Actor Runtime",
     ]
     active_docs = [
+        Path("README.md"),
+        Path("README-kr.md"),
         Path("docs/SPEC.md"),
         Path("docs/ARCHITECTURE.md"),
         Path("docs/CONVENTIONS.md"),

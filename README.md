@@ -25,7 +25,7 @@ Rail owns the governance layer:
 - evaluator gate decisions
 - result and status projection
 
-The Actor Runtime is the SDK-powered execution boundary for bounded actor work. It receives a narrowed policy and schema-bound prompt, then returns structured actor output and evidence references. Target repository mutation happens only through Rail-validated patch bundles.
+The Actor Runtime is the provider-selected execution boundary for bounded actor work. The default local provider is `codex_vault`; `openai_agents_sdk` remains optional for operator/API-key environments. Each actor receives a narrowed policy and schema-bound prompt, then returns structured actor output and evidence references. Target repository mutation happens only through Rail-validated patch bundles.
 
 ## Python API
 

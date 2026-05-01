@@ -585,6 +585,27 @@ def test_codex_vault_runtime_blocks_test_dash_leading_path_escape(tmp_path):
     assert "shell argument escapes sandbox" in result.structured_output["error"]
 
 
+def test_codex_vault_runtime_blocks_test_binary_dash_leading_path_escape(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "test -/../../../../etc/passwd -ef app.txt"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell argument escapes sandbox" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_blocks_shell_ansi_c_quoted_escape(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(
@@ -953,6 +974,27 @@ def test_codex_vault_runtime_blocks_find_newer_path_escape(tmp_path):
             "acceptance_criteria_refined": [],
         },
         extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "find . -newer -/../../../../etc/passwd"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell argument escapes sandbox" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_find_samefile_path_escape(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "find . -samefile -/../../../../etc/passwd"}],
     )
     runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
 

@@ -1188,6 +1188,8 @@ def _shell_path_operands(executable: str, args: list[str]) -> list[str]:
         if option_path is not None:
             operands.append(option_path)
         if arg.startswith("-"):
+            if _dash_leading_token_may_be_path(arg):
+                operands.append(arg)
             index += 2 if _option_consumes_next_path(executable, arg) and index + 1 < len(args) else 1
             continue
         operands.append(arg)
@@ -1203,7 +1205,7 @@ def _option_path_operand(executable: str, arg: str, args: list[str], index: int)
             if arg.startswith(prefix) and len(arg) > len(prefix):
                 return arg[len(prefix) :]
     if executable == "find":
-        if arg == "-newer" and index + 1 < len(args):
+        if arg in {"-newer", "-samefile"} and index + 1 < len(args):
             return args[index + 1]
         if arg in {"-files0-from", "--files0-from"} and index + 1 < len(args):
             return args[index + 1]
@@ -1227,10 +1229,14 @@ def _option_path_operand(executable: str, arg: str, args: list[str], index: int)
 def _option_consumes_next_path(executable: str, arg: str) -> bool:
     return (
         (executable == "rg" and arg in {"-f", "--file", "--ignore-file"})
-        or (executable == "find" and arg in {"-f", "-newer", "-files0-from", "--files0-from"})
+        or (executable == "find" and arg in {"-f", "-newer", "-samefile", "-files0-from", "--files0-from"})
         or (executable == "wc" and arg == "--files0-from")
         or (executable == "test" and arg in {"-e", "-f", "-d", "-r", "-s", "-x"})
     )
+
+
+def _dash_leading_token_may_be_path(arg: str) -> bool:
+    return "/" in arg or ".." in Path(arg).parts
 
 
 def _argument_references_forbidden_root(arg: str, *, cwd: Path, sandbox_root: Path, forbidden_roots: list[Path]) -> bool:

@@ -52,6 +52,7 @@ _TRUSTED_SYSTEM_BINARY_ROOTS = (Path("/bin"), Path("/usr/bin"))
 _UNTRUSTED_TEMP_ROOTS = (Path("/tmp"), Path("/var/tmp"))
 _READ_ONLY_SHELL_EXECUTABLES = {"pwd", "ls", "find", "rg", "sed", "cat", "wc", "head", "tail", "stat", "test"}
 _TRUSTED_SHELL_WRAPPER_PATHS = {Path("/bin/zsh"), Path("/bin/sh"), Path("/usr/bin/zsh"), Path("/usr/bin/sh")}
+_ACTOR_MESSAGE_ITEM_TYPES = {"agent_message", "assistant_message"}
 _SHELL_OPERATOR_PATTERN = re.compile(r"(\|\||&&|[|<>;&`{}\n\r])|\$\(")
 _SHELL_VARIABLE_PATTERN = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\})")
 
@@ -847,10 +848,19 @@ def _structured_output_from_event(event: dict[str, object]) -> dict[str, object]
             return value
     item = event.get("item")
     if isinstance(item, dict):
-        value = _structured_output_from_event_item(item)
-        if value is not None:
-            return value
+        if _is_actor_message_item(item):
+            value = _structured_output_from_event_item(item)
+            if value is not None:
+                return value
     return None
+
+
+def _is_actor_message_item(item: dict[str, object]) -> bool:
+    item_type = item.get("type")
+    if isinstance(item_type, str) and item_type.lower() in _ACTOR_MESSAGE_ITEM_TYPES:
+        return True
+    role = item.get("role")
+    return isinstance(item_type, str) and item_type.lower() == "message" and isinstance(role, str) and role.lower() in {"agent", "assistant"}
 
 
 def _structured_output_from_event_item(item: dict[str, object]) -> dict[str, object] | None:

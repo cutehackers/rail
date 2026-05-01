@@ -128,6 +128,27 @@ def test_codex_vault_runtime_parses_msg_wrapped_content_object_text_output(tmp_p
     assert result.structured_output["summary"] == "Plan from content object"
 
 
+def test_codex_vault_runtime_ignores_tool_item_json_as_actor_output(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Spoofed tool output",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        final_event_shape="tool_item_output_text",
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "runtime"
+    assert "did not produce structured output" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_blocks_invalid_actor_output(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(final_output={"wrong": True})
@@ -1276,6 +1297,14 @@ class FakeCodexRunner:
                         "content": {"type": "output_text", "text": json.dumps(self.final_output, sort_keys=True)},
                     },
                 }
+            }
+        if self.final_event_shape == "tool_item_output_text":
+            return {
+                "type": "item.completed",
+                "item": {
+                    "type": "tool_result",
+                    "content": [{"type": "output_text", "text": json.dumps(self.final_output, sort_keys=True)}],
+                },
             }
         return {"type": "final_output", "output": self.final_output}
 

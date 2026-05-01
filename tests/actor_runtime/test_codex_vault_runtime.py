@@ -38,6 +38,7 @@ def test_codex_vault_runtime_validates_actor_output_and_writes_evidence(tmp_path
     exec_command = runner.exec_commands[0]
     assert exec_command[:3] == [command.as_posix(), "exec", "--json"]
     assert exec_command[exec_command.index("--model") + 1] == runtime.policy.runtime.model
+    assert "--skip-git-repo-check" in exec_command
     assert "--full-auto" not in exec_command
     assert "--dangerously-bypass-approvals-and-sandbox" not in exec_command
     assert exec_command[-1] == "-"

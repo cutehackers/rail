@@ -38,6 +38,7 @@ CODEX_EXEC_REQUIRED_HELP_FLAGS = (
     "--sandbox",
     "--cd",
     "--model",
+    "--skip-git-repo-check",
 )
 _FORBIDDEN_CODEX_EXEC_FLAG = "--dangerously-bypass-approvals-and-sandbox"
 _TRUSTED_UNRESOLVED_COMMAND_ROOTS = (Path("/opt/homebrew/bin"), Path("/usr/local/bin"), Path("/usr/bin"))
@@ -47,7 +48,7 @@ _TRUSTED_RESOLVED_COMMAND_ROOTS = (
     Path("/usr/local/bin"),
     Path("/usr/bin"),
 )
-_TRUSTED_SYSTEM_BINARY_ROOTS = (Path("/bin"), Path("/usr/bin"), Path("/usr/local/bin"), Path("/opt/homebrew/bin"))
+_TRUSTED_SYSTEM_BINARY_ROOTS = (Path("/bin"), Path("/usr/bin"))
 _UNTRUSTED_TEMP_ROOTS = (Path("/tmp"), Path("/var/tmp"))
 _READ_ONLY_SHELL_EXECUTABLES = {"pwd", "ls", "find", "rg", "sed", "cat", "wc", "head", "tail", "stat", "test"}
 _SHELL_OPERATOR_PATTERN = re.compile(r"(\|\||&&|[|<>;&`{}\n\r])|\$\(")
@@ -773,6 +774,7 @@ def build_required_codex_exec_args(*, output_schema: Path, sandbox: Path, model:
         "read-only",
         "--cd",
         sandbox.as_posix(),
+        "--skip-git-repo-check",
         "-c",
         "shell_environment_policy.inherit=none",
         "-",

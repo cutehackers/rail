@@ -119,6 +119,7 @@ def test_required_execution_flags_do_not_include_forbidden_bypass_flag():
 
     assert "--dangerously-bypass-approvals-and-sandbox" not in flags
     assert flags[flags.index("--model") + 1] == "gpt-test"
+    assert "--skip-git-repo-check" in flags
 
 
 def test_readiness_blocks_when_runner_raises_timeout(tmp_path):

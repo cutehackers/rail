@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from rail.auth.credentials import validate_codex_auth_material
 
-_TRUSTED_PROCESS_PATH = "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"
+_TRUSTED_PROCESS_PATH = "/usr/bin:/bin"
 _CODEX_AUTH_COPY_ALLOWLIST = {"auth.json"}
 
 

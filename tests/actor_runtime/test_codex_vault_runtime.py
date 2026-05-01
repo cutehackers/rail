@@ -37,6 +37,7 @@ def test_codex_vault_runtime_validates_actor_output_and_writes_evidence(tmp_path
     assert result.structured_output["summary"] == "Plan"
     exec_command = runner.exec_commands[0]
     assert exec_command[:3] == [command.as_posix(), "exec", "--json"]
+    assert exec_command[exec_command.index("--model") + 1] == runtime.policy.runtime.model
     assert "--full-auto" not in exec_command
     assert "--dangerously-bypass-approvals-and-sandbox" not in exec_command
     assert exec_command[-1] == "-"
@@ -211,6 +212,46 @@ def test_codex_vault_runtime_blocks_msg_wrapped_command_execution_event(tmp_path
             "acceptance_criteria_refined": [],
         },
         extra_events=[{"msg": {"type": "exec_command_begin", "cwd": "__SANDBOX__", "command": "touch app.txt"}}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell executable is not allowed" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_allows_msg_wrapped_shell_wrapper_read_only_command(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"msg": {"type": "exec_command_begin", "command": "/bin/zsh -lc pwd"}}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "succeeded"
+
+
+def test_codex_vault_runtime_blocks_msg_wrapped_shell_wrapper_write_command(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"msg": {"type": "exec_command_begin", "command": "/bin/zsh -lc 'touch app.txt'"}}],
     )
     runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
 

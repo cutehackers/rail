@@ -114,9 +114,11 @@ def test_required_execution_flags_do_not_include_forbidden_bypass_flag():
     flags = codex_vault.build_required_codex_exec_args(
         output_schema=Path("/absolute/path/to/actor-output-schema.json"),
         sandbox=Path("/absolute/path/to/sandbox"),
+        model="gpt-test",
     )
 
     assert "--dangerously-bypass-approvals-and-sandbox" not in flags
+    assert flags[flags.index("--model") + 1] == "gpt-test"
 
 
 def test_readiness_blocks_when_runner_raises_timeout(tmp_path):

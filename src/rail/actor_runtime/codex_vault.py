@@ -37,6 +37,7 @@ CODEX_EXEC_REQUIRED_HELP_FLAGS = (
     "--ephemeral",
     "--sandbox",
     "--cd",
+    "--model",
 )
 _FORBIDDEN_CODEX_EXEC_FLAG = "--dangerously-bypass-approvals-and-sandbox"
 _TRUSTED_UNRESOLVED_COMMAND_ROOTS = (Path("/opt/homebrew/bin"), Path("/usr/local/bin"), Path("/usr/bin"))
@@ -377,7 +378,11 @@ class CodexVaultActorRuntime:
         )
         command = [
             command_path.as_posix(),
-            *build_required_codex_exec_args(output_schema=output_schema_path, sandbox=sandbox.sandbox_root),
+            *build_required_codex_exec_args(
+                output_schema=output_schema_path,
+                sandbox=sandbox.sandbox_root,
+                model=self.policy.runtime.model,
+            ),
         ]
         raw_events: list[dict[str, object]] = []
         normalized_events: list[dict[str, object]] = []
@@ -681,10 +686,12 @@ def run_codex_command(
     )
 
 
-def build_required_codex_exec_args(*, output_schema: Path, sandbox: Path) -> list[str]:
+def build_required_codex_exec_args(*, output_schema: Path, sandbox: Path, model: str) -> list[str]:
     args = [
         "exec",
         "--json",
+        "--model",
+        model,
         "--output-schema",
         output_schema.as_posix(),
         "--ignore-user-config",
@@ -835,7 +842,7 @@ def _codex_event_policy_violation(
         if tool_type == "validation":
             return "validation execution is not allowed"
         if tool_type == "shell":
-            shell_event = _shell_event_from_codex_event(event)
+            shell_event = _shell_event_from_codex_event(event, default_cwd=sandbox_root)
             if shell_event is None:
                 return "shell event is not parseable"
             reason = _shell_event_policy_violation(
@@ -869,7 +876,7 @@ def _event_tool_type(event: dict[str, object]) -> str | None:
         return "plugin"
     if "validation" in lowered:
         return "validation"
-    if "shell" in lowered or "command_execution" in lowered or _shell_event_from_codex_event(event) is not None:
+    if "shell" in lowered or "command_execution" in lowered or "exec_command" in lowered or _shell_event_from_codex_event(event) is not None:
         return "shell"
     return None
 
@@ -888,7 +895,7 @@ def _event_dicts(event: dict[str, object]) -> list[dict[str, object]]:
     return dicts
 
 
-def _shell_event_from_codex_event(event: dict[str, object]) -> dict[str, object] | None:
+def _shell_event_from_codex_event(event: dict[str, object], *, default_cwd: Path | None = None) -> dict[str, object] | None:
     for mapping in _event_dicts(event):
         command = mapping.get("command")
         cwd = mapping.get("cwd") or mapping.get("working_dir") or mapping.get("working_directory")
@@ -897,9 +904,27 @@ def _shell_event_from_codex_event(event: dict[str, object]) -> dict[str, object]
         if isinstance(command, str):
             if not isinstance(cwd, str):
                 cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
+            if not isinstance(cwd, str) and default_cwd is not None:
+                cwd = default_cwd.as_posix()
             if isinstance(cwd, str):
+                command = _unwrap_codex_shell_wrapper(command) or command
                 return {"command": command, "cwd": cwd}
     return None
+
+
+def _unwrap_codex_shell_wrapper(command: str) -> str | None:
+    try:
+        args = shlex.split(command)
+    except ValueError:
+        return None
+    if len(args) < 3:
+        return None
+    shell_path = Path(args[0]).resolve(strict=False)
+    if shell_path not in {Path("/bin/zsh"), Path("/bin/sh"), Path("/usr/bin/zsh"), Path("/usr/bin/sh")}:
+        return None
+    if args[1] not in {"-lc", "-c"}:
+        return None
+    return args[2]
 
 
 def _shell_event_policy_violation(

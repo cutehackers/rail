@@ -85,6 +85,12 @@ class ParsedCodexEvents(BaseModel):
     final_output: dict[str, object] | None = None
 
 
+class CodexEventParseError(ValueError):
+    def __init__(self, message: str, parsed: ParsedCodexEvents) -> None:
+        super().__init__(message)
+        self.parsed = parsed
+
+
 class CodexVaultActorRuntime:
     def __init__(
         self,
@@ -401,6 +407,9 @@ class CodexVaultActorRuntime:
             normalized_events = parsed.normalized_events
             final_output = parsed.final_output
         except Exception as exc:
+            if isinstance(exc, CodexEventParseError):
+                raw_events = exc.parsed.raw_events
+                normalized_events = exc.parsed.normalized_events
             message = str(redact_secrets(str(exc)))
             reason = f"Codex Vault Actor Runtime execution failed: {message}"
             post_run_target_tree_digest = tree_digest(invocation.target_root)
@@ -434,6 +443,40 @@ class CodexVaultActorRuntime:
                 return ActorResult(
                     status="interrupted",
                     structured_output={"error": reason},
+                    events_ref=events_ref,
+                    runtime_evidence_ref=evidence_ref,
+                    blocked_category="policy",
+                )
+            policy_violation = _codex_event_policy_violation(
+                raw_events,
+                sandbox_root=sandbox.sandbox_root,
+                invocation=invocation,
+                runtime_project_root=self.project_root,
+                user_codex_home=os.environ.get("CODEX_HOME"),
+                rail_auth_home=codex_auth_home(environ=os.environ),
+                shell_allowlist=set(self.policy.tools.shell.allowlist) & _READ_ONLY_SHELL_EXECUTABLES,
+                shell_enabled=self.policy.tools.shell.enabled,
+            )
+            if policy_violation is not None:
+                events_ref, evidence_ref = write_runtime_evidence(
+                    invocation.artifact_dir,
+                    invocation.actor,
+                    self._evidence_payload(
+                        invocation,
+                        readiness=readiness,
+                        vault_environment=vault_environment,
+                        status="interrupted",
+                        blocked_category="policy",
+                        error=policy_violation,
+                        raw_events=raw_events,
+                        normalized_events=normalized_events,
+                        extra=extra | {"policy_violation": {"reason": policy_violation}},
+                    ),
+                    events=normalized_events or None,
+                )
+                return ActorResult(
+                    status="interrupted",
+                    structured_output={"error": policy_violation},
                     events_ref=events_ref,
                     runtime_evidence_ref=evidence_ref,
                     blocked_category="policy",
@@ -760,9 +803,19 @@ def _parse_codex_json_events(stdout: str) -> ParsedCodexEvents:
         try:
             event = json.loads(stripped)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"Codex JSON event line {line_number} is not valid JSON") from exc
+            parsed = ParsedCodexEvents(
+                raw_events=raw_events,
+                normalized_events=[normalize_sdk_event(event) for event in raw_events],
+                final_output=final_output,
+            )
+            raise CodexEventParseError(f"Codex JSON event line {line_number} is not valid JSON", parsed) from exc
         if not isinstance(event, dict):
-            raise ValueError(f"Codex JSON event line {line_number} must be an object")
+            parsed = ParsedCodexEvents(
+                raw_events=raw_events,
+                normalized_events=[normalize_sdk_event(event) for event in raw_events],
+                final_output=final_output,
+            )
+            raise CodexEventParseError(f"Codex JSON event line {line_number} must be an object", parsed)
         raw_events.append(event)
         candidate = _structured_output_from_event(event)
         if candidate is not None:

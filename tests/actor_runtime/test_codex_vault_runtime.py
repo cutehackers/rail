@@ -250,6 +250,28 @@ def test_codex_vault_runtime_blocks_target_mutation_when_codex_output_is_malform
     assert "target tree changed" in result.structured_output["error"]
 
 
+def test_codex_vault_runtime_audits_policy_events_before_malformed_json(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "touch app.txt"}],
+        malformed_stdout=True,
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell executable is not allowed" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_blocks_nested_command_execution_event(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(
@@ -1062,7 +1084,8 @@ class FakeCodexRunner:
             if self.before_result is not None:
                 self.before_result()
             if self.malformed_stdout:
-                return codex_vault.CodexCommandRunResult(stdout="{not-json", stderr="", returncode=self.exec_returncode)
+                stdout = "\n".join(json.dumps(event, sort_keys=True) for event in events)
+                return codex_vault.CodexCommandRunResult(stdout=f"{stdout}\n{{not-json", stderr="", returncode=self.exec_returncode)
             events.append(self._final_event())
             return codex_vault.CodexCommandRunResult(
                 stdout="\n".join(json.dumps(event, sort_keys=True) for event in events),

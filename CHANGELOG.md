@@ -2,6 +2,83 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.6.2 - 2026-05-01
+
+### Added
+
+- Added project codex vault blocked outcomes.
+- Added block codex vault contamination.
+- Added execute actors through codex vault.
+- Added materialize codex vault environment.
+- Added add codex vault auth diagnostics.
+- Added preflight codex vault command readiness.
+- Added select actor runtime from policy.
+- Added add codex vault runtime provider policy.
+
+### Changed
+
+- Expanded release validation coverage: add optional codex vault live smoke.
+- Updated release documentation: document codex vault runtime contract.
+- Expanded release validation coverage: expect codex auth environment block.
+- Expanded release validation coverage: validate sdk policy in runtime factory.
+- Updated release documentation: narrow codex vault verification guard.
+- Updated release documentation: show specify in harness readme.
+- Updated release documentation: show specify in readme examples.
+- Updated release documentation: sync codex vault plan and specify guidance.
+- Updated release documentation: update korean architecture for specify api.
+- Updated refactor: rename request API to specify.
+- Updated release documentation: design sealed codex actor runtime.
+
+### Fixed
+
+- Fixed redact projection evidence refs.
+- Fixed address codex vault post-review gaps.
+- Fixed align request validator naming.
+- Fixed remove sdk adapter wording from spec.
+- Fixed remove sdk key from default install docs.
+- Fixed guard readme actor runtime wording.
+- Fixed address codex vault review gaps.
+- Fixed ignore codex tool output as final actor output.
+- Fixed guard codex vault event edge cases.
+- Fixed trust only system shell binaries.
+- Fixed audit codex content object events.
+- Fixed inspect dash-leading shell operands.
+- Fixed audit partial codex event output.
+- Fixed guard failed codex parse mutations.
+- Fixed audit failed codex vault runs.
+- Fixed audit all codex shell commands.
+- Fixed preserve nested codex event cwd.
+- Fixed audit command-only codex events.
+- Fixed block shell expansion event escapes.
+- Fixed constrain codex vault shell path trust.
+- Fixed harden codex vault shell operands.
+- Fixed rotate codex vault actor homes.
+- Fixed isolate codex vault env per actor.
+- Fixed pass model to codex vault exec.
+- Fixed handle codex msg event envelopes.
+- Fixed include actor prompts in codex vault.
+- Fixed reject unsafe shell executable forms.
+- Fixed block sed read write escapes.
+- Fixed block addressed sed writes.
+- Fixed block codex vault shell write edge cases.
+- Fixed expand codex vault write flag blocklist.
+- Fixed block codex vault write-capable shell flags.
+- Fixed harden codex vault shell event gate.
+- Fixed parse codex vault event shapes.
+- Fixed align inline patch fixtures.
+- Fixed guard codex vault evidence dir.
+- Fixed block unsafe codex vault parent paths.
+- Fixed harden codex vault environment.
+- Fixed reject symlinked codex auth login home.
+- Fixed harden codex auth diagnostics.
+- Fixed harden codex readiness blocking.
+- Fixed align actor runtime test fixtures.
+- Fixed harden codex vault policy tests.
+
+### Verification
+
+- `scripts/release_gate.sh`
+
 ## v0.6.1 - 2026-04-30
 
 ### Changed

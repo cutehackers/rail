@@ -104,6 +104,8 @@ def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
         "SDK traces",
         "SDK trace",
         "SDK Actor Runtime",
+        "SDK-adapter",
+        "SDK adapter",
     ]
     active_docs = [
         Path("README.md"),

@@ -316,7 +316,7 @@ wheel and sdist assets with `scripts/check_python_package_assets.py`, smokes the
 installed wheel with `scripts/check_installed_wheel.py`, runs the Python test
 suite excluding the optional live smoke, runs lint and typing, and preserves
 docs guards, no-legacy guards, naming guards, repo `.harness` default alignment,
-and deterministic SDK-adapter smoke through the test suite.
+and deterministic Actor Runtime smoke through the test suite.
 
 Optional live Actor Runtime smokes are skipped by default. When
 `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` and operator SDK credentials are configured,

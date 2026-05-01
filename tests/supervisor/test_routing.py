@@ -271,6 +271,17 @@ def test_supervise_gate_blocks_runtime_policy_violation_evidence(tmp_path):
     assert "runtime policy violation" in run_status["reason"]
 
 
+def test_supervise_gate_blocks_unreturned_runtime_policy_violation_evidence(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    result = rail.supervise(handle, runtime=UnreturnedPolicyViolationEvidenceRuntime())
+
+    assert result.outcome == "blocked"
+    run_status = yaml.safe_load((handle.artifact_dir / "run_status.yaml").read_text(encoding="utf-8"))
+    assert run_status["blocked_category"] == "policy"
+    assert "runtime policy violation" in run_status["reason"]
+
+
 def _target_repo(tmp_path: Path) -> Path:
     target = tmp_path / "target-repo"
     target.mkdir(parents=True, exist_ok=True)
@@ -371,6 +382,25 @@ class PolicyViolationEvidenceRuntime(PassingRuntime):
         result = super().run(invocation)
         if invocation.actor == "planner":
             (invocation.artifact_dir / result.runtime_evidence_ref).write_text(
+                json.dumps(
+                    {
+                        "status": "succeeded",
+                        "provider": "codex_vault",
+                        "policy_violation": {"reason": "MCP invocation is not allowed"},
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+        return result
+
+
+class UnreturnedPolicyViolationEvidenceRuntime(PassingRuntime):
+    def run(self, invocation: ActorInvocation) -> ActorResult:
+        result = super().run(invocation)
+        if invocation.actor == "planner":
+            hidden_ref = invocation.artifact_dir / "runs" / "planner.unreturned.runtime_evidence.json"
+            hidden_ref.write_text(
                 json.dumps(
                     {
                         "status": "succeeded",

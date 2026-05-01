@@ -92,7 +92,17 @@ def test_active_product_surfaces_do_not_reference_removed_runtime():
 
 
 def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
-    forbidden = ["rail.normalize_request", "def normalize_request", "sealed_codex", "vault_codex", "actor backend"]
+    forbidden = [
+        "rail.normalize_request",
+        "def normalize_request",
+        "sealed_codex",
+        "vault_codex",
+        "actor backend",
+        "SDK-backed actors",
+        "SDK traces",
+        "SDK trace",
+        "SDK Actor Runtime",
+    ]
     active_docs = [
         Path("docs/SPEC.md"),
         Path("docs/ARCHITECTURE.md"),

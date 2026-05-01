@@ -18,9 +18,9 @@ Rail is a skill-first harness control plane for bounded agentic software work
 against a separate target repository.
 
 Rail is release-ready when a user can describe a software task through the Rail
-skill, receive an artifact handle, let Rail supervise SDK-backed actors, inspect
-the result, and resume or debug that artifact without understanding request
-files, task IDs, runtime flags, or SDK traces.
+skill, receive an artifact handle, let Rail supervise Actor Runtime work,
+inspect the result, and resume or debug that artifact without understanding
+request files, task IDs, runtime flags, or provider event streams.
 
 ## Product Contract
 
@@ -76,8 +76,8 @@ The Actor Runtime owns:
 - structured actor output validation
 - sandbox-local exploration and patch production
 
-The Actor Runtime is not the source of truth for terminal outcome. SDK traces
-are evidence, not decision authority.
+The Actor Runtime is not the source of truth for terminal outcome. Runtime
+events are evidence, not decision authority.
 
 ## Required User Flows
 
@@ -195,7 +195,7 @@ Multi-file apply must either complete or leave the target unchanged.
 Each actor run writes stable evidence for result projection and human review:
 
 - normalized event log
-- SDK trace reference or exported trace
+- provider event reference or exported runtime events
 - runtime evidence
 - structured actor output
 - optional patch bundle
@@ -359,6 +359,6 @@ The same top section is used for operator-triggered release notes.
 - Do not require users to choose task IDs.
 - Do not make a wrapper interface the product authority.
 - Do not accept target-local credentials as trusted input.
-- Do not treat SDK traces as terminal decision authority.
+- Do not treat runtime event streams as terminal decision authority.
 - Do not let actors directly mutate target repositories.
 - Do not claim release readiness from deterministic fixture tests alone.

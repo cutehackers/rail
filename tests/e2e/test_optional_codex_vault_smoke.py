@@ -9,6 +9,7 @@ import rail
 from rail.actor_runtime.codex_vault import CodexVaultActorRuntime
 from rail.actor_runtime.runtime import build_invocation
 from rail.policy import load_effective_policy
+from rail.workspace.isolation import target_mutation_digest
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RAIL_CODEX_VAULT_LIVE_SMOKE") != "1",
@@ -29,9 +30,9 @@ def test_optional_codex_vault_live_smoke_runs_planner_actor(tmp_path):
     )
     runtime = CodexVaultActorRuntime(project_root=Path("."), policy=load_effective_policy(target))
 
-    before = sorted(path.relative_to(target) for path in target.rglob("*"))
+    before = target_mutation_digest(target)
     result = runtime.run(build_invocation(handle, "planner"))
-    after = sorted(path.relative_to(target) for path in target.rglob("*"))
+    after = target_mutation_digest(target)
 
     assert result.status == "succeeded"
     assert "summary" in result.structured_output

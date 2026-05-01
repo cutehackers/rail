@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from rail.artifacts.models import ArtifactHandle
 from rail.artifacts.store import validate_artifact_handle
 from rail.artifacts.terminal_summary import BlockedCategory, project_terminal_summary
+from rail.auth.redaction import redact_secrets
 
 
 class StatusProjection(BaseModel):
@@ -82,7 +83,7 @@ def _changed_files(artifact_dir: Path) -> list[str]:
     if isinstance(structured, dict):
         changed_files = structured.get("changed_files", [])
         if isinstance(changed_files, list):
-            return [str(path) for path in changed_files]
+            return [str(redact_secrets(str(path))) for path in changed_files]
     return []
 
 

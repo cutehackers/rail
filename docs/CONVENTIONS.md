@@ -14,7 +14,7 @@ docs should read this together with `docs/ARCHITECTURE.md` before editing.
 - Use Pydantic models for request, policy, artifact, evidence, and projection
   contracts that cross module boundaries.
 - Keep side effects at Rail-owned boundaries: artifact store, supervisor,
-  workspace apply, validation runner, and SDK Actor Runtime.
+  workspace apply, validation runner, and Actor Runtime providers.
 - Do not introduce broad compatibility shims for removed runtime surfaces.
 
 ## Formatting And Static Checks

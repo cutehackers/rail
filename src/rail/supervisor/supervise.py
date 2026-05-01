@@ -141,7 +141,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
                     validation_ref=validation_ref,
                     validation_evidence_digest=validation_evidence_digest,
                     evaluator_input_digest=evaluator_input_digest or "sha256:no-evaluator-input",
-                    runtime_evidence_refs=[Path(ref) for ref in evidence_refs if ref.endswith(".runtime_evidence.json")],
+                    runtime_evidence_refs=_runtime_evidence_refs(handle.artifact_dir),
                     expected_validation_network_mode=policy.workspace.network_mode,
                 ),
             )
@@ -266,6 +266,13 @@ def _gate_blocked_category(reason: str) -> str:
     if "policy" in lowered or "patch" in lowered:
         return "policy"
     return "runtime"
+
+
+def _runtime_evidence_refs(artifact_dir: Path) -> list[Path]:
+    runs_dir = artifact_dir / "runs"
+    if not runs_dir.exists():
+        return []
+    return sorted(path.relative_to(artifact_dir) for path in runs_dir.glob("*.runtime_evidence.json") if path.exists() or path.is_symlink())
 
 
 def _rail_root() -> Path:

@@ -143,6 +143,36 @@ def test_result_projection_redacts_secret_reason_from_artifacts(tmp_path):
     assert "[REDACTED]" in projection.reason
 
 
+def test_result_projection_redacts_secret_changed_files_from_runtime_evidence(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    (handle.artifact_dir / "run_status.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": "1",
+                "artifact_id": handle.artifact_id,
+                "status": "terminal",
+                "outcome": "pass",
+                "current_actor": "evaluator",
+                "reason": "accepted",
+                "visited": ["planner", "generator", "executor", "evaluator"],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    runs_dir = handle.artifact_dir / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    (runs_dir / "generator.runtime_evidence.json").write_text(
+        json.dumps({"structured_output": {"changed_files": ["OPENAI_API_KEY=sk-secret-value"]}}),
+        encoding="utf-8",
+    )
+
+    projection = rail.result(handle)
+
+    assert "sk-secret-value" not in "\n".join(projection.changed_files)
+    assert projection.changed_files == ["OPENAI_API_KEY=[REDACTED]"]
+
+
 def _target_repo(tmp_path: Path) -> Path:
     target = tmp_path / "target-repo"
     target.mkdir(parents=True, exist_ok=True)

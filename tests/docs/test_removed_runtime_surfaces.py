@@ -106,6 +106,7 @@ def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
         "SDK Actor Runtime",
         "SDK-adapter",
         "SDK adapter",
+        "OpenAI Agents SDK",
     ]
     active_docs = [
         Path("README.md"),

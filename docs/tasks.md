@@ -85,8 +85,8 @@ Completed closure plans:
 - [x] Block invalid Actor Runtime credentials before actor work
   Done when missing, syntactically invalid, or provider-preflight-rejected
   operator credentials produce a secret-safe environment-blocked result without
-  invoking the actor SDK runner, and provider preflight uses the configured
-  runtime timeout.
+  invoking actor work, and provider preflight uses the configured runtime
+  timeout.
 
 - [x] Distinguish blocked result categories in `rail.result(handle)`
   Done when result projection exposes blocked category, reason, and a
@@ -143,9 +143,8 @@ Completed closure plans:
   existing artifact operations can resume without composing a new request.
 
 - [x] Add live Actor Runtime readiness
-  Done when the default Actor Runtime can use a configured OpenAI Agents SDK
-  runner, missing credentials block before actor work, and readiness reports are
-  secret-safe.
+  Done when the default `codex_vault` Actor Runtime checks Rail-owned Codex auth
+  and command readiness before actor work, and readiness reports are secret-safe.
 
 - [x] Replace synthetic validation with Rail-owned validation evidence
   Done when validation evidence is produced by request or policy commands and

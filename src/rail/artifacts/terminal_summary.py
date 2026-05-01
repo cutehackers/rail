@@ -61,10 +61,14 @@ def _load_run_status(handle: ArtifactHandle) -> dict[str, object]:
 
 
 def _evidence_refs(artifact_dir: Path) -> list[str]:
-    refs = [path.relative_to(artifact_dir).as_posix() for path in (artifact_dir / "runs").glob("*") if path.is_file()]
+    refs = [
+        str(redact_secrets(path.relative_to(artifact_dir).as_posix()))
+        for path in (artifact_dir / "runs").glob("*")
+        if path.is_file()
+    ]
     validation_ref = artifact_dir / "validation" / "evidence.yaml"
     if validation_ref.is_file():
-        refs.append(validation_ref.relative_to(artifact_dir).as_posix())
+        refs.append(str(redact_secrets(validation_ref.relative_to(artifact_dir).as_posix())))
     return sorted(refs)
 
 

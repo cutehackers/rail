@@ -8,6 +8,8 @@ Collect only the repository context needed for implementation.
 - Find and summarize existing patterns in same feature or adjacent features.
 - Capture test strategy used in nearby tests.
 - Exclude unrelated architecture modules.
+- Read only sandbox-relative paths.
+- Do not inspect parent directories, absolute host paths, or hidden user config.
 
 ## Input
 - `plan`
@@ -27,4 +29,3 @@ Return YAML matching `context_pack.schema.yaml` with:
 2. similar pattern in same feature
 3. existing tests for adjacent behaviors
 4. cross-cutting constraints from project rules
-

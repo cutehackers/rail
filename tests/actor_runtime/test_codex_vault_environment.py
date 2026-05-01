@@ -6,9 +6,10 @@ from pathlib import Path
 import rail
 import pytest
 
+from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.actor_runtime import codex_vault
 from rail.actor_runtime.codex_vault import CodexVaultActorRuntime
-from rail.actor_runtime.runtime import build_invocation
+from rail.actor_runtime.runtime import build_invocation as _build_invocation
 from rail.actor_runtime.vault_env import materialize_vault_environment
 from rail.policy import load_effective_policy
 
@@ -70,6 +71,41 @@ def test_materialize_vault_env_copies_only_auth_json(tmp_path):
     assert sorted(path.name for path in env.codex_home.iterdir()) == ["auth.json"]
     assert env.copied_auth_material == ["auth.json"]
     assert (env.codex_home / "auth.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_materialize_vault_env_tolerates_codex_operational_auth_dirs_without_copying(tmp_path):
+    artifact_dir = tmp_path / "artifact"
+    auth_home = tmp_path / "auth"
+    auth_home.mkdir()
+    (auth_home / "auth.json").write_text('{"tokens":[]}', encoding="utf-8")
+    for name in ("log", "memories", "tmp"):
+        (auth_home / name).mkdir()
+
+    env = materialize_vault_environment(
+        artifact_dir=artifact_dir,
+        auth_home=auth_home,
+        base_environ={},
+    )
+
+    assert sorted(path.name for path in env.codex_home.iterdir()) == ["auth.json"]
+    assert env.copied_auth_material == ["auth.json"]
+
+
+def test_materialize_vault_env_rejects_symlinked_codex_operational_auth_dir(tmp_path):
+    artifact_dir = tmp_path / "artifact"
+    auth_home = tmp_path / "auth"
+    auth_home.mkdir()
+    (auth_home / "auth.json").write_text("{}", encoding="utf-8")
+    outside = tmp_path / "outside-log"
+    outside.mkdir()
+    (auth_home / "log").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="unsafe auth material"):
+        materialize_vault_environment(
+            artifact_dir=artifact_dir,
+            auth_home=auth_home,
+            base_environ={},
+        )
 
 
 def test_materialize_vault_env_uses_actor_scoped_home_when_actor_is_provided(tmp_path):
@@ -359,6 +395,10 @@ def _target_repo(tmp_path):
     target = tmp_path / "target"
     target.mkdir()
     return target
+
+
+def build_invocation(handle, actor: str):
+    return _build_invocation(handle, actor, attempt_ref=allocate_run_attempt(handle.artifact_dir))
 
 
 def _draft(target) -> dict[str, object]:

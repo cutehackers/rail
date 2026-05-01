@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from rail.artifacts.digests import digest_file
 from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.events import normalize_sdk_event
+from rail.actor_runtime.output_schema import compile_codex_output_schema
 from rail.actor_runtime.prompts import load_actor_catalog
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
 from rail.actor_runtime.vault_audit import audit_codex_event_contamination, audit_vault_materialization
@@ -241,6 +242,7 @@ class CodexVaultActorRuntime:
             command_path_status = _command_path_status(readiness)
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 normalize_sdk_event(
                     {
@@ -274,6 +276,7 @@ class CodexVaultActorRuntime:
             reason = "Codex Vault Actor Runtime environment materialization failed"
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 normalize_sdk_event(
                     {
@@ -300,6 +303,7 @@ class CodexVaultActorRuntime:
         if materialization_violation is not None:
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -326,6 +330,7 @@ class CodexVaultActorRuntime:
             reason = "Codex Vault Actor Runtime sandbox creation failed"
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -350,6 +355,7 @@ class CodexVaultActorRuntime:
             reason = "Codex command was not available after readiness"
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -378,6 +384,7 @@ class CodexVaultActorRuntime:
         if invocation_path_failure is not None:
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -453,6 +460,7 @@ class CodexVaultActorRuntime:
                 reason = "target tree changed outside Rail patch apply"
                 events_ref, evidence_ref = write_runtime_evidence(
                     invocation.artifact_dir,
+                    invocation.attempt_ref,
                     invocation.actor,
                     self._evidence_payload(
                         invocation,
@@ -474,6 +482,32 @@ class CodexVaultActorRuntime:
                     runtime_evidence_ref=evidence_ref,
                     blocked_category="policy",
                 )
+            materialization_violation = audit_vault_materialization(vault_environment, artifact_dir=invocation.artifact_dir)
+            if materialization_violation is not None:
+                events_ref, evidence_ref = write_runtime_evidence(
+                    invocation.artifact_dir,
+                    invocation.attempt_ref,
+                    invocation.actor,
+                    self._evidence_payload(
+                        invocation,
+                        readiness=readiness,
+                        vault_environment=vault_environment,
+                        status="interrupted",
+                        blocked_category="policy",
+                        error=materialization_violation,
+                        raw_events=raw_events,
+                        normalized_events=normalized_events,
+                        extra=extra | {"policy_violation": {"reason": materialization_violation}},
+                    ),
+                    events=normalized_events or None,
+                )
+                return ActorResult(
+                    status="interrupted",
+                    structured_output={"error": materialization_violation},
+                    events_ref=events_ref,
+                    runtime_evidence_ref=evidence_ref,
+                    blocked_category="policy",
+                )
             policy_violation = _codex_event_policy_violation(
                 raw_events,
                 sandbox_root=sandbox.sandbox_root,
@@ -487,6 +521,7 @@ class CodexVaultActorRuntime:
             if policy_violation is not None:
                 events_ref, evidence_ref = write_runtime_evidence(
                     invocation.artifact_dir,
+                    invocation.attempt_ref,
                     invocation.actor,
                     self._evidence_payload(
                         invocation,
@@ -510,6 +545,7 @@ class CodexVaultActorRuntime:
                 )
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -543,6 +579,33 @@ class CodexVaultActorRuntime:
             "codex_returncode": command_result.returncode,
         }
 
+        materialization_violation = audit_vault_materialization(vault_environment, artifact_dir=invocation.artifact_dir)
+        if materialization_violation is not None:
+            events_ref, evidence_ref = write_runtime_evidence(
+                invocation.artifact_dir,
+                invocation.attempt_ref,
+                invocation.actor,
+                self._evidence_payload(
+                    invocation,
+                    readiness=readiness,
+                    vault_environment=vault_environment,
+                    status="interrupted",
+                    blocked_category="policy",
+                    error=materialization_violation,
+                    raw_events=raw_events,
+                    normalized_events=normalized_events,
+                    extra=base_extra | {"policy_violation": {"reason": materialization_violation}},
+                ),
+                events=normalized_events or None,
+            )
+            return ActorResult(
+                status="interrupted",
+                structured_output={"error": materialization_violation},
+                events_ref=events_ref,
+                runtime_evidence_ref=evidence_ref,
+                blocked_category="policy",
+            )
+
         policy_violation = _codex_event_policy_violation(
             raw_events,
             sandbox_root=sandbox.sandbox_root,
@@ -556,6 +619,7 @@ class CodexVaultActorRuntime:
         if policy_violation is not None:
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -582,6 +646,7 @@ class CodexVaultActorRuntime:
             reason = "target tree changed outside Rail patch apply"
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -608,6 +673,7 @@ class CodexVaultActorRuntime:
             reason = "Codex command execution failed"
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -634,6 +700,7 @@ class CodexVaultActorRuntime:
             reason = "Codex command did not produce structured output"
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -662,6 +729,7 @@ class CodexVaultActorRuntime:
             reason = f"validation failed: {redact_secrets(str(exc))}"
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 self._evidence_payload(
                     invocation,
@@ -686,6 +754,7 @@ class CodexVaultActorRuntime:
 
         events_ref, evidence_ref = write_runtime_evidence(
             invocation.artifact_dir,
+            invocation.attempt_ref,
             invocation.actor,
             self._evidence_payload(
                 invocation,
@@ -815,7 +884,7 @@ def _materialize_output_schema(invocation: ActorInvocation, schema_source: dict[
     schema_path = invocation.artifact_dir / schema_ref
     schema_path.parent.mkdir(parents=True, exist_ok=True)
     schema_path.write_text(
-        json.dumps(schema_source, sort_keys=True, indent=2),
+        json.dumps(compile_codex_output_schema(schema_source), sort_keys=True, indent=2),
         encoding="utf-8",
     )
     return schema_ref, schema_path, digest_file(schema_path)

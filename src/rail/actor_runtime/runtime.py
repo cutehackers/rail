@@ -17,6 +17,7 @@ class ActorInvocation(BaseModel):
     actor: str
     artifact_id: str
     artifact_dir: Path
+    attempt_ref: str
     target_root: Path
     prompt: str
     input: dict[str, object]
@@ -43,6 +44,7 @@ def build_invocation(
     handle: ArtifactHandle,
     actor: str,
     *,
+    attempt_ref: str,
     prior_outputs: dict[str, dict[str, object]] | None = None,
     evidence_refs: list[str] | None = None,
 ) -> ActorInvocation:
@@ -51,6 +53,7 @@ def build_invocation(
         actor=actor,
         artifact_id=handle.artifact_id,
         artifact_dir=handle.artifact_dir,
+        attempt_ref=attempt_ref,
         target_root=handle.project_root,
         prompt=f"Run Rail actor {actor} for task goal: {request.get('goal', '')}",
         input={

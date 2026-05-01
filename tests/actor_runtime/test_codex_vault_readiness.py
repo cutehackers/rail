@@ -5,9 +5,10 @@ import subprocess
 from pathlib import Path
 
 import rail
+from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.actor_runtime import codex_vault
 from rail.actor_runtime.codex_vault import CodexVaultActorRuntime
-from rail.actor_runtime.runtime import build_invocation
+from rail.actor_runtime.runtime import build_invocation as _build_invocation
 from rail.policy import load_effective_policy
 
 
@@ -216,6 +217,10 @@ def _target_repo(tmp_path: Path) -> Path:
     target = tmp_path / "target-repo"
     target.mkdir(parents=True, exist_ok=True)
     return target
+
+
+def build_invocation(handle, actor: str):
+    return _build_invocation(handle, actor, attempt_ref=allocate_run_attempt(handle.artifact_dir))
 
 
 def _draft(target: Path) -> dict[str, object]:

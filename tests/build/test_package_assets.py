@@ -62,6 +62,36 @@ def test_packaged_assets_match_repo_sources():
     _assert_tree_matches(Path("assets/skill/Rail"), Path("src/rail/package_assets/skill/Rail"))
 
 
+def test_rail_skill_blocks_without_runtime_repair_instructions():
+    skill_paths = [
+        Path("skills/rail/SKILL.md"),
+        Path("assets/skill/Rail/SKILL.md"),
+        Path("src/rail/package_assets/skill/Rail/SKILL.md"),
+    ]
+
+    for path in skill_paths:
+        text = path.read_text(encoding="utf-8")
+        assert "Do not patch Rail runtime internals" in text
+        assert "actor prompts, sandbox behavior, auth homes" in text
+        assert "Report `rail.result(handle)`" in text
+        assert "_materialize_output_schema" not in text
+        assert "patch sandbox functions" not in text
+        assert "move auth directories" not in text
+
+
+def test_context_builder_prompt_limits_collection_to_sandbox_relative_paths():
+    prompt_paths = [
+        Path(".harness/actors/context_builder.md"),
+        Path("assets/defaults/actors/context_builder.md"),
+        Path("src/rail/package_assets/defaults/actors/context_builder.md"),
+    ]
+
+    for path in prompt_paths:
+        text = path.read_text(encoding="utf-8")
+        assert "Read only sandbox-relative paths" in text
+        assert "Do not inspect parent directories" in text
+
+
 def test_repo_harness_defaults_match_packaged_defaults():
     for subdir in ("actors", "rules", "rubrics", "supervisor", "templates"):
         _assert_tree_matches(Path(".harness") / subdir, Path("assets/defaults") / subdir)

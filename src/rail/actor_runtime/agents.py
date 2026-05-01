@@ -129,6 +129,7 @@ class AgentsActorRuntime:
         if not readiness.ready:
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 normalize_sdk_event(
                     {
@@ -164,6 +165,7 @@ class AgentsActorRuntime:
             structured = entry.validate_output(sdk_result.final_output).model_dump(mode="json")
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 normalize_sdk_event(
                     {
@@ -184,6 +186,7 @@ class AgentsActorRuntime:
         except Exception as exc:
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
+                invocation.attempt_ref,
                 invocation.actor,
                 normalize_sdk_event({"status": "interrupted", "actor": invocation.actor, "error": str(exc)}),
             )

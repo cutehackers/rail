@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict
 
 from rail.workspace.isolation import is_hardlink, tree_digest
 
+_SANDBOX_IGNORED_TOP_LEVEL = {".git", ".harness"}
+
 
 class Sandbox(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -21,7 +23,7 @@ def create_sandbox(target_root: Path) -> Sandbox:
     target_root = target_root.resolve(strict=True)
     _reject_target_links(target_root)
     sandbox_root = Path(tempfile.mkdtemp(prefix="rail-sandbox-")).resolve(strict=True)
-    shutil.copytree(target_root, sandbox_root, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git", ".harness"))
+    shutil.copytree(target_root, sandbox_root, dirs_exist_ok=True, ignore=shutil.ignore_patterns(*_SANDBOX_IGNORED_TOP_LEVEL))
     return Sandbox(target_root=target_root, sandbox_root=sandbox_root, base_tree_digest=tree_digest(target_root))
 
 
@@ -38,10 +40,20 @@ def write_sandbox_file(sandbox: Sandbox, relative_path: str, content: str) -> Pa
 
 def _reject_target_links(target_root: Path) -> None:
     for path in target_root.rglob("*"):
+        if _is_ignored_target_path(path, target_root):
+            continue
         if path.is_symlink():
             raise ValueError("target symlink entries cannot be copied into sandbox")
         if path.is_file() and is_hardlink(path):
             raise ValueError("target hardlink entries cannot be copied into sandbox")
+
+
+def _is_ignored_target_path(path: Path, target_root: Path) -> bool:
+    try:
+        relative = path.relative_to(target_root)
+    except ValueError:
+        return False
+    return bool(relative.parts and relative.parts[0] in _SANDBOX_IGNORED_TOP_LEVEL)
 
 
 def _safe_sandbox_path(sandbox: Sandbox, relative_path: str) -> Path:

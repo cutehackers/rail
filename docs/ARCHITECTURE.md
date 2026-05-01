@@ -23,7 +23,7 @@ The request layer accepts skill-produced drafts, rejects unknown fields, applies
 
 ### Artifact Store
 
-The artifact store allocates opaque artifact ids and writes request snapshots, workflow state, run status, run evidence, and terminal summaries. Artifact handles are canonical and digest-bound.
+The artifact store allocates opaque artifact ids and writes request snapshots, workflow state, run status, run evidence, and terminal summaries. Runtime evidence is attempt-scoped under `runs/attempt-NNNN/` so retries on the same artifact do not overwrite or project stale actor output. Artifact handles are canonical and digest-bound.
 
 ### Task Identity
 
@@ -40,12 +40,12 @@ provider is `codex_vault`; `openai_agents_sdk` is optional for
 operator/API-key environments. Each actor receives:
 
 - deterministic prompt source
-- Pydantic output schema
+- Codex-compatible strict output schema derived from the Rail actor contract
 - narrowed policy
 - secret-safe environment
 - evidence writer
 
-Actors return structured output and evidence references. The supervisor owns routing and terminal decisions.
+Actors return structured output and attempt-scoped evidence references. The supervisor owns routing and terminal decisions.
 
 ### Supervisor
 
@@ -59,7 +59,7 @@ Evaluator `pass` can become terminal success only after the evaluator gate accep
 
 ### Workspace Isolation
 
-Actor edits occur in an external sandbox. Target mutation happens only when Rail applies a validated patch bundle. Tree digests prevent stale or out-of-band target changes.
+Actor edits occur in an external sandbox. Target mutation happens only when Rail applies a validated patch bundle. Sandbox pre-scan and copy use the same ignored top-level paths so `.git` and `.harness` artifacts are not treated as actor-readable target input. Tree digests prevent stale or out-of-band target changes.
 
 ### Validation And Evaluator Gate
 

@@ -12,6 +12,7 @@ from tests.actor_runtime_test_fixtures import scripted_agents_runtime
 def test_terminal_summary_explains_blocked_environment_readiness(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
+    monkeypatch.setenv("RAIL_HOME", str(tmp_path / "rail-home"))
     handle = rail.start_task(_draft(_target_repo(tmp_path), "Explain blocked state."))
 
     rail.supervise(handle)

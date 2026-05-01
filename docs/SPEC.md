@@ -37,6 +37,11 @@ Rail must preserve this user contract:
 The Python API is the governing boundary. Any wrapper or future UI must delegate
 to the same API and must not become the product authority.
 
+The Rail skill is the request-authoring and reporting surface. It may call the
+public API and report blocked outcomes, but it must not patch Rail runtime
+internals, actor prompts, sandbox behavior, auth homes, or target files to
+continue a blocked run.
+
 ## Runtime Vocabulary
 
 - **Rail Harness Runtime:** the Python runtime that owns request normalization,
@@ -107,6 +112,8 @@ events are evidence, not decision authority.
 2. If readiness fails, Rail writes blocked run status with a secret-safe reason.
 3. Result projection tells the user how to fix the environment without exposing
    secret values or machine-specific credential paths.
+4. The skill reports the blocked result as-is. Runtime repair belongs in Rail
+   code, policy, docs, or operator setup, not in the active task session.
 
 ## Task Identity And Resume
 

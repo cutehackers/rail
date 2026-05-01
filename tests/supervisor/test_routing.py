@@ -94,11 +94,12 @@ def test_supervise_maps_runtime_exceptions_to_blocked_artifact(tmp_path):
 
     assert result.outcome == "blocked"
     assert (handle.artifact_dir / "run_status.yaml").is_file()
-    evidence = (handle.artifact_dir / "runs" / "planner.runtime_evidence.json").read_text(encoding="utf-8")
+    evidence = (handle.artifact_dir / "runs" / "attempt-0001" / "planner.runtime_evidence.json").read_text(encoding="utf-8")
     assert "sdk exploded" in evidence
 
 
-def test_default_supervise_does_not_fake_terminal_pass(tmp_path):
+def test_default_supervise_does_not_fake_terminal_pass(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAIL_HOME", str(tmp_path / "rail-home"))
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
 
     result = rail.supervise(handle)
@@ -110,6 +111,7 @@ def test_default_supervise_does_not_fake_terminal_pass(tmp_path):
 def test_default_supervise_blocks_environment_when_runtime_not_ready(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("RAIL_ACTOR_RUNTIME_LIVE", raising=False)
+    monkeypatch.setenv("RAIL_HOME", str(tmp_path / "rail-home"))
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
 
     result = rail.supervise(handle)
@@ -174,6 +176,21 @@ def test_supervise_api_updates_artifact_run_status(tmp_path):
     assert run_status["status"] == "terminal"
     assert run_status["outcome"] == "pass"
     assert run_status["current_actor"] == "evaluator"
+
+
+def test_supervise_retries_use_attempt_scoped_evidence_and_latest_summary(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    rail.supervise(handle, runtime=InterruptingRuntime())
+    rail.supervise(handle, runtime=SecretInterruptingRuntime())
+
+    assert (handle.artifact_dir / "runs" / "attempt-0001" / "planner.runtime_evidence.json").is_file()
+    assert (handle.artifact_dir / "runs" / "attempt-0002" / "planner.runtime_evidence.json").is_file()
+    run_status = yaml.safe_load((handle.artifact_dir / "run_status.yaml").read_text(encoding="utf-8"))
+    assert run_status["attempt_ref"] == "attempt-0002"
+    projection = rail.result(handle)
+    assert "runs/attempt-0002/planner.runtime_evidence.json" in projection.evidence_refs
+    assert "runs/attempt-0001/planner.runtime_evidence.json" not in projection.evidence_refs
 
 
 def test_supervise_applies_generator_patch_bundle_inside_supervision(tmp_path):
@@ -304,8 +321,8 @@ class InterruptingRuntime:
         return ActorResult(
             status="interrupted",
             structured_output={"error": "sdk failed"},
-            events_ref=Path("runs") / f"{invocation.actor}.events.jsonl",
-            runtime_evidence_ref=Path("runs") / f"{invocation.actor}.runtime_evidence.json",
+            events_ref=_runtime_ref(invocation, "events.jsonl"),
+            runtime_evidence_ref=_runtime_ref(invocation, "runtime_evidence.json"),
         )
 
 
@@ -315,8 +332,8 @@ class SecretInterruptingRuntime:
         return ActorResult(
             status="interrupted",
             structured_output={"error": "OPENAI_API_KEY=sk-secret-value"},
-            events_ref=Path("runs") / f"{invocation.actor}.events.jsonl",
-            runtime_evidence_ref=Path("runs") / f"{invocation.actor}.runtime_evidence.json",
+            events_ref=_runtime_ref(invocation, "events.jsonl"),
+            runtime_evidence_ref=_runtime_ref(invocation, "runtime_evidence.json"),
         )
 
 
@@ -340,8 +357,8 @@ class PassingRuntime:
         return ActorResult(
             status="succeeded",
             structured_output=output,
-            events_ref=Path("runs") / f"{invocation.actor}.events.jsonl",
-            runtime_evidence_ref=Path("runs") / f"{invocation.actor}.runtime_evidence.json",
+            events_ref=_runtime_ref(invocation, "events.jsonl"),
+            runtime_evidence_ref=_runtime_ref(invocation, "runtime_evidence.json"),
             patch_bundle_ref=Path("patches/generator.patch.yaml") if invocation.actor == "generator" else None,
         )
 
@@ -399,7 +416,7 @@ class UnreturnedPolicyViolationEvidenceRuntime(PassingRuntime):
     def run(self, invocation: ActorInvocation) -> ActorResult:
         result = super().run(invocation)
         if invocation.actor == "planner":
-            hidden_ref = invocation.artifact_dir / "runs" / "planner.unreturned.runtime_evidence.json"
+            hidden_ref = invocation.artifact_dir / "runs" / invocation.attempt_ref / "planner.unreturned.runtime_evidence.json"
             hidden_ref.write_text(
                 json.dumps(
                     {
@@ -523,10 +540,14 @@ class CodexVaultFlowRunner:
 
 
 def _write_runtime_files(invocation: ActorInvocation, status: str) -> None:
-    runs_dir = invocation.artifact_dir / "runs"
-    runs_dir.mkdir(exist_ok=True)
+    runs_dir = invocation.artifact_dir / "runs" / invocation.attempt_ref
+    runs_dir.mkdir(parents=True, exist_ok=True)
     (runs_dir / f"{invocation.actor}.events.jsonl").write_text(f'{{"status":"{status}"}}\n', encoding="utf-8")
     (runs_dir / f"{invocation.actor}.runtime_evidence.json").write_text(f'{{"status":"{status}"}}', encoding="utf-8")
+
+
+def _runtime_ref(invocation: ActorInvocation, suffix: str) -> Path:
+    return Path("runs") / invocation.attempt_ref / f"{invocation.actor}.{suffix}"
 
 
 def _write_noop_patch_bundle(invocation: ActorInvocation) -> None:

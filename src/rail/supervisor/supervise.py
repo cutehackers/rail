@@ -6,6 +6,7 @@ import yaml
 
 from rail.artifacts import ArtifactHandle, bind_effective_policy, validate_artifact_handle
 from rail.artifacts.digests import digest_payload
+from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.artifacts.terminal_summary import write_terminal_summary
 from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.events import normalize_sdk_event
@@ -27,6 +28,7 @@ from rail.workspace.validation_runner import run_validation_commands
 
 def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None = None) -> SupervisorState:
     handle = validate_artifact_handle(handle)
+    attempt_ref = allocate_run_attempt(handle.artifact_dir)
     state = SupervisorState.created(handle.artifact_id)
     try:
         policy = load_effective_policy(handle.project_root)
@@ -36,6 +38,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
             handle,
             state,
             [],
+            attempt_ref=attempt_ref,
             reason="effective policy rejected; inspect target policy configuration",
             blocked_category="policy",
             current_actor="policy",
@@ -63,6 +66,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
         invocation = build_invocation(
             handle,
             state.current_actor,
+            attempt_ref=attempt_ref,
             prior_outputs=actor_outputs,
             evidence_refs=evidence_refs,
         )
@@ -78,6 +82,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
         except Exception as exc:
             events_ref, evidence_ref = write_runtime_evidence(
                 handle.artifact_dir,
+                attempt_ref,
                 state.current_actor,
                 normalize_sdk_event({"status": "interrupted", "actor": state.current_actor, "error": str(exc)}),
             )
@@ -141,7 +146,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
                     validation_ref=validation_ref,
                     validation_evidence_digest=validation_evidence_digest,
                     evaluator_input_digest=evaluator_input_digest or "sha256:no-evaluator-input",
-                    runtime_evidence_refs=_runtime_evidence_refs(handle.artifact_dir),
+                    runtime_evidence_refs=_runtime_evidence_refs(handle.artifact_dir, attempt_ref),
                     expected_validation_network_mode=policy.workspace.network_mode,
                 ),
             )
@@ -172,6 +177,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
         handle,
         state,
         visited,
+        attempt_ref=attempt_ref,
         reason=terminal_reason,
         blocked_category=blocked_category,
         current_actor=terminal_actor,
@@ -185,6 +191,7 @@ def _write_run_status(
     state: SupervisorState,
     visited: list[str],
     *,
+    attempt_ref: str,
     reason: str | None = None,
     blocked_category: str | None = None,
     current_actor: str | None = None,
@@ -195,6 +202,7 @@ def _write_run_status(
         "artifact_id": handle.artifact_id,
         "status": "terminal" if state.outcome in {"pass", "reject"} else "blocked",
         "outcome": state.outcome,
+        "attempt_ref": attempt_ref,
         "current_actor": terminal_actor,
         "visited": visited,
     }
@@ -268,8 +276,8 @@ def _gate_blocked_category(reason: str) -> str:
     return "runtime"
 
 
-def _runtime_evidence_refs(artifact_dir: Path) -> list[Path]:
-    runs_dir = artifact_dir / "runs"
+def _runtime_evidence_refs(artifact_dir: Path, attempt_ref: str) -> list[Path]:
+    runs_dir = artifact_dir / "runs" / attempt_ref
     if not runs_dir.exists():
         return []
     return sorted(path.relative_to(artifact_dir) for path in runs_dir.glob("*.runtime_evidence.json") if path.exists() or path.is_symlink())

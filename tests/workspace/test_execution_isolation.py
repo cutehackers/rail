@@ -47,6 +47,22 @@ def test_sandbox_creation_rejects_target_symlink_to_host_file(tmp_path):
         create_sandbox(target)
 
 
+def test_sandbox_creation_ignores_harness_entries_during_link_scan(tmp_path):
+    target = _target(tmp_path)
+    outside = tmp_path / "outside-generated-file"
+    outside.write_text("generated", encoding="utf-8")
+    harness_file = target / ".harness" / "artifacts" / "applypatch"
+    harness_file.parent.mkdir(parents=True)
+    try:
+        harness_file.hardlink_to(outside)
+    except OSError:
+        pytest.skip("hardlinks are not supported on this filesystem")
+
+    sandbox = create_sandbox(target)
+
+    assert not (sandbox.sandbox_root / ".harness").exists()
+
+
 def test_pre_post_tree_digest_proves_actor_did_not_mutate_target(tmp_path):
     target = _target(tmp_path)
     (target / "app.txt").write_text("old\n", encoding="utf-8")

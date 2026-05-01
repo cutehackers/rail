@@ -5,6 +5,7 @@ from pathlib import Path
 import importlib.util
 
 import rail
+from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.actor_runtime.runtime import ActorInvocation
 from tests.actor_runtime_test_fixtures import FakeActorRuntime
 
@@ -26,6 +27,7 @@ def test_fake_actor_runtime_returns_contract_result(tmp_path):
         actor="generator",
         artifact_id=handle.artifact_id,
         artifact_dir=handle.artifact_dir,
+        attempt_ref=allocate_run_attempt(handle.artifact_dir),
         target_root=handle.project_root,
         prompt="Generate a patch bundle.",
         input={"goal": "test"},
@@ -36,8 +38,8 @@ def test_fake_actor_runtime_returns_contract_result(tmp_path):
 
     assert result.status == "succeeded"
     assert result.structured_output["changed_files"]
-    assert result.events_ref == Path("runs/generator.events.jsonl")
-    assert result.runtime_evidence_ref == Path("runs/generator.runtime_evidence.json")
+    assert result.events_ref == Path("runs/attempt-0001/generator.events.jsonl")
+    assert result.runtime_evidence_ref == Path("runs/attempt-0001/generator.runtime_evidence.json")
     assert result.patch_bundle_ref == Path("patches/generator.patch.yaml")
     assert (handle.artifact_dir / result.events_ref).is_file()
     assert (handle.artifact_dir / result.runtime_evidence_ref).is_file()
@@ -50,8 +52,8 @@ def test_supervisor_invokes_fake_runtime_and_persists_actor_evidence(tmp_path):
 
     assert state.outcome == "pass"
     for actor in ("planner", "context_builder", "critic", "generator", "executor", "evaluator"):
-        assert (handle.artifact_dir / "runs" / f"{actor}.events.jsonl").is_file()
-        assert (handle.artifact_dir / "runs" / f"{actor}.runtime_evidence.json").is_file()
+        assert (handle.artifact_dir / "runs" / "attempt-0001" / f"{actor}.events.jsonl").is_file()
+        assert (handle.artifact_dir / "runs" / "attempt-0001" / f"{actor}.runtime_evidence.json").is_file()
 
 
 def _target_repo(tmp_path: Path) -> Path:

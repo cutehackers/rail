@@ -12,6 +12,7 @@ CredentialCategory = Literal["operator_env", "operator_keychain", "ci_secret", "
 
 _ALLOWED_CATEGORIES = {"operator_env", "operator_keychain", "ci_secret"}
 _CODEX_AUTH_ALLOWLIST = {"auth.json"}
+_CODEX_AUTH_OPERATIONAL_DIR_ALLOWLIST = {"log", "memories", "tmp"}
 
 
 class CredentialSource(BaseModel):
@@ -73,7 +74,16 @@ def validate_codex_auth_material(auth_home: Path) -> list[Path]:
     else:
         material = []
 
-    unknown = sorted(path.name for path in material if path.name not in _CODEX_AUTH_ALLOWLIST)
+    unknown: list[str] = []
+    for path in material:
+        if path.name in _CODEX_AUTH_ALLOWLIST:
+            continue
+        if path.name in _CODEX_AUTH_OPERATIONAL_DIR_ALLOWLIST:
+            if path.is_symlink() or not path.is_dir():
+                raise ValueError("unsafe auth material")
+            continue
+        unknown.append(path.name)
+    unknown = sorted(unknown)
     if unknown:
         raise ValueError("unknown auth material")
 

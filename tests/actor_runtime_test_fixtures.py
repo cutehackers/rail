@@ -101,6 +101,7 @@ class FakeActorRuntime:
             _write_noop_patch_bundle(invocation, patch_ref)
         events_ref, evidence_ref = write_runtime_evidence(
             invocation.artifact_dir,
+            invocation.attempt_ref,
             invocation.actor,
             {
                 "status": "succeeded",

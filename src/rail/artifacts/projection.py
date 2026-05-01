@@ -75,7 +75,17 @@ def _load_run_status(handle: ArtifactHandle) -> dict[str, object]:
 
 
 def _changed_files(artifact_dir: Path) -> list[str]:
-    generator_evidence = artifact_dir / "runs" / "generator.runtime_evidence.json"
+    run_status_path = artifact_dir / "run_status.yaml"
+    if run_status_path.is_file():
+        run_status = yaml.safe_load(run_status_path.read_text(encoding="utf-8")) or {}
+    else:
+        run_status = {}
+    attempt_ref = run_status.get("attempt_ref") if isinstance(run_status, dict) else None
+    generator_evidence = (
+        artifact_dir / "runs" / attempt_ref / "generator.runtime_evidence.json"
+        if isinstance(attempt_ref, str) and attempt_ref
+        else artifact_dir / "runs" / "generator.runtime_evidence.json"
+    )
     if not generator_evidence.is_file():
         return []
     payload = json.loads(generator_evidence.read_text(encoding="utf-8"))

@@ -122,7 +122,7 @@ Optional command wrappers are acceptable only when they call the same Python API
 
 `rail auth` is setup and diagnostics only. It can prepare or inspect the Rail-owned Codex auth home, but it is not a task-execution command surface.
 
-When supervision blocks, do not continue by manually invoking actors or mutating the target. Report `rail.result(handle)` and the terminal summary so the user sees the blocked category, reason, evidence refs, and next step.
+When supervision blocks, stop. Report `rail.result(handle)` and the terminal summary so the user sees the blocked category, reason, evidence refs, and next step. Do not patch Rail runtime internals, actor prompts, sandbox behavior, auth homes, or target files to continue the same run.
 
 ## Reporting
 

@@ -8,15 +8,16 @@ from rail.auth.redaction import redact_secrets
 
 def write_runtime_evidence(
     artifact_dir: Path,
+    attempt_ref: str,
     actor: str,
     payload: dict[str, object],
     *,
     events: list[dict[str, object]] | None = None,
 ) -> tuple[Path, Path]:
-    runs_dir = artifact_dir / "runs"
-    runs_dir.mkdir(exist_ok=True)
-    events_ref = Path("runs") / f"{actor}.events.jsonl"
-    evidence_ref = Path("runs") / f"{actor}.runtime_evidence.json"
+    runs_dir = artifact_dir / "runs" / attempt_ref
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    events_ref = Path("runs") / attempt_ref / f"{actor}.events.jsonl"
+    evidence_ref = Path("runs") / attempt_ref / f"{actor}.runtime_evidence.json"
     event_payloads = events
     if event_payloads is None:
         payload_events = payload.get("normalized_events")

@@ -186,6 +186,9 @@ name the module after the concrete Rail behavior it supports.
 - Set `ConfigDict(extra="forbid")` on contract models.
 - Prefer `Literal[...]` for finite state values such as outcomes and sources.
 - Keep digest fields explicit when they are part of an evidence chain.
+- Runtime evidence refs must be attempt-scoped under `runs/attempt-NNNN/`.
+  Projections and evaluator gates should read the current attempt recorded in
+  `run_status.yaml`, not every historical attempt.
 - Do not allow actor output to grant itself new permissions.
 
 ## Error Handling
@@ -201,6 +204,9 @@ name the module after the concrete Rail behavior it supports.
   accepted evaluator gate.
 - Keep the local runtime provider name as `codex_vault`; use
   `openai_agents_sdk` only for the optional operator/API-key provider.
+- Keep `codex_vault` compatibility fixes inside the Actor Runtime boundary.
+  The Rail skill reports blocked artifacts; it does not patch runtime internals
+  or auth homes during a task session.
 
 ## Validation And Mutation
 

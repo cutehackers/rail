@@ -6,9 +6,10 @@ from typing import Any
 
 import rail
 
+from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.actor_runtime import codex_vault
 from rail.actor_runtime.codex_vault import CodexVaultActorRuntime
-from rail.actor_runtime.runtime import build_invocation
+from rail.actor_runtime.runtime import build_invocation as _build_invocation
 from rail.actor_runtime.vault_env import VaultEnvironment
 from rail.policy import load_effective_policy
 from rail.workspace.isolation import tree_digest
@@ -33,6 +34,8 @@ def test_codex_vault_runtime_validates_actor_output_and_writes_evidence(tmp_path
     result = runtime.run(build_invocation(handle, "planner"))
 
     assert result.status == "succeeded"
+    assert result.events_ref.as_posix().startswith("runs/attempt-0001/")
+    assert result.runtime_evidence_ref.as_posix().startswith("runs/attempt-0001/")
     assert result.runtime_evidence_ref.as_posix().endswith("planner.runtime_evidence.json")
     assert result.structured_output["summary"] == "Plan"
     exec_command = runner.exec_commands[0]
@@ -45,6 +48,10 @@ def test_codex_vault_runtime_validates_actor_output_and_writes_evidence(tmp_path
     schema_path = Path(exec_command[exec_command.index("--output-schema") + 1])
     sandbox_root = Path(exec_command[exec_command.index("--cd") + 1])
     assert schema_path == handle.artifact_dir / "actor_runtime" / "schemas" / "planner.schema.json"
+    materialized_schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    assert materialized_schema["additionalProperties"] is False
+    assert materialized_schema["required"] == sorted(materialized_schema["properties"])
+    assert "assumptions" in materialized_schema["required"]
     assert sandbox_root != target
     assert sandbox_root.is_dir()
     assert "Run Rail actor planner" in runner.prompts[0]
@@ -345,6 +352,38 @@ def test_vault_materialization_contamination_blocks_actor(tmp_path):
     assert result.status == "interrupted"
     assert result.blocked_category == "policy"
     assert "skill" in result.structured_output["error"] or "auth material" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_post_run_vault_contamination_on_success(tmp_path):
+    result = _run_with_post_run_vault_contamination(tmp_path)
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "skill" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_post_run_vault_contamination_before_malformed_json(tmp_path):
+    result = _run_with_post_run_vault_contamination(tmp_path, malformed_stdout=True)
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "skill" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_post_run_vault_contamination_before_nonzero_exit(tmp_path):
+    result = _run_with_post_run_vault_contamination(tmp_path, exec_returncode=1)
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "skill" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_post_run_vault_contamination_before_output_validation_failure(tmp_path):
+    result = _run_with_post_run_vault_contamination(tmp_path, final_output={"wrong": True})
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "skill" in result.structured_output["error"]
 
 
 def test_codex_vault_runtime_audits_policy_events_when_codex_exits_nonzero(tmp_path):
@@ -1305,6 +1344,8 @@ def test_codex_vault_runtime_rejects_generator_output_with_multiple_patch_source
     assert "exactly one patch source" in result.structured_output["error"]
     schema = json.loads((handle.artifact_dir / "actor_runtime" / "schemas" / "generator.schema.json").read_text(encoding="utf-8"))
     assert "oneOf" in schema
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == sorted(schema["properties"])
 
 
 class FakeCodexRunner:
@@ -1314,6 +1355,7 @@ class FakeCodexRunner:
         final_output: dict[str, Any],
         extra_events: list[dict[str, Any]] | None = None,
         before_result=None,
+        codex_home_mutation=None,
         final_event_shape: str = "top_level_output",
         exec_returncode: int = 0,
         malformed_stdout: bool = False,
@@ -1321,6 +1363,7 @@ class FakeCodexRunner:
         self.final_output = final_output
         self.extra_events = extra_events or []
         self.before_result = before_result
+        self.codex_home_mutation = codex_home_mutation
         self.final_event_shape = final_event_shape
         self.exec_returncode = exec_returncode
         self.malformed_stdout = malformed_stdout
@@ -1350,6 +1393,8 @@ class FakeCodexRunner:
             self.prompts.append(stdin or "")
             assert environ is not None
             assert timeout is not None
+            if self.codex_home_mutation is not None:
+                self.codex_home_mutation(Path(environ["CODEX_HOME"]))
             sandbox_root = command[command.index("--cd") + 1]
             events = [
                 {"type": "session", "status": "started"},
@@ -1434,6 +1479,35 @@ def _runtime(tmp_path: Path, *, command: Path, runner: FakeCodexRunner) -> Codex
         runner=runner,
         environment_materializer=_fake_vault_environment,
     )
+
+
+def _run_with_post_run_vault_contamination(
+    tmp_path: Path,
+    *,
+    final_output: dict[str, Any] | None = None,
+    exec_returncode: int = 0,
+    malformed_stdout: bool = False,
+):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output=final_output
+        or {
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        codex_home_mutation=lambda codex_home: (codex_home / "skills").mkdir(),
+        exec_returncode=exec_returncode,
+        malformed_stdout=malformed_stdout,
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+    return runtime.run(build_invocation(handle, "planner"))
+
+
+def build_invocation(handle, actor: str):
+    return _build_invocation(handle, actor, attempt_ref=allocate_run_attempt(handle.artifact_dir))
 
 
 def _fake_vault_environment(*, artifact_dir: Path, auth_home: Path, base_environ: dict[str, str], actor: str | None = None) -> VaultEnvironment:

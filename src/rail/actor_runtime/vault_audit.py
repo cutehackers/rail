@@ -6,6 +6,7 @@ from rail.actor_runtime.vault_env import VaultEnvironment
 
 _ALLOWED_ENV_KEYS = {"PATH", "HOME", "CODEX_HOME", "TMPDIR", "TMP", "TEMP"}
 _ALLOWED_AUTH_MATERIAL = {"auth.json"}
+_ALLOWED_OPERATIONAL_DIRS = {"log", "memories", "tmp"}
 _TRUSTED_PROCESS_PATH = "/usr/bin:/bin"
 _EVENT_AUDIT_KEYS = ("type", "event", "kind", "tool", "name", "server", "source", "path", "category")
 _FORBIDDEN_CODEX_HOME_ENTRIES = {
@@ -53,6 +54,10 @@ def audit_vault_materialization(vault_environment: VaultEnvironment, *, artifact
             materialization_violation = _forbidden_codex_home_entry_violation(child.name)
             if materialization_violation is not None:
                 return materialization_violation
+            if child.name in _ALLOWED_OPERATIONAL_DIRS:
+                if child.is_symlink() or not child.is_dir():
+                    return "unsafe vault material"
+                continue
             if child.name not in _ALLOWED_AUTH_MATERIAL:
                 return "auth material outside the allowlist is not allowed"
             if child.is_symlink():

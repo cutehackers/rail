@@ -36,7 +36,7 @@ def project_terminal_summary(handle: ArtifactHandle) -> TerminalSummaryProjectio
         outcome=outcome,
         reason=reason,
         blocked_category=blocked_category,
-        evidence_refs=_evidence_refs(handle.artifact_dir),
+        evidence_refs=_evidence_refs(handle.artifact_dir, _attempt_ref(run_status)),
         next_step=_next_step(outcome, blocked_category),
     )
 
@@ -60,16 +60,22 @@ def _load_run_status(handle: ArtifactHandle) -> dict[str, object]:
     return payload
 
 
-def _evidence_refs(artifact_dir: Path) -> list[str]:
+def _evidence_refs(artifact_dir: Path, attempt_ref: str | None) -> list[str]:
+    runs_dir = artifact_dir / "runs" / attempt_ref if attempt_ref else artifact_dir / "runs"
     refs = [
         str(redact_secrets(path.relative_to(artifact_dir).as_posix()))
-        for path in (artifact_dir / "runs").glob("*")
+        for path in runs_dir.glob("*")
         if path.is_file()
     ]
     validation_ref = artifact_dir / "validation" / "evidence.yaml"
     if validation_ref.is_file():
         refs.append(str(redact_secrets(validation_ref.relative_to(artifact_dir).as_posix())))
     return sorted(refs)
+
+
+def _attempt_ref(run_status: dict[str, object]) -> str | None:
+    value = run_status.get("attempt_ref")
+    return value if isinstance(value, str) and value else None
 
 
 def _status_value(value: object, *, default: str) -> str:

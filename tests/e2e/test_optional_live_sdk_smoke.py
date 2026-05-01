@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import rail
+from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.actor_runtime.agents import AgentsActorRuntime
 from rail.actor_runtime.runtime import build_invocation
 from rail.policy import load_effective_policy
@@ -30,7 +31,7 @@ def test_optional_live_sdk_smoke_runs_planner_actor(tmp_path):
     )
     runtime = AgentsActorRuntime(project_root=Path("."), policy=load_effective_policy(target))
 
-    result = runtime.run(build_invocation(handle, "planner"))
+    result = runtime.run(build_invocation(handle, "planner", attempt_ref=allocate_run_attempt(handle.artifact_dir)))
 
     assert result.status == "succeeded"
     assert "summary" in result.structured_output

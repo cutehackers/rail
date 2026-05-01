@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import rail
+from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.actor_runtime.agents import (
     AgentsActorRuntime,
     SDKRunResult,
@@ -10,7 +11,7 @@ from rail.actor_runtime.agents import (
     run_agent_live,
     validate_live_sdk_credentials,
 )
-from rail.actor_runtime.runtime import build_invocation
+from rail.actor_runtime.runtime import build_invocation as _build_invocation
 from rail.auth.credentials import CredentialSource
 from rail.policy import load_effective_policy
 from rail.policy.schema import ActorRuntimePolicyV2
@@ -339,6 +340,10 @@ def _target_repo(tmp_path: Path) -> Path:
     target = tmp_path / "target-repo"
     target.mkdir(parents=True, exist_ok=True)
     return target
+
+
+def build_invocation(handle, actor: str):
+    return _build_invocation(handle, actor, attempt_ref=allocate_run_attempt(handle.artifact_dir))
 
 
 def _draft(target: Path) -> dict[str, object]:

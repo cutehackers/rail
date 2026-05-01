@@ -920,6 +920,8 @@ def _shell_event_policy_violation(
     if not args:
         return "shell command is empty"
     executable_path = Path(args[0])
+    if _executable_token_is_unsafe(args[0], executable_path):
+        return "shell executable path is not allowed"
     executable = executable_path.name
     if executable not in shell_allowlist:
         return f"shell executable is not allowed: {executable}"
@@ -942,6 +944,16 @@ def _shell_event_policy_violation(
     return None
 
 
+def _executable_token_is_unsafe(token: str, executable_path: Path) -> bool:
+    return (
+        "/" in token
+        or executable_path.is_absolute()
+        or len(executable_path.parts) != 1
+        or _SHELL_VARIABLE_PATTERN.search(token) is not None
+        or token.startswith("~")
+    )
+
+
 def _write_capable_shell_flag_violation(executable: str, args: list[str]) -> str | None:
     if executable == "find" and any(
         arg in {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fdelete", "-fls", "-fprint", "-fprint0", "-fprintf"} for arg in args
@@ -952,6 +964,8 @@ def _write_capable_shell_flag_violation(executable: str, args: list[str]) -> str
     if executable == "sed" and _sed_script_uses_unsafe_command(args):
         return f"shell executable uses write-capable flag: {executable}"
     if executable == "test" and any(arg in {"-w", "-G", "-O", "-N"} for arg in args):
+        return f"shell executable uses write-capable flag: {executable}"
+    if executable == "rg" and any(arg == "--pre" or arg.startswith("--pre=") for arg in args):
         return f"shell executable uses write-capable flag: {executable}"
     return None
 

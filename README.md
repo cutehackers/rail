@@ -132,19 +132,24 @@ bundled Rail skill assets, and setup helpers. There is no command surface as
 the product contract; wrapper UX may exist later only as a thin layer over the
 same API.
 
-Install the package and configure the operator SDK credential:
+Install the package:
 
 ```bash
-export OPENAI_API_KEY=...
 uv tool install rail-sdk
 ```
 
-Install or refresh the local Rail skill, then check readiness:
+Install or refresh the local Rail skill, prepare Rail-owned Codex auth, then
+check readiness:
 
 ```bash
 rail migrate
-rail doctor
+rail auth login
+rail auth doctor
 ```
+
+`openai_agents_sdk` and `OPENAI_API_KEY` are optional operator paths, such as
+the opt-in live SDK smoke described above. They are not required for the default
+local `codex_vault` path.
 
 If an older Homebrew `rail` binary is still first on `PATH`, use the package
 name entrypoint first:

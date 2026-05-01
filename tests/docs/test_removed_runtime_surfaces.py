@@ -158,6 +158,18 @@ def test_optional_live_smoke_and_distribution_are_documented():
     assert "no command-line product contract" in architecture
 
 
+def test_readme_default_install_does_not_require_sdk_api_key():
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_kr = Path("README-kr.md").read_text(encoding="utf-8")
+
+    assert "Install the package and configure the operator SDK credential" not in readme
+    assert "패키지를 설치하고 operator SDK credential을 설정합니다" not in readme_kr
+    assert "export OPENAI_API_KEY=..." not in readme
+    assert "export OPENAI_API_KEY=..." not in readme_kr
+    assert "rail auth login" in readme
+    assert "rail auth doctor" in readme
+
+
 def test_rail_migration_script_exists():
     path = Path("scripts/migration_v0.6.0.sh")
 

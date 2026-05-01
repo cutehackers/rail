@@ -46,19 +46,23 @@ Python 패키지 배포 이름은 `rail-sdk`입니다. 이 패키지는 Rail Pyt
 번들된 Rail skill asset, 설치 보조 명령을 제공합니다. 작업 실행 자체는
 CLI 제품 계약이 아니라 Rail skill과 Python API 계약을 따릅니다.
 
-패키지를 설치하고 operator SDK credential을 설정합니다:
+패키지를 설치합니다:
 
 ```bash
-export OPENAI_API_KEY=...
 uv tool install rail-sdk
 ```
 
-로컬 Rail skill을 설치하거나 갱신한 뒤 준비 상태를 확인합니다:
+로컬 Rail skill을 설치하거나 갱신하고, Rail-owned Codex auth를 준비한 뒤
+준비 상태를 확인합니다:
 
 ```bash
 rail migrate
-rail doctor
+rail auth login
+rail auth doctor
 ```
+
+`openai_agents_sdk`와 `OPENAI_API_KEY`는 optional operator 경로입니다. 기본
+로컬 `codex_vault` 경로에는 필요하지 않습니다.
 
 기존 Homebrew `rail` binary가 `PATH`에서 먼저 잡히면 패키지 이름 entrypoint를
 먼저 사용합니다:

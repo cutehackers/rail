@@ -748,6 +748,11 @@ def _structured_output_from_event(event: dict[str, object]) -> dict[str, object]
         value = message.get("structured_output") or message.get("final_output")
         if isinstance(value, dict):
             return value
+    msg = event.get("msg")
+    if isinstance(msg, dict):
+        value = _structured_output_from_event(msg)
+        if value is not None:
+            return value
     item = event.get("item")
     if isinstance(item, dict):
         value = _structured_output_from_event_item(item)
@@ -877,6 +882,9 @@ def _event_dicts(event: dict[str, object]) -> list[dict[str, object]]:
     message = event.get("message")
     if isinstance(message, dict):
         dicts.append(message)
+    msg = event.get("msg")
+    if isinstance(msg, dict):
+        dicts.append(msg)
     return dicts
 
 

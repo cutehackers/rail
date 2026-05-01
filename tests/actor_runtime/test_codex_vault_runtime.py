@@ -84,6 +84,27 @@ def test_codex_vault_runtime_parses_codex_item_message_text_output(tmp_path):
     assert result.structured_output["summary"] == "Plan from message item"
 
 
+def test_codex_vault_runtime_parses_msg_wrapped_message_text_output(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    output = {
+        "summary": "Plan from msg envelope",
+        "likely_files": [],
+        "substeps": [],
+        "risks": [],
+        "acceptance_criteria_refined": [],
+    }
+    runner = FakeCodexRunner(
+        final_output=output,
+        final_event_shape="msg_item_message_text",
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "succeeded"
+    assert result.structured_output["summary"] == "Plan from msg envelope"
+
+
 def test_codex_vault_runtime_blocks_invalid_actor_output(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(final_output={"wrong": True})
@@ -169,6 +190,27 @@ def test_codex_vault_runtime_blocks_nested_command_execution_event(tmp_path):
             "acceptance_criteria_refined": [],
         },
         extra_events=[{"type": "item.started", "item": {"type": "command_execution", "cwd": "__SANDBOX__", "command": "touch app.txt"}}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell executable is not allowed" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_msg_wrapped_command_execution_event(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"msg": {"type": "exec_command_begin", "cwd": "__SANDBOX__", "command": "touch app.txt"}}],
     )
     runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
 
@@ -562,6 +604,16 @@ class FakeCodexRunner:
                     "content": [{"type": "output_text", "text": json.dumps(self.final_output, sort_keys=True)}],
                 },
             }
+        if self.final_event_shape == "msg_item_message_text":
+            return {
+                "msg": {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "agent_message",
+                        "content": [{"type": "output_text", "text": json.dumps(self.final_output, sort_keys=True)}],
+                    },
+                }
+            }
         return {"type": "final_output", "output": self.final_output}
 
 
@@ -572,6 +624,11 @@ def _replace_sandbox(event: dict[str, Any], sandbox_root: str) -> dict[str, Any]
             replaced[key] = sandbox_root
         elif isinstance(value, dict):
             replaced[key] = _replace_sandbox(value, sandbox_root)
+        elif isinstance(value, list):
+            replaced[key] = [
+                _replace_sandbox(item, sandbox_root) if isinstance(item, dict) else (sandbox_root if item == "__SANDBOX__" else item)
+                for item in value
+            ]
         else:
             replaced[key] = value
     return replaced

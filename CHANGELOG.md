@@ -2,6 +2,16 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.6.3 - 2026-05-01
+
+### Fixed
+
+- Fixed harden codex vault runtime isolation.
+
+### Verification
+
+- `scripts/release_gate.sh`
+
 ## v0.6.2 - 2026-05-01
 
 ### Added

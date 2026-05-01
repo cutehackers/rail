@@ -23,7 +23,7 @@ from rail.actor_runtime.vault_env import VaultEnvironment, materialize_vault_env
 from rail.auth.credentials import codex_auth_home
 from rail.auth.redaction import redact_secrets
 from rail.policy.schema import ActorRuntimePolicyV2
-from rail.workspace.isolation import tree_digest
+from rail.workspace.isolation import target_mutation_digest, tree_digest
 from rail.workspace.sandbox import create_sandbox
 
 CODEX_COMMAND_NAME = "codex"
@@ -51,6 +51,7 @@ _TRUSTED_RESOLVED_COMMAND_ROOTS = (
 _TRUSTED_SYSTEM_BINARY_ROOTS = (Path("/bin"), Path("/usr/bin"))
 _UNTRUSTED_TEMP_ROOTS = (Path("/tmp"), Path("/var/tmp"))
 _READ_ONLY_SHELL_EXECUTABLES = {"pwd", "ls", "find", "rg", "sed", "cat", "wc", "head", "tail", "stat", "test"}
+_TRUSTED_SHELL_WRAPPER_PATHS = {Path("/bin/zsh"), Path("/bin/sh"), Path("/usr/bin/zsh"), Path("/usr/bin/sh")}
 _SHELL_OPERATOR_PATTERN = re.compile(r"(\|\||&&|[|<>;&`{}\n\r])|\$\(")
 _SHELL_VARIABLE_PATTERN = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\})")
 
@@ -293,7 +294,7 @@ class CodexVaultActorRuntime:
                 blocked_category="environment",
             )
 
-        target_pre_run_tree_digest = tree_digest(invocation.target_root)
+        target_pre_run_tree_digest = target_mutation_digest(invocation.target_root)
         try:
             sandbox = create_sandbox(invocation.target_root)
         except (OSError, ValueError) as exc:
@@ -413,7 +414,7 @@ class CodexVaultActorRuntime:
                 normalized_events = exc.parsed.normalized_events
             message = str(redact_secrets(str(exc)))
             reason = f"Codex Vault Actor Runtime execution failed: {message}"
-            post_run_target_tree_digest = tree_digest(invocation.target_root)
+            post_run_target_tree_digest = target_mutation_digest(invocation.target_root)
             extra: dict[str, object] = {
                 "sandbox_root_ref": sandbox.sandbox_root.as_posix(),
                 "target_pre_run_tree_digest": target_pre_run_tree_digest,
@@ -506,7 +507,7 @@ class CodexVaultActorRuntime:
                 blocked_category="runtime",
             )
 
-        post_run_target_tree_digest = tree_digest(invocation.target_root)
+        post_run_target_tree_digest = target_mutation_digest(invocation.target_root)
         base_extra: dict[str, object] = {
             "sandbox_root_ref": sandbox.sandbox_root.as_posix(),
             "target_pre_run_tree_digest": target_pre_run_tree_digest,
@@ -873,6 +874,11 @@ def _event_item_text_values(item: dict[str, object]) -> list[str]:
     content = item.get("content")
     if isinstance(content, str):
         values.append(content)
+    elif isinstance(content, dict):
+        for key in ("text", "output_text", "content"):
+            value = content.get(key)
+            if isinstance(value, str):
+                values.append(value)
     elif isinstance(content, list):
         for part in content:
             if isinstance(part, str):
@@ -1039,8 +1045,8 @@ def _unwrap_codex_shell_wrapper(command: str) -> str | None:
         return None
     if len(args) < 3:
         return None
-    shell_path = Path(args[0]).resolve(strict=False)
-    if shell_path not in {Path("/bin/zsh"), Path("/bin/sh"), Path("/usr/bin/zsh"), Path("/usr/bin/sh")}:
+    shell_path = Path(args[0])
+    if shell_path not in _TRUSTED_SHELL_WRAPPER_PATHS:
         return None
     if args[1] not in {"-lc", "-c"}:
         return None
@@ -1050,8 +1056,8 @@ def _unwrap_codex_shell_wrapper(command: str) -> str | None:
 def _unwrap_codex_shell_wrapper_args(args: list[str]) -> str | None:
     if len(args) < 3:
         return None
-    shell_path = Path(args[0]).resolve(strict=False)
-    if shell_path not in {Path("/bin/zsh"), Path("/bin/sh"), Path("/usr/bin/zsh"), Path("/usr/bin/sh")}:
+    shell_path = Path(args[0])
+    if shell_path not in _TRUSTED_SHELL_WRAPPER_PATHS:
         return None
     if args[1] not in {"-lc", "-c"}:
         return None

@@ -107,6 +107,27 @@ def test_codex_vault_runtime_parses_msg_wrapped_message_text_output(tmp_path):
     assert result.structured_output["summary"] == "Plan from msg envelope"
 
 
+def test_codex_vault_runtime_parses_msg_wrapped_content_object_text_output(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    output = {
+        "summary": "Plan from content object",
+        "likely_files": [],
+        "substeps": [],
+        "risks": [],
+        "acceptance_criteria_refined": [],
+    }
+    runner = FakeCodexRunner(
+        final_output=output,
+        final_event_shape="msg_item_content_object_text",
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "succeeded"
+    assert result.structured_output["summary"] == "Plan from content object"
+
+
 def test_codex_vault_runtime_blocks_invalid_actor_output(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(final_output={"wrong": True})
@@ -132,6 +153,31 @@ def test_codex_vault_runtime_blocks_target_mutation_before_patch_apply(tmp_path)
             "acceptance_criteria_refined": [],
         },
         before_result=lambda: (target / "app.txt").write_text("mutated\n", encoding="utf-8"),
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "target tree changed" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_target_harness_mutation_before_patch_apply(tmp_path):
+    target = _target_repo(tmp_path)
+    policy_path = target / ".harness" / "supervisor" / "execution_policy.yaml"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text("version: old\n", encoding="utf-8")
+    handle = rail.start_task(_draft(target))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        before_result=lambda: policy_path.write_text("version: mutated\n", encoding="utf-8"),
     )
     runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
 
@@ -922,6 +968,29 @@ def test_codex_vault_runtime_blocks_absolute_shell_binary_symlink_name_mismatch(
     assert "resolved executable is not allowed" in result.structured_output["error"]
 
 
+def test_codex_vault_runtime_blocks_shell_wrapper_symlink_path(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    fake_pwd = tmp_path / "pwd"
+    fake_pwd.symlink_to("/bin/sh")
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": f"{fake_pwd} -lc pwd"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "resolved executable is not allowed" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_blocks_rg_pre_execution(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(
@@ -1195,6 +1264,16 @@ class FakeCodexRunner:
                     "item": {
                         "type": "agent_message",
                         "content": [{"type": "output_text", "text": json.dumps(self.final_output, sort_keys=True)}],
+                    },
+                }
+            }
+        if self.final_event_shape == "msg_item_content_object_text":
+            return {
+                "msg": {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "agent_message",
+                        "content": {"type": "output_text", "text": json.dumps(self.final_output, sort_keys=True)},
                     },
                 }
             }

@@ -20,6 +20,19 @@ def tree_digest(root: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def target_mutation_digest(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or ".git" in path.parts or _is_harness_artifact(path, root):
+            continue
+        relative = path.relative_to(root).as_posix()
+        stat = path.stat()
+        digest.update(relative.encode("utf-8"))
+        digest.update(str(stat.st_mode & 0o777).encode("utf-8"))
+        digest.update(path.read_bytes())
+    return "sha256:" + digest.hexdigest()
+
+
 def assert_target_unchanged(before: str, after: str) -> None:
     if before != after:
         raise ValueError("target tree changed outside Rail patch apply")
@@ -45,3 +58,11 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _is_harness_artifact(path: Path, root: Path) -> bool:
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    return relative.parts[:2] == (".harness", "artifacts")

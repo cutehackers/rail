@@ -346,6 +346,27 @@ def test_codex_vault_runtime_blocks_shell_relative_sandbox_escape(tmp_path):
     assert "shell argument escapes sandbox" in result.structured_output["error"]
 
 
+def test_codex_vault_runtime_blocks_shell_end_of_options_path_escape(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "cat -- -/../../../../etc/passwd"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell argument escapes sandbox" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_blocks_shell_ansi_c_quoted_escape(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(
@@ -504,6 +525,27 @@ def test_codex_vault_runtime_blocks_compact_sed_file_script_option(tmp_path):
             "acceptance_criteria_refined": [],
         },
         extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "sed -f../secret.sed app.txt"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "write-capable flag" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_compact_sed_cluster_file_script_option(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "sed -nf../secret.sed app.txt"}],
     )
     runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
 

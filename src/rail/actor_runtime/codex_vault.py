@@ -971,7 +971,8 @@ def _shell_event_policy_violation(
         root_text = root.as_posix()
         if root_text and root_text in command_value:
             return "shell command references a forbidden root"
-    for arg in args[1:]:
+    operands = _shell_path_operands(args[1:])
+    for arg in operands:
         if _argument_references_forbidden_root(arg, cwd=cwd, sandbox_root=sandbox_root, forbidden_roots=forbidden_roots):
             return "shell argument references a forbidden root"
         if _argument_escapes_sandbox(arg, cwd=cwd, sandbox_root=sandbox_root):
@@ -1008,7 +1009,7 @@ def _sed_script_uses_unsafe_command(args: list[str]) -> bool:
     index = 0
     while index < len(args):
         arg = args[index]
-        if arg in {"-f", "--file"} or arg.startswith("-f") or arg.startswith("--file="):
+        if arg in {"-f", "--file"} or arg.startswith("-f") or arg.startswith("--file=") or _sed_compact_option_uses_file_script(arg):
             return True
         if arg in {"-e", "--expression"} and index + 1 < len(args):
             scripts.append(args[index + 1])
@@ -1029,12 +1030,38 @@ def _sed_script_uses_unsafe_command(args: list[str]) -> bool:
     return any(_sed_script_contains_unsafe_command(script) for script in scripts)
 
 
+def _sed_compact_option_uses_file_script(arg: str) -> bool:
+    return arg.startswith("-") and not arg.startswith("--") and "f" in arg[1:]
+
+
 def _sed_script_contains_unsafe_command(script: str) -> bool:
     # r/R reads arbitrary files, w/W writes files, and e executes commands.
     # The initial codex_vault shell subset is read-only inspection, so these
     # sed commands are denied even when their target path is embedded in the
     # sed program instead of a normal shell argument.
     return re.search(r"(^|[;{}\s\d,$!/])(?:r|R|w|W|e)", script) is not None
+
+
+def _shell_path_operands(args: list[str]) -> list[str]:
+    operands: list[str] = []
+    end_of_options = False
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if end_of_options:
+            operands.append(arg)
+            index += 1
+            continue
+        if arg == "--":
+            end_of_options = True
+            index += 1
+            continue
+        if arg.startswith("-"):
+            index += 1
+            continue
+        operands.append(arg)
+        index += 1
+    return operands
 
 
 def _argument_references_forbidden_root(arg: str, *, cwd: Path, sandbox_root: Path, forbidden_roots: list[Path]) -> bool:
@@ -1046,7 +1073,7 @@ def _argument_references_forbidden_root(arg: str, *, cwd: Path, sandbox_root: Pa
 
 
 def _argument_escapes_sandbox(arg: str, *, cwd: Path, sandbox_root: Path) -> bool:
-    if arg.startswith("-") or arg in {".", ""}:
+    if arg in {".", ""}:
         return False
     path = Path(arg)
     if not path.is_absolute() and ".." not in path.parts:

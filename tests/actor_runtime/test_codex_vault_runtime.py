@@ -335,7 +335,9 @@ def test_vault_materialization_contamination_blocks_actor(tmp_path):
         *, artifact_dir: Path, auth_home: Path, base_environ: dict[str, str], actor: str | None = None
     ) -> VaultEnvironment:
         env = _fake_vault_environment(artifact_dir=artifact_dir, auth_home=auth_home, base_environ=base_environ, actor=actor)
-        (env.codex_home / "skills").mkdir()
+        user_skill = env.codex_home / "skills" / "rail"
+        user_skill.mkdir(parents=True)
+        (user_skill / "SKILL.md").write_text("# Rail\n", encoding="utf-8")
         return env.model_copy(update={"copied_auth_material": ["auth.json", "session.db"]})
 
     runtime = CodexVaultActorRuntime(
@@ -1498,12 +1500,18 @@ def _run_with_post_run_vault_contamination(
             "risks": [],
             "acceptance_criteria_refined": [],
         },
-        codex_home_mutation=lambda codex_home: (codex_home / "skills").mkdir(),
+        codex_home_mutation=_materialize_user_skill,
         exec_returncode=exec_returncode,
         malformed_stdout=malformed_stdout,
     )
     runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
     return runtime.run(build_invocation(handle, "planner"))
+
+
+def _materialize_user_skill(codex_home: Path) -> None:
+    user_skill = codex_home / "skills" / "rail"
+    user_skill.mkdir(parents=True)
+    (user_skill / "SKILL.md").write_text("# Rail\n", encoding="utf-8")
 
 
 def build_invocation(handle, actor: str):

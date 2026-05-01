@@ -1,21 +1,21 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 from rail.actor_runtime.vault_env import VaultEnvironment
 
 _ALLOWED_ENV_KEYS = {"PATH", "HOME", "CODEX_HOME", "TMPDIR", "TMP", "TEMP"}
 _ALLOWED_AUTH_MATERIAL = {"auth.json"}
-_ALLOWED_OPERATIONAL_DIRS = {"log", "memories", "tmp"}
+_ALLOWED_OPERATIONAL_DIRS = {"cache", "log", "memories", "shell_snapshots", "tmp", ".tmp"}
+_ALLOWED_OPERATIONAL_FILES = {"installation_id", "models_cache.json"}
+_ALLOWED_CODEX_SYSTEM_SKILLS = {"imagegen", "openai-docs", "plugin-creator", "skill-creator", "skill-installer"}
 _TRUSTED_PROCESS_PATH = "/usr/bin:/bin"
 _EVENT_AUDIT_KEYS = ("type", "event", "kind", "tool", "name", "server", "source", "path", "category")
 _FORBIDDEN_CODEX_HOME_ENTRIES = {
-    "skills": "skill materialization is not allowed",
-    "plugins": "plugin materialization is not allowed",
     "mcp": "MCP config materialization is not allowed",
     "hooks": "hook materialization is not allowed",
     "rules": "user rule materialization is not allowed",
-    "config.toml": "unexpected config inheritance is not allowed",
     "config.json": "unexpected config inheritance is not allowed",
     "settings.json": "unexpected config inheritance is not allowed",
 }
@@ -51,17 +51,9 @@ def audit_vault_materialization(vault_environment: VaultEnvironment, *, artifact
 
     if vault_environment.codex_home.exists():
         for child in vault_environment.codex_home.iterdir():
-            materialization_violation = _forbidden_codex_home_entry_violation(child.name)
+            materialization_violation = _codex_home_entry_violation(child)
             if materialization_violation is not None:
                 return materialization_violation
-            if child.name in _ALLOWED_OPERATIONAL_DIRS:
-                if child.is_symlink() or not child.is_dir():
-                    return "unsafe vault material"
-                continue
-            if child.name not in _ALLOWED_AUTH_MATERIAL:
-                return "auth material outside the allowlist is not allowed"
-            if child.is_symlink():
-                return "unsafe vault material"
     return None
 
 
@@ -84,8 +76,79 @@ def audit_codex_event_contamination(events: list[dict[str, object]]) -> str | No
     return None
 
 
-def _forbidden_codex_home_entry_violation(name: str) -> str | None:
-    return _FORBIDDEN_CODEX_HOME_ENTRIES.get(name)
+def _codex_home_entry_violation(path: Path) -> str | None:
+    forbidden_violation = _FORBIDDEN_CODEX_HOME_ENTRIES.get(path.name)
+    if forbidden_violation is not None:
+        return forbidden_violation
+    if path.name in _ALLOWED_AUTH_MATERIAL:
+        if path.is_symlink() or not path.is_file():
+            return "unsafe vault material"
+        return None
+    if path.name in _ALLOWED_OPERATIONAL_DIRS:
+        if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
+            return "unsafe vault material"
+        return None
+    if path.name in _ALLOWED_OPERATIONAL_FILES:
+        if path.is_symlink() or not path.is_file():
+            return "unsafe vault material"
+        return None
+    if path.name == "config.toml":
+        return _config_toml_violation(path)
+    if path.name == "skills":
+        return _skills_materialization_violation(path)
+    if path.name == "plugins":
+        return _plugins_materialization_violation(path)
+    return "auth material outside the allowlist is not allowed"
+
+
+def _config_toml_violation(path: Path) -> str | None:
+    if path.is_symlink() or not path.is_file():
+        return "unsafe vault material"
+    try:
+        config = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return "unexpected config inheritance is not allowed"
+    if set(config) != {"plugins"}:
+        return "unexpected config inheritance is not allowed"
+    plugins = config.get("plugins")
+    if not isinstance(plugins, dict) or not plugins:
+        return "unexpected config inheritance is not allowed"
+    for name, settings in plugins.items():
+        if not isinstance(name, str) or not name.endswith("@openai-curated"):
+            return "unexpected config inheritance is not allowed"
+        if settings != {"enabled": True}:
+            return "unexpected config inheritance is not allowed"
+    return None
+
+
+def _skills_materialization_violation(path: Path) -> str | None:
+    if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
+        return "unsafe vault material"
+    children = {child.name for child in path.iterdir()}
+    if children != {".system"}:
+        return "skill materialization is not allowed"
+    system_skills = path / ".system"
+    marker = system_skills / ".codex-system-skills.marker"
+    if not marker.is_file() or marker.is_symlink():
+        return "skill materialization is not allowed"
+    system_children = {child.name for child in system_skills.iterdir()}
+    allowed_children = _ALLOWED_CODEX_SYSTEM_SKILLS | {".codex-system-skills.marker"}
+    if not system_children <= allowed_children:
+        return "skill materialization is not allowed"
+    return None
+
+
+def _plugins_materialization_violation(path: Path) -> str | None:
+    if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
+        return "unsafe vault material"
+    children = {child.name for child in path.iterdir()}
+    if not children <= {"cache"}:
+        return "plugin materialization is not allowed"
+    return None
+
+
+def _contains_symlink(path: Path) -> bool:
+    return any(child.is_symlink() for child in path.rglob("*"))
 
 
 def _event_dicts(event: dict[str, object]) -> list[dict[str, object]]:

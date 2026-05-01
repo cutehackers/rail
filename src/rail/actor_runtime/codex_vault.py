@@ -877,7 +877,12 @@ def _event_tool_type(event: dict[str, object]) -> str | None:
         return "plugin"
     if "validation" in lowered:
         return "validation"
-    if "shell" in lowered or "command_execution" in lowered or "exec_command" in lowered or _shell_event_from_codex_event(event) is not None:
+    if (
+        "shell" in lowered
+        or "command_execution" in lowered
+        or "exec_command" in lowered
+        or any("command" in mapping for mapping in _event_dicts(event))
+    ):
         return "shell"
     return None
 
@@ -1086,15 +1091,29 @@ def _option_path_operand(executable: str, arg: str, args: list[str], index: int)
             if arg.startswith(prefix) and len(arg) > len(prefix):
                 return arg[len(prefix) :]
     if executable == "find":
+        if arg in {"-files0-from", "--files0-from"} and index + 1 < len(args):
+            return args[index + 1]
+        for prefix in ("-files0-from=", "--files0-from="):
+            if arg.startswith(prefix) and len(arg) > len(prefix):
+                return arg[len(prefix) :]
         if arg == "-f" and index + 1 < len(args):
             return args[index + 1]
         if arg.startswith("-f") and len(arg) > 2:
             return arg[2:]
+    if executable == "wc":
+        if arg == "--files0-from" and index + 1 < len(args):
+            return args[index + 1]
+        if arg.startswith("--files0-from=") and len(arg) > len("--files0-from="):
+            return arg[len("--files0-from=") :]
     return None
 
 
 def _option_consumes_next_path(executable: str, arg: str) -> bool:
-    return (executable == "rg" and arg in {"-f", "--file", "--ignore-file"}) or (executable == "find" and arg == "-f")
+    return (
+        (executable == "rg" and arg in {"-f", "--file", "--ignore-file"})
+        or (executable == "find" and arg in {"-f", "-files0-from", "--files0-from"})
+        or (executable == "wc" and arg == "--files0-from")
+    )
 
 
 def _argument_references_forbidden_root(arg: str, *, cwd: Path, sandbox_root: Path, forbidden_roots: list[Path]) -> bool:

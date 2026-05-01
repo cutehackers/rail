@@ -222,6 +222,27 @@ def test_codex_vault_runtime_blocks_msg_wrapped_command_execution_event(tmp_path
     assert "shell executable is not allowed" in result.structured_output["error"]
 
 
+def test_codex_vault_runtime_blocks_msg_wrapped_nested_item_command_execution_event(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"msg": {"type": "item.started", "item": {"type": "command_execution", "command": "touch app.txt"}}}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell executable is not allowed" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_allows_msg_wrapped_shell_wrapper_read_only_command(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(
@@ -301,7 +322,7 @@ def test_codex_vault_runtime_blocks_shell_auth_home_variable_reference(tmp_path)
 
     assert result.status == "interrupted"
     assert result.blocked_category == "policy"
-    assert "shell argument references a forbidden root" in result.structured_output["error"]
+    assert "unsupported shell operators" in result.structured_output["error"]
 
 
 def test_codex_vault_runtime_blocks_shell_relative_sandbox_escape(tmp_path):
@@ -323,6 +344,27 @@ def test_codex_vault_runtime_blocks_shell_relative_sandbox_escape(tmp_path):
     assert result.status == "interrupted"
     assert result.blocked_category == "policy"
     assert "shell argument escapes sandbox" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_shell_ansi_c_quoted_escape(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "cat $'../secret.txt'"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "unsupported shell operators" in result.structured_output["error"]
 
 
 def test_codex_vault_runtime_blocks_write_capable_allowed_shell_flags(tmp_path):
@@ -686,7 +728,7 @@ def _runtime(tmp_path: Path, *, command: Path, runner: FakeCodexRunner) -> Codex
     )
 
 
-def _fake_vault_environment(*, artifact_dir: Path, auth_home: Path, base_environ: dict[str, str]) -> VaultEnvironment:
+def _fake_vault_environment(*, artifact_dir: Path, auth_home: Path, base_environ: dict[str, str], actor: str | None = None) -> VaultEnvironment:
     codex_home = artifact_dir / "actor_runtime" / "codex_home"
     evidence_dir = artifact_dir / "actor_runtime" / "evidence"
     temp_dir = artifact_dir / "actor_runtime" / "tmp"

@@ -258,6 +258,7 @@ class CodexVaultActorRuntime:
                 artifact_dir=invocation.artifact_dir,
                 auth_home=codex_auth_home(environ=os.environ),
                 base_environ=os.environ,
+                actor=invocation.actor,
             )
         except (OSError, ValueError) as exc:
             reason = "Codex Vault Actor Runtime environment materialization failed"
@@ -882,17 +883,17 @@ def _event_tool_type(event: dict[str, object]) -> str | None:
 
 
 def _event_dicts(event: dict[str, object]) -> list[dict[str, object]]:
-    dicts = [event]
-    item = event.get("item")
-    if isinstance(item, dict):
-        dicts.append(item)
-    message = event.get("message")
-    if isinstance(message, dict):
-        dicts.append(message)
-    msg = event.get("msg")
-    if isinstance(msg, dict):
-        dicts.append(msg)
+    dicts: list[dict[str, object]] = []
+    _append_event_dicts(event, dicts)
     return dicts
+
+
+def _append_event_dicts(event: dict[str, object], dicts: list[dict[str, object]]) -> None:
+    dicts.append(event)
+    for key in ("item", "message", "msg"):
+        child = event.get(key)
+        if isinstance(child, dict):
+            _append_event_dicts(child, dicts)
 
 
 def _shell_event_from_codex_event(event: dict[str, object], *, default_cwd: Path | None = None) -> dict[str, object] | None:
@@ -945,7 +946,7 @@ def _shell_event_policy_violation(
     sandbox_root = sandbox_root.resolve(strict=False)
     if cwd != sandbox_root and not cwd.is_relative_to(sandbox_root):
         return "shell cwd must stay inside sandbox"
-    if _SHELL_OPERATOR_PATTERN.search(command_value):
+    if _SHELL_OPERATOR_PATTERN.search(command_value) or "$" in command_value:
         return "shell command uses unsupported shell operators"
     try:
         args = shlex.split(command_value)

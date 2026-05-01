@@ -481,7 +481,7 @@ def _write_noop_patch_bundle(invocation: ActorInvocation) -> None:
     )
 
 
-def _fake_vault_environment(*, artifact_dir: Path, auth_home: Path, base_environ) -> VaultEnvironment:
+def _fake_vault_environment(*, artifact_dir: Path, auth_home: Path, base_environ, actor: str | None = None) -> VaultEnvironment:
     codex_home = artifact_dir / "actor_runtime" / "codex_home"
     evidence_dir = artifact_dir / "actor_runtime" / "evidence"
     temp_dir = artifact_dir / "actor_runtime" / "tmp"

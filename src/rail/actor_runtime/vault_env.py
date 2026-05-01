@@ -28,8 +28,11 @@ def materialize_vault_environment(
     artifact_dir: Path,
     auth_home: Path,
     base_environ: Mapping[str, str],
+    actor: str | None = None,
 ) -> VaultEnvironment:
     actor_runtime_dir = artifact_dir / "actor_runtime"
+    if actor is not None:
+        actor_runtime_dir = actor_runtime_dir / "actors" / _safe_actor_dir(actor)
     codex_home = actor_runtime_dir / "codex_home"
     evidence_dir = actor_runtime_dir / "evidence"
     temp_dir = actor_runtime_dir / "tmp"
@@ -99,3 +102,11 @@ def _scrub_vault_environment(base_environ: Mapping[str, str], *, codex_home: Pat
     environ["TMP"] = str(temp_dir)
     environ["TEMP"] = str(temp_dir)
     return environ
+
+
+def _safe_actor_dir(actor: str) -> str:
+    if not actor or any(part in {"", ".", ".."} for part in Path(actor).parts) or Path(actor).is_absolute():
+        raise ValueError("unsafe actor runtime directory")
+    if any(not (character.isalnum() or character == "_") for character in actor):
+        raise ValueError("unsafe actor runtime directory")
+    return actor

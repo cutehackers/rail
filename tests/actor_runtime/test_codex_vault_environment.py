@@ -72,6 +72,31 @@ def test_materialize_vault_env_copies_only_auth_json(tmp_path):
     assert (env.codex_home / "auth.json").stat().st_mode & 0o777 == 0o600
 
 
+def test_materialize_vault_env_uses_actor_scoped_home_when_actor_is_provided(tmp_path):
+    artifact_dir = tmp_path / "artifact"
+    auth_home = tmp_path / "auth"
+    auth_home.mkdir()
+    (auth_home / "auth.json").write_text("{}", encoding="utf-8")
+
+    planner_env = materialize_vault_environment(
+        artifact_dir=artifact_dir,
+        auth_home=auth_home,
+        base_environ={},
+        actor="planner",
+    )
+    context_env = materialize_vault_environment(
+        artifact_dir=artifact_dir,
+        auth_home=auth_home,
+        base_environ={},
+        actor="context_builder",
+    )
+
+    assert planner_env.codex_home == artifact_dir / "actor_runtime" / "actors" / "planner" / "codex_home"
+    assert context_env.codex_home == artifact_dir / "actor_runtime" / "actors" / "context_builder" / "codex_home"
+    assert (planner_env.codex_home / "auth.json").is_file()
+    assert (context_env.codex_home / "auth.json").is_file()
+
+
 def test_materialize_vault_env_rejects_preexisting_codex_surfaces(tmp_path):
     artifact_dir = tmp_path / "artifact"
     codex_home = artifact_dir / "actor_runtime" / "codex_home"
@@ -275,8 +300,8 @@ def test_runtime_evidence_uses_relative_vault_refs(tmp_path, monkeypatch):
     result = runtime.run(build_invocation(handle, "planner"))
 
     evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
-    assert evidence["vault_codex_home_ref"] == "actor_runtime/codex_home"
-    assert evidence["vault_evidence_dir_ref"] == "actor_runtime/evidence"
+    assert evidence["vault_codex_home_ref"] == "actor_runtime/actors/planner/codex_home"
+    assert evidence["vault_evidence_dir_ref"] == "actor_runtime/actors/planner/evidence"
     serialized = json.dumps(evidence)
     assert str(handle.artifact_dir) not in serialized
     assert str(rail_home) not in serialized

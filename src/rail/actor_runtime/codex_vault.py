@@ -843,18 +843,19 @@ def _codex_event_policy_violation(
         if tool_type == "validation":
             return "validation execution is not allowed"
         if tool_type == "shell":
-            shell_event = _shell_event_from_codex_event(event, default_cwd=sandbox_root)
-            if shell_event is None:
+            shell_events = _shell_events_from_codex_event(event, default_cwd=sandbox_root)
+            if not shell_events:
                 return "shell event is not parseable"
-            reason = _shell_event_policy_violation(
-                shell_event,
-                sandbox_root=sandbox_root,
-                forbidden_roots=forbidden_roots,
-                shell_allowlist=shell_allowlist,
-                shell_enabled=shell_enabled,
-            )
-            if reason is not None:
-                return reason
+            for shell_event in shell_events:
+                reason = _shell_event_policy_violation(
+                    shell_event,
+                    sandbox_root=sandbox_root,
+                    forbidden_roots=forbidden_roots,
+                    shell_allowlist=shell_allowlist,
+                    shell_enabled=shell_enabled,
+                )
+                if reason is not None:
+                    return reason
     return None
 
 
@@ -917,18 +918,33 @@ def _event_cwd(event: dict[str, object]) -> str | None:
 
 
 def _shell_event_from_codex_event(event: dict[str, object], *, default_cwd: Path | None = None) -> dict[str, object] | None:
+    events = _shell_events_from_codex_event(event, default_cwd=default_cwd)
+    return events[0] if events else None
+
+
+def _shell_events_from_codex_event(event: dict[str, object], *, default_cwd: Path | None = None) -> list[dict[str, object]]:
+    events: list[dict[str, object]] = []
     for mapping, inherited_cwd in _event_dicts(event):
-        command = mapping.get("command")
+        command = _command_text(mapping.get("command"))
         cwd = _event_cwd(mapping) or inherited_cwd
-        if isinstance(command, list):
-            command = " ".join(str(part) for part in command)
         if isinstance(command, str):
             if not isinstance(cwd, str) and default_cwd is not None:
                 cwd = default_cwd.as_posix()
             if isinstance(cwd, str):
                 command = _unwrap_codex_shell_wrapper(command) or command
-                return {"command": command, "cwd": cwd}
-    return None
+                events.append({"command": command, "cwd": cwd})
+    return events
+
+
+def _command_text(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, list) or not all(isinstance(part, str) for part in value):
+        return None
+    unwrapped = _unwrap_codex_shell_wrapper_args(value)
+    if unwrapped is not None:
+        return unwrapped
+    return shlex.join(value)
 
 
 def _unwrap_codex_shell_wrapper(command: str) -> str | None:
@@ -936,6 +952,17 @@ def _unwrap_codex_shell_wrapper(command: str) -> str | None:
         args = shlex.split(command)
     except ValueError:
         return None
+    if len(args) < 3:
+        return None
+    shell_path = Path(args[0]).resolve(strict=False)
+    if shell_path not in {Path("/bin/zsh"), Path("/bin/sh"), Path("/usr/bin/zsh"), Path("/usr/bin/sh")}:
+        return None
+    if args[1] not in {"-lc", "-c"}:
+        return None
+    return args[2]
+
+
+def _unwrap_codex_shell_wrapper_args(args: list[str]) -> str | None:
     if len(args) < 3:
         return None
     shell_path = Path(args[0]).resolve(strict=False)

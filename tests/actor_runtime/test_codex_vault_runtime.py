@@ -596,6 +596,29 @@ def test_codex_vault_runtime_allows_trusted_absolute_shell_binary_path(tmp_path)
     assert result.status == "succeeded"
 
 
+def test_codex_vault_runtime_blocks_absolute_shell_binary_symlink_name_mismatch(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    fake_ls = tmp_path / "ls"
+    fake_ls.symlink_to("/bin/rm")
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": f"{fake_ls} ."}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "resolved executable is not allowed" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_blocks_rg_pre_execution(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(
@@ -615,6 +638,48 @@ def test_codex_vault_runtime_blocks_rg_pre_execution(tmp_path):
     assert result.status == "interrupted"
     assert result.blocked_category == "policy"
     assert "write-capable flag" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_rg_file_option_path_escape(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "rg --file=../patterns needle ."}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell argument escapes sandbox" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_find_file_option_path_escape(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "shell", "cwd": "__SANDBOX__", "command": "find -f../outside ."}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell argument escapes sandbox" in result.structured_output["error"]
 
 
 def test_codex_vault_runtime_blocks_shell_newline_chaining(tmp_path):

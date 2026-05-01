@@ -263,7 +263,7 @@ def test_materialize_vault_env_uses_artifact_local_temp_and_does_not_leak_secret
     )
 
     assert env.environ == {
-        "PATH": "/usr/bin",
+        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
         "TMPDIR": str(env.temp_dir),
         "TMP": str(env.temp_dir),
         "TEMP": str(env.temp_dir),

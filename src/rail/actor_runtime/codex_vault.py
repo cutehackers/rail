@@ -967,11 +967,13 @@ def _shell_event_policy_violation(
         resolved_executable = executable_path.resolve(strict=False)
         if not _path_is_under_any(resolved_executable, _TRUSTED_SYSTEM_BINARY_ROOTS):
             return "absolute shell command path is not trusted"
+        if resolved_executable.name != executable:
+            return "absolute shell command resolved executable is not allowed"
     for root in forbidden_roots:
         root_text = root.as_posix()
         if root_text and root_text in command_value:
             return "shell command references a forbidden root"
-    operands = _shell_path_operands(args[1:])
+    operands = _shell_path_operands(executable, args[1:])
     for arg in operands:
         if _argument_references_forbidden_root(arg, cwd=cwd, sandbox_root=sandbox_root, forbidden_roots=forbidden_roots):
             return "shell argument references a forbidden root"
@@ -1042,7 +1044,7 @@ def _sed_script_contains_unsafe_command(script: str) -> bool:
     return re.search(r"(^|[;{}\s\d,$!/])(?:r|R|w|W|e)", script) is not None
 
 
-def _shell_path_operands(args: list[str]) -> list[str]:
+def _shell_path_operands(executable: str, args: list[str]) -> list[str]:
     operands: list[str] = []
     end_of_options = False
     index = 0
@@ -1056,12 +1058,34 @@ def _shell_path_operands(args: list[str]) -> list[str]:
             end_of_options = True
             index += 1
             continue
+        option_path = _option_path_operand(executable, arg, args, index)
+        if option_path is not None:
+            operands.append(option_path)
         if arg.startswith("-"):
-            index += 1
+            index += 2 if _option_consumes_next_path(executable, arg) and index + 1 < len(args) else 1
             continue
         operands.append(arg)
         index += 1
     return operands
+
+
+def _option_path_operand(executable: str, arg: str, args: list[str], index: int) -> str | None:
+    if executable == "rg":
+        if arg in {"-f", "--file", "--ignore-file"} and index + 1 < len(args):
+            return args[index + 1]
+        for prefix in ("-f", "--file=", "--ignore-file="):
+            if arg.startswith(prefix) and len(arg) > len(prefix):
+                return arg[len(prefix) :]
+    if executable == "find":
+        if arg == "-f" and index + 1 < len(args):
+            return args[index + 1]
+        if arg.startswith("-f") and len(arg) > 2:
+            return arg[2:]
+    return None
+
+
+def _option_consumes_next_path(executable: str, arg: str) -> bool:
+    return (executable == "rg" and arg in {"-f", "--file", "--ignore-file"}) or (executable == "find" and arg == "-f")
 
 
 def _argument_references_forbidden_root(arg: str, *, cwd: Path, sandbox_root: Path, forbidden_roots: list[Path]) -> bool:

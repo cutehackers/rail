@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from rail.auth.credentials import validate_codex_auth_material
 
-_PROCESS_ENV_ALLOWLIST = {"PATH"}
+_TRUSTED_PROCESS_PATH = "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"
 _CODEX_AUTH_COPY_ALLOWLIST = {"auth.json"}
 
 
@@ -99,7 +99,7 @@ def _prepare_actor_runtime_dir(path: Path) -> None:
 
 
 def _scrub_vault_environment(base_environ: Mapping[str, str], *, codex_home: Path, temp_dir: Path) -> dict[str, str]:
-    environ = {name: value for name, value in base_environ.items() if name in _PROCESS_ENV_ALLOWLIST and value}
+    environ: dict[str, str] = {"PATH": _TRUSTED_PROCESS_PATH}
     environ["HOME"] = str(codex_home)
     environ["CODEX_HOME"] = str(codex_home)
     environ["TMPDIR"] = str(temp_dir)

@@ -260,6 +260,17 @@ def test_supervise_blocks_evaluator_output_digest_mismatch(tmp_path):
     assert "evaluator input digest" in run_status["reason"]
 
 
+def test_supervise_gate_blocks_runtime_policy_violation_evidence(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    result = rail.supervise(handle, runtime=PolicyViolationEvidenceRuntime())
+
+    assert result.outcome == "blocked"
+    run_status = yaml.safe_load((handle.artifact_dir / "run_status.yaml").read_text(encoding="utf-8"))
+    assert run_status["blocked_category"] == "policy"
+    assert "runtime policy violation" in run_status["reason"]
+
+
 def _target_repo(tmp_path: Path) -> Path:
     target = tmp_path / "target-repo"
     target.mkdir(parents=True, exist_ok=True)
@@ -353,6 +364,24 @@ class MismatchedEvaluatorDigestRuntime(PassingRuntime):
         output = dict(result.structured_output)
         output["evaluated_input_digest"] = "sha256:wrong-evaluator-input"
         return result.model_copy(update={"structured_output": output})
+
+
+class PolicyViolationEvidenceRuntime(PassingRuntime):
+    def run(self, invocation: ActorInvocation) -> ActorResult:
+        result = super().run(invocation)
+        if invocation.actor == "planner":
+            (invocation.artifact_dir / result.runtime_evidence_ref).write_text(
+                json.dumps(
+                    {
+                        "status": "succeeded",
+                        "provider": "codex_vault",
+                        "policy_violation": {"reason": "MCP invocation is not allowed"},
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+        return result
 
 
 class CapturingRuntime(PassingRuntime):
@@ -492,7 +521,7 @@ def _fake_vault_environment(*, artifact_dir: Path, auth_home: Path, base_environ
         evidence_dir=evidence_dir,
         temp_dir=temp_dir,
         environ={
-            "PATH": "/usr/bin",
+            "PATH": "/usr/bin:/bin",
             "HOME": str(codex_home),
             "CODEX_HOME": str(codex_home),
             "TMPDIR": str(temp_dir),

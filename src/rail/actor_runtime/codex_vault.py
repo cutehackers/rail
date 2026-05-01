@@ -19,6 +19,7 @@ from rail.actor_runtime.evidence import write_runtime_evidence
 from rail.actor_runtime.events import normalize_sdk_event
 from rail.actor_runtime.prompts import load_actor_catalog
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
+from rail.actor_runtime.vault_audit import audit_codex_event_contamination, audit_vault_materialization
 from rail.actor_runtime.vault_env import VaultEnvironment, materialize_vault_environment
 from rail.auth.credentials import codex_auth_home
 from rail.auth.redaction import redact_secrets
@@ -293,6 +294,29 @@ class CodexVaultActorRuntime:
                 events_ref=events_ref,
                 runtime_evidence_ref=evidence_ref,
                 blocked_category="environment",
+            )
+
+        materialization_violation = audit_vault_materialization(vault_environment, artifact_dir=invocation.artifact_dir)
+        if materialization_violation is not None:
+            events_ref, evidence_ref = write_runtime_evidence(
+                invocation.artifact_dir,
+                invocation.actor,
+                self._evidence_payload(
+                    invocation,
+                    readiness=readiness,
+                    vault_environment=vault_environment,
+                    status="interrupted",
+                    blocked_category="policy",
+                    error=materialization_violation,
+                    extra={"policy_violation": {"reason": materialization_violation}},
+                ),
+            )
+            return ActorResult(
+                status="interrupted",
+                structured_output={"error": materialization_violation},
+                events_ref=events_ref,
+                runtime_evidence_ref=evidence_ref,
+                blocked_category="policy",
             )
 
         target_pre_run_tree_digest = target_mutation_digest(invocation.target_root)
@@ -925,6 +949,9 @@ def _codex_event_policy_violation(
     shell_allowlist: set[str],
     shell_enabled: bool,
 ) -> str | None:
+    contamination_violation = audit_codex_event_contamination(events)
+    if contamination_violation is not None:
+        return contamination_violation
     forbidden_roots = [
         invocation.target_root.resolve(strict=False),
         invocation.artifact_dir.resolve(strict=False),

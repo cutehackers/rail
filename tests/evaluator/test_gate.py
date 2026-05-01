@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from rail.artifacts.digests import digest_payload
@@ -209,6 +210,34 @@ def test_terminal_pass_rejects_mismatched_validation_evidence_digest(tmp_path):
     assert "validation evidence digest" in result.reason
 
 
+def test_terminal_pass_rejects_runtime_policy_violation_evidence(tmp_path):
+    evidence = record_validation_evidence(
+        tmp_path,
+        command="pytest",
+        exit_code=0,
+        source="request",
+        patch_digest="sha256:patch",
+        tree_digest="sha256:tree",
+        request_digest="sha256:request",
+        effective_policy_digest="sha256:policy",
+        actor_invocation_digest="sha256:actor",
+    )
+    runtime_ref = Path("runs/planner.runtime_evidence.json")
+    (tmp_path / runtime_ref.parent).mkdir(parents=True, exist_ok=True)
+    (tmp_path / runtime_ref).write_text(
+        json.dumps({"status": "succeeded", "policy_violation": {"reason": "MCP invocation is not allowed"}}),
+        encoding="utf-8",
+    )
+
+    result = evaluate_gate(
+        _pass_output(),
+        _gate_input(tmp_path, evidence.ref, runtime_evidence_refs=[runtime_ref]),
+    )
+
+    assert result.outcome == "blocked"
+    assert "runtime policy violation" in result.reason
+
+
 def test_validation_evidence_redacts_logs_before_persisting(tmp_path):
     evidence = record_validation_evidence(
         tmp_path,
@@ -228,6 +257,7 @@ def _gate_input(
     validation_ref: Path | None,
     evaluator_input_digest: str = "sha256:evaluator",
     validation_evidence_digest: str | None = None,
+    runtime_evidence_refs: list[Path] | None = None,
 ) -> EvaluatorGateInput:
     if validation_evidence_digest is None:
         validation_evidence_digest = "sha256:no-validation"
@@ -244,6 +274,7 @@ def _gate_input(
         validation_ref=validation_ref,
         validation_evidence_digest=validation_evidence_digest,
         evaluator_input_digest=evaluator_input_digest,
+        runtime_evidence_refs=runtime_evidence_refs or [],
     )
 
 

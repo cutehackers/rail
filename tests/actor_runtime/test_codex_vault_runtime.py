@@ -248,6 +248,105 @@ def test_codex_vault_runtime_blocks_write_capable_shell_event(tmp_path):
     assert evidence["policy_violation"]["reason"] == "shell executable is not allowed: touch"
 
 
+def test_parent_skill_contamination_blocks_actor(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "skill_invocation", "name": "Rail"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "skill" in result.structured_output["error"]
+
+
+def test_plugin_or_mcp_contamination_blocks_actor(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "mcp_invocation", "server": "filesystem"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "MCP" in result.structured_output["error"]
+
+
+def test_hook_rule_or_config_contamination_blocks_actor(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "config_loaded", "source": "user_rules", "path": "config.toml"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "config" in result.structured_output["error"] or "rule" in result.structured_output["error"]
+
+
+def test_vault_materialization_contamination_blocks_actor(tmp_path):
+    target = _target_repo(tmp_path)
+    handle = rail.start_task(_draft(target))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+    )
+
+    def contaminated_vault_environment(
+        *, artifact_dir: Path, auth_home: Path, base_environ: dict[str, str], actor: str | None = None
+    ) -> VaultEnvironment:
+        env = _fake_vault_environment(artifact_dir=artifact_dir, auth_home=auth_home, base_environ=base_environ, actor=actor)
+        (env.codex_home / "skills").mkdir()
+        return env.model_copy(update={"copied_auth_material": ["auth.json", "session.db"]})
+
+    runtime = CodexVaultActorRuntime(
+        project_root=Path("."),
+        policy=load_effective_policy(tmp_path),
+        command_resolver=lambda: _fake_codex_command(tmp_path),
+        command_trust_checker=lambda _path, _target_root, _artifact_dir: None,
+        runner=runner,
+        environment_materializer=contaminated_vault_environment,
+    )
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "skill" in result.structured_output["error"] or "auth material" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_audits_policy_events_when_codex_exits_nonzero(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(
@@ -1348,7 +1447,7 @@ def _fake_vault_environment(*, artifact_dir: Path, auth_home: Path, base_environ
         evidence_dir=evidence_dir,
         temp_dir=temp_dir,
         environ={
-            "PATH": "/usr/bin",
+            "PATH": "/usr/bin:/bin",
             "HOME": str(codex_home),
             "CODEX_HOME": str(codex_home),
             "TMPDIR": str(temp_dir),

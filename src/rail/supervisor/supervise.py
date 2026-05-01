@@ -141,6 +141,7 @@ def supervise_artifact(handle: ArtifactHandle, *, runtime: ActorRuntime | None =
                     validation_ref=validation_ref,
                     validation_evidence_digest=validation_evidence_digest,
                     evaluator_input_digest=evaluator_input_digest or "sha256:no-evaluator-input",
+                    runtime_evidence_refs=[Path(ref) for ref in evidence_refs if ref.endswith(".runtime_evidence.json")],
                     expected_validation_network_mode=policy.workspace.network_mode,
                 ),
             )

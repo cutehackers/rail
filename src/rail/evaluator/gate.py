@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from rail.artifacts.digests import digest_payload
 from rail.policy.schema import NetworkMode
@@ -22,6 +23,7 @@ class EvaluatorGateInput(BaseModel):
     validation_ref: Path | None
     validation_evidence_digest: str
     evaluator_input_digest: str
+    runtime_evidence_refs: list[Path] = Field(default_factory=list)
     expected_validation_network_mode: NetworkMode = "disabled"
 
 
@@ -50,6 +52,10 @@ def evaluate_gate(evaluator_output: dict[str, object], gate_input: EvaluatorGate
     if gate_input.validation_ref is None:
         return EvaluatorGateResult(outcome="blocked", reason="terminal pass requires validation evidence")
 
+    runtime_policy_violation = _runtime_policy_violation_reason(gate_input)
+    if runtime_policy_violation is not None:
+        return EvaluatorGateResult(outcome="blocked", reason=runtime_policy_violation)
+
     evidence = load_validation_evidence(gate_input.artifact_dir, gate_input.validation_ref)
     if evidence.status != "pass":
         return EvaluatorGateResult(outcome="blocked", reason="required validation failed")
@@ -71,3 +77,22 @@ def evaluate_gate(evaluator_output: dict[str, object], gate_input: EvaluatorGate
         return EvaluatorGateResult(outcome="blocked", reason="validation mutated the target")
 
     return EvaluatorGateResult(outcome="pass", reason="validation evidence accepted")
+
+
+def _runtime_policy_violation_reason(gate_input: EvaluatorGateInput) -> str | None:
+    for ref in gate_input.runtime_evidence_refs:
+        if ref.is_absolute() or ".." in ref.parts:
+            return "runtime evidence ref is unsafe"
+        candidate = gate_input.artifact_dir / ref
+        path = candidate.resolve(strict=False)
+        if not path.is_relative_to(gate_input.artifact_dir.resolve(strict=False)) or candidate.is_symlink() or not path.is_file():
+            return "runtime evidence is missing or unsafe"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return "runtime evidence is not valid JSON"
+        if not isinstance(payload, dict):
+            return "runtime evidence is not a mapping"
+        if payload.get("blocked_category") == "policy" or isinstance(payload.get("policy_violation"), dict):
+            return "runtime policy violation evidence present"
+    return None

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 from rail.artifacts.models import ArtifactHandle
 from rail.artifacts.store import validate_artifact_handle
+from rail.auth.redaction import redact_secrets
 
 BlockedCategory = Literal["runtime", "validation", "policy", "environment"] | None
 
@@ -28,7 +29,7 @@ def project_terminal_summary(handle: ArtifactHandle) -> TerminalSummaryProjectio
     run_status = _load_run_status(handle)
     outcome = _status_value(run_status.get("outcome"), default="unknown")
     blocked_category = _blocked_category(run_status.get("blocked_category")) if outcome == "blocked" else None
-    reason = _status_value(run_status.get("reason"), default=_default_reason(outcome, blocked_category))
+    reason = str(redact_secrets(_status_value(run_status.get("reason"), default=_default_reason(outcome, blocked_category))))
 
     return TerminalSummaryProjection(
         artifact_id=handle.artifact_id,

@@ -91,6 +91,26 @@ def test_active_product_surfaces_do_not_reference_removed_runtime():
     assert findings == []
 
 
+def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
+    forbidden = ["rail.normalize_request", "def normalize_request", "sealed_codex", "vault_codex", "actor backend"]
+    active_docs = [
+        Path("docs/SPEC.md"),
+        Path("docs/ARCHITECTURE.md"),
+        Path("docs/CONVENTIONS.md"),
+        Path("skills/rail/SKILL.md"),
+        Path("assets/skill/Rail/SKILL.md"),
+        Path("src/rail/package_assets/skill/Rail/SKILL.md"),
+    ]
+    findings: list[str] = []
+    for path in active_docs:
+        text = path.read_text(encoding="utf-8")
+        for term in forbidden:
+            if term in text:
+                findings.append(f"{path}: {term}")
+
+    assert findings == []
+
+
 def test_release_gate_exists_and_uses_python_runtime_only():
     path = Path("scripts/release_gate.sh")
 

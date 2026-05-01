@@ -170,7 +170,7 @@ Respect the architecture boundaries:
 
 - `src/rail/request/`: request normalization and draft schema.
 - `src/rail/artifacts/`: artifact identity, handle loading, and projections.
-- `src/rail/actor_runtime/`: OpenAI Agents SDK boundary and actor contracts.
+- `src/rail/actor_runtime/`: Actor Runtime providers and actor contracts.
 - `src/rail/supervisor/`: deterministic workflow orchestration.
 - `src/rail/evaluator/`: evaluator gate and terminal pass rules.
 - `src/rail/workspace/`: patch bundle validation, target mutation, and
@@ -199,6 +199,8 @@ name the module after the concrete Rail behavior it supports.
   projections.
 - Do not record a terminal pass without current validation evidence and an
   accepted evaluator gate.
+- Keep the local runtime provider name as `codex_vault`; use
+  `openai_agents_sdk` only for the optional operator/API-key provider.
 
 ## Validation And Mutation
 

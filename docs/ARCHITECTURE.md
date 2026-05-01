@@ -35,7 +35,9 @@ Policy is loaded from Rail/operator defaults first. Target policy may only narro
 
 ### Actor Runtime
 
-The Actor Runtime is the SDK-powered execution boundary. Each actor receives:
+The Actor Runtime is the provider-selected execution boundary. The default local
+provider is `codex_vault`; `openai_agents_sdk` is optional for
+operator/API-key environments. Each actor receives:
 
 - deterministic prompt source
 - Pydantic output schema
@@ -73,7 +75,12 @@ Status and result projection read artifacts only. They do not call the SDK or in
 
 `scripts/release_gate.sh` is the local release gate for the Rail control plane. It builds the Python package, inspects required package assets, runs an installed-wheel smoke, and runs the Python test suite, docs guards, removed-surface guards, lint, and typing checks. It does not prove that an arbitrary downstream target repository task succeeded.
 
-When `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` and an operator-controlled SDK credential is present, the gate also runs the optional live SDK smoke. That smoke is skipped by default and is not part of normal CI. For normal task execution, an operator-controlled `OPENAI_API_KEY` is enough to enable live Actor Runtime execution; users do not need to set runtime feature flags.
+Optional live smokes are skipped by default and are not part of normal CI.
+`RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` enables the optional
+`openai_agents_sdk` smoke when operator SDK credentials are present.
+`RAIL_CODEX_VAULT_LIVE_SMOKE=1` enables the optional `codex_vault` smoke when
+Rail-owned Codex auth is configured. Normal task execution remains skill-first
+and Python API first; setup diagnostics live under `rail auth`.
 
 ## Release Publishing
 

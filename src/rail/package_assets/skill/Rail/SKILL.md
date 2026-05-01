@@ -118,7 +118,9 @@ Optional command wrappers are acceptable only when they call the same Python API
 
 ## Readiness And Blocking
 
-`rail.supervise(handle)` checks Actor Runtime readiness before actor work. Missing SDK credentials, disabled live execution, policy blocks, validation failures, and environment problems must stop as blocked outcomes with secret-safe reasons.
+`rail.supervise(handle)` checks Actor Runtime readiness before actor work. The default local provider is `codex_vault`, which uses Rail-owned Codex auth and an artifact-local actor environment. `openai_agents_sdk` is optional for operator/API-key environments. Missing auth material, policy blocks, validation failures, contamination, and environment problems must stop as blocked outcomes with secret-safe reasons.
+
+`rail auth` is setup and diagnostics only. It can prepare or inspect the Rail-owned Codex auth home, but it is not a task-execution command surface.
 
 When supervision blocks, do not continue by manually invoking actors or mutating the target. Report `rail.result(handle)` and the terminal summary so the user sees the blocked category, reason, evidence refs, and next step.
 

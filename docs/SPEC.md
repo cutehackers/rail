@@ -42,8 +42,8 @@ to the same API and must not become the product authority.
 - **Rail Harness Runtime:** the Python runtime that owns request normalization,
   artifacts, policy, supervisor routing, validation, evaluator gates, and result
   projection.
-- **Actor Runtime:** the OpenAI Agents SDK powered component that executes one
-  Rail actor invocation and returns schema-valid output plus evidence.
+- **Actor Runtime:** the provider-selected component that executes one Rail
+  actor invocation and returns schema-valid output plus evidence.
 - **Supervisor:** the deterministic Rail graph and routing logic.
 - **Policy Gate:** the code path that narrows, blocks, or accepts capabilities,
   patch bundles, validation evidence, and terminal outcomes.
@@ -70,9 +70,9 @@ Rail owns:
 
 The Actor Runtime owns:
 
-- OpenAI Agents SDK agent construction
-- model invocation
-- SDK trace and event normalization
+- provider-specific actor process construction
+- model invocation through the selected provider
+- runtime event normalization
 - structured actor output validation
 - sandbox-local exploration and patch production
 
@@ -220,12 +220,18 @@ digest-inconsistent.
 
 ## Auth And Secrets
 
-SDK credentials come from approved operator-controlled sources only.
-Target-local credential files and target-local environment requests are
-rejected.
-When an approved operator `OPENAI_API_KEY` is present, live Actor Runtime
-execution is enabled without requiring normal users to set internal runtime
-feature flags.
+`codex_vault` is the default local Actor Runtime provider. It uses Rail-owned
+Codex auth material, an artifact-local `CODEX_HOME`, ignored user config/rules,
+and runtime contamination audits so normal users do not need API keys or runtime
+flags for the local path.
+
+`openai_agents_sdk` remains available only for operator-controlled API-key
+environments. SDK credentials must come from approved operator-controlled
+sources only. Target-local credential files and target-local environment
+requests are rejected.
+
+`rail auth` commands are setup and diagnostics only. They prepare or inspect the
+Rail-owned Codex auth home; they do not become a task-execution contract.
 
 Rail must not persist secret values in:
 
@@ -269,10 +275,12 @@ contract for task execution.
 
 Rail is release-ready when all of the following are true:
 
-- The default Actor Runtime can execute through the OpenAI Agents SDK with a
-  real runner when credentials are configured.
-- Missing or invalid credentials fail before actor work starts and produce a
-  secret-safe readiness report.
+- The default `codex_vault` Actor Runtime can execute through Codex login with a
+  sealed actor environment.
+- `openai_agents_sdk` remains available for operator/API-key environments when
+  explicitly selected by Rail/operator defaults.
+- Missing or invalid auth material fails before actor work starts and produces
+  a secret-safe readiness report.
 - Artifact handles are persisted, reloadable, and bound to artifact ID, request
   digest, effective policy digest, and canonical project root.
 - Existing artifact operations resume from a persisted handle without composing
@@ -290,8 +298,8 @@ Rail is release-ready when all of the following are true:
 - The release gate builds the Python package, verifies packaged Rail assets,
   verifies repo `.harness` defaults stay aligned with packaged defaults, smokes
   the installed wheel, runs tests, lint, typing, docs guards, no-legacy guards,
-  deterministic SDK-adapter smoke, and optional live SDK smoke when credentials
-  are explicitly enabled.
+  deterministic Actor Runtime smoke, and optional live runtime smoke when
+  credentials are explicitly enabled.
 
 ## Release Gate
 
@@ -310,10 +318,11 @@ suite excluding the optional live smoke, runs lint and typing, and preserves
 docs guards, no-legacy guards, naming guards, repo `.harness` default alignment,
 and deterministic SDK-adapter smoke through the test suite.
 
-Optional live SDK smoke is skipped by default. When
+Optional live Actor Runtime smokes are skipped by default. When
 `RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1` and operator SDK credentials are configured,
-the gate enables live Actor Runtime execution and runs a narrow real-runner
-planner smoke to prove SDK adapter readiness. It is not evidence that an
+the gate runs the optional `openai_agents_sdk` smoke. When
+`RAIL_CODEX_VAULT_LIVE_SMOKE=1` and Rail-owned Codex auth is configured, the
+gate runs the optional `codex_vault` smoke. Neither smoke is evidence that an
 arbitrary downstream target repository task succeeded.
 
 ## Release Publishing (operator)

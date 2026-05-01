@@ -370,7 +370,8 @@ class CodexVaultActorRuntime:
         entry = self.catalog[invocation.actor]
         output_schema_ref, output_schema_path, output_schema_digest = _materialize_output_schema(invocation, entry.schema_source)
         prompt = (
-            f"{invocation.prompt}\n\n"
+            f"{entry.prompt}\n\n"
+            f"Invocation: {invocation.prompt}\n\n"
             f"Policy digest: {invocation.policy_digest}\n\n"
             f"Actor input JSON:\n{json.dumps(invocation.input, sort_keys=True, ensure_ascii=False)}"
         )
@@ -945,13 +946,11 @@ def _shell_event_policy_violation(
 
 
 def _executable_token_is_unsafe(token: str, executable_path: Path) -> bool:
-    return (
-        "/" in token
-        or executable_path.is_absolute()
-        or len(executable_path.parts) != 1
-        or _SHELL_VARIABLE_PATTERN.search(token) is not None
-        or token.startswith("~")
-    )
+    if _SHELL_VARIABLE_PATTERN.search(token) is not None or token.startswith("~"):
+        return True
+    if executable_path.is_absolute():
+        return False
+    return "/" in token or len(executable_path.parts) != 1
 
 
 def _write_capable_shell_flag_violation(executable: str, args: list[str]) -> str | None:
@@ -975,7 +974,7 @@ def _sed_script_uses_unsafe_command(args: list[str]) -> bool:
     index = 0
     while index < len(args):
         arg = args[index]
-        if arg in {"-f", "--file"} or arg.startswith("--file="):
+        if arg in {"-f", "--file"} or arg.startswith("-f") or arg.startswith("--file="):
             return True
         if arg in {"-e", "--expression"} and index + 1 < len(args):
             scripts.append(args[index + 1])

@@ -417,6 +417,27 @@ def test_codex_vault_runtime_blocks_tool_event_nested_in_content_array(tmp_path)
     assert "MCP invocation is not allowed" in result.structured_output["error"]
 
 
+def test_codex_vault_runtime_blocks_tool_event_nested_in_content_object(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"msg": {"type": "item.started", "content": {"type": "mcp_tool_call", "server": "filesystem"}}}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "MCP invocation is not allowed" in result.structured_output["error"]
+
+
 def test_codex_vault_runtime_blocks_content_array_command_only_shell_event(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(
@@ -428,6 +449,27 @@ def test_codex_vault_runtime_blocks_content_array_command_only_shell_event(tmp_p
             "acceptance_criteria_refined": [],
         },
         extra_events=[{"msg": {"type": "item.started", "content": [{"command": "/bin/zsh -lc 'touch app.txt'"}]}}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell executable is not allowed" in result.structured_output["error"]
+
+
+def test_codex_vault_runtime_blocks_content_object_command_only_shell_event(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"content": {"command": "touch app.txt"}}],
     )
     runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
 

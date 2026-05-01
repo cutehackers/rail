@@ -987,7 +987,9 @@ def _append_event_dicts(event: dict[str, object], dicts: list[tuple[dict[str, ob
                 if isinstance(item, dict):
                     _append_event_dicts(item, dicts, inherited_cwd=cwd)
     content = event.get("content")
-    if isinstance(content, list):
+    if isinstance(content, dict):
+        _append_event_dicts(content, dicts, inherited_cwd=cwd)
+    elif isinstance(content, list):
         for item in content:
             if isinstance(item, dict):
                 _append_event_dicts(item, dicts, inherited_cwd=cwd)

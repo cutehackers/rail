@@ -403,6 +403,41 @@ class CodexVaultActorRuntime:
         except Exception as exc:
             message = str(redact_secrets(str(exc)))
             reason = f"Codex Vault Actor Runtime execution failed: {message}"
+            post_run_target_tree_digest = tree_digest(invocation.target_root)
+            extra: dict[str, object] = {
+                "sandbox_root_ref": sandbox.sandbox_root.as_posix(),
+                "target_pre_run_tree_digest": target_pre_run_tree_digest,
+                "sandbox_base_tree_digest": tree_digest(sandbox.sandbox_root),
+                "post_run_target_tree_digest": post_run_target_tree_digest,
+                "output_schema_ref": output_schema_ref.as_posix(),
+                "output_schema_digest": output_schema_digest,
+                "error_type": type(exc).__name__,
+            }
+            if post_run_target_tree_digest != target_pre_run_tree_digest:
+                reason = "target tree changed outside Rail patch apply"
+                events_ref, evidence_ref = write_runtime_evidence(
+                    invocation.artifact_dir,
+                    invocation.actor,
+                    self._evidence_payload(
+                        invocation,
+                        readiness=readiness,
+                        vault_environment=vault_environment,
+                        status="interrupted",
+                        blocked_category="policy",
+                        error=reason,
+                        raw_events=raw_events,
+                        normalized_events=normalized_events,
+                        extra=extra | {"policy_violation": {"reason": reason}},
+                    ),
+                    events=normalized_events or None,
+                )
+                return ActorResult(
+                    status="interrupted",
+                    structured_output={"error": reason},
+                    events_ref=events_ref,
+                    runtime_evidence_ref=evidence_ref,
+                    blocked_category="policy",
+                )
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.actor,
@@ -415,14 +450,7 @@ class CodexVaultActorRuntime:
                     error=reason,
                     raw_events=raw_events,
                     normalized_events=normalized_events,
-                    extra={
-                        "sandbox_root_ref": sandbox.sandbox_root.as_posix(),
-                        "target_pre_run_tree_digest": target_pre_run_tree_digest,
-                        "sandbox_base_tree_digest": tree_digest(sandbox.sandbox_root),
-                        "output_schema_ref": output_schema_ref.as_posix(),
-                        "output_schema_digest": output_schema_digest,
-                        "error_type": type(exc).__name__,
-                    },
+                    extra=extra,
                 ),
                 events=normalized_events or None,
             )
@@ -1122,6 +1150,8 @@ def _option_path_operand(executable: str, arg: str, args: list[str], index: int)
             if arg.startswith(prefix) and len(arg) > len(prefix):
                 return arg[len(prefix) :]
     if executable == "find":
+        if arg == "-newer" and index + 1 < len(args):
+            return args[index + 1]
         if arg in {"-files0-from", "--files0-from"} and index + 1 < len(args):
             return args[index + 1]
         for prefix in ("-files0-from=", "--files0-from="):
@@ -1136,14 +1166,17 @@ def _option_path_operand(executable: str, arg: str, args: list[str], index: int)
             return args[index + 1]
         if arg.startswith("--files0-from=") and len(arg) > len("--files0-from="):
             return arg[len("--files0-from=") :]
+    if executable == "test" and arg in {"-e", "-f", "-d", "-r", "-s", "-x"} and index + 1 < len(args):
+        return args[index + 1]
     return None
 
 
 def _option_consumes_next_path(executable: str, arg: str) -> bool:
     return (
         (executable == "rg" and arg in {"-f", "--file", "--ignore-file"})
-        or (executable == "find" and arg in {"-f", "-files0-from", "--files0-from"})
+        or (executable == "find" and arg in {"-f", "-newer", "-files0-from", "--files0-from"})
         or (executable == "wc" and arg == "--files0-from")
+        or (executable == "test" and arg in {"-e", "-f", "-d", "-r", "-s", "-x"})
     )
 
 

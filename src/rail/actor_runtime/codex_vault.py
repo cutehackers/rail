@@ -50,7 +50,7 @@ _TRUSTED_RESOLVED_COMMAND_ROOTS = (
 _TRUSTED_SYSTEM_BINARY_ROOTS = (Path("/bin"), Path("/usr/bin"), Path("/usr/local/bin"), Path("/opt/homebrew/bin"))
 _UNTRUSTED_TEMP_ROOTS = (Path("/tmp"), Path("/var/tmp"))
 _READ_ONLY_SHELL_EXECUTABLES = {"pwd", "ls", "find", "rg", "sed", "cat", "wc", "head", "tail", "stat", "test"}
-_SHELL_OPERATOR_PATTERN = re.compile(r"(\|\||&&|[|<>;&`\n\r])|\$\(")
+_SHELL_OPERATOR_PATTERN = re.compile(r"(\|\||&&|[|<>;&`{}\n\r])|\$\(")
 _SHELL_VARIABLE_PATTERN = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\})")
 
 CodexCommandResolver = Callable[[], Path | None]
@@ -894,6 +894,15 @@ def _append_event_dicts(event: dict[str, object], dicts: list[dict[str, object]]
         child = event.get(key)
         if isinstance(child, dict):
             _append_event_dicts(child, dicts)
+        elif isinstance(child, list):
+            for item in child:
+                if isinstance(item, dict):
+                    _append_event_dicts(item, dicts)
+    content = event.get("content")
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict):
+                _append_event_dicts(item, dicts)
 
 
 def _shell_event_from_codex_event(event: dict[str, object], *, default_cwd: Path | None = None) -> dict[str, object] | None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import stat
+import uuid
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -32,7 +33,7 @@ def materialize_vault_environment(
 ) -> VaultEnvironment:
     actor_runtime_dir = artifact_dir / "actor_runtime"
     if actor is not None:
-        actor_runtime_dir = actor_runtime_dir / "actors" / _safe_actor_dir(actor)
+        actor_runtime_dir = actor_runtime_dir / "actors" / _safe_actor_dir(actor) / uuid.uuid4().hex
     codex_home = actor_runtime_dir / "codex_home"
     evidence_dir = actor_runtime_dir / "evidence"
     temp_dir = actor_runtime_dir / "tmp"
@@ -85,13 +86,16 @@ def _prepare_empty_directory(path: Path, *, mode: int) -> None:
 
 
 def _prepare_actor_runtime_dir(path: Path) -> None:
+    parents = list(reversed(path.parents))
+    for parent in parents:
+        if parent.exists() and (parent.is_symlink() or not parent.is_dir()):
+            raise ValueError("unsafe vault material")
     if path.is_symlink():
-        raise ValueError("unsafe vault material")
-    if path.exists() and not path.is_dir():
         raise ValueError("unsafe vault material")
     path.mkdir(parents=True, exist_ok=True)
-    if path.is_symlink():
-        raise ValueError("unsafe vault material")
+    for parent in [*parents, path]:
+        if parent.exists() and (parent.is_symlink() or not parent.is_dir()):
+            raise ValueError("unsafe vault material")
 
 
 def _scrub_vault_environment(base_environ: Mapping[str, str], *, codex_home: Path, temp_dir: Path) -> dict[str, str]:

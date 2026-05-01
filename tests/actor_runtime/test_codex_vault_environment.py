@@ -91,10 +91,55 @@ def test_materialize_vault_env_uses_actor_scoped_home_when_actor_is_provided(tmp
         actor="context_builder",
     )
 
-    assert planner_env.codex_home == artifact_dir / "actor_runtime" / "actors" / "planner" / "codex_home"
-    assert context_env.codex_home == artifact_dir / "actor_runtime" / "actors" / "context_builder" / "codex_home"
+    assert planner_env.codex_home.parts[-3:] == ("planner", planner_env.codex_home.parts[-2], "codex_home")
+    assert context_env.codex_home.parts[-3:] == ("context_builder", context_env.codex_home.parts[-2], "codex_home")
+    assert planner_env.codex_home != context_env.codex_home
     assert (planner_env.codex_home / "auth.json").is_file()
     assert (context_env.codex_home / "auth.json").is_file()
+
+
+def test_materialize_vault_env_can_materialize_same_actor_more_than_once(tmp_path):
+    artifact_dir = tmp_path / "artifact"
+    auth_home = tmp_path / "auth"
+    auth_home.mkdir()
+    (auth_home / "auth.json").write_text("{}", encoding="utf-8")
+
+    first = materialize_vault_environment(
+        artifact_dir=artifact_dir,
+        auth_home=auth_home,
+        base_environ={},
+        actor="planner",
+    )
+    second = materialize_vault_environment(
+        artifact_dir=artifact_dir,
+        auth_home=auth_home,
+        base_environ={},
+        actor="planner",
+    )
+
+    assert first.codex_home != second.codex_home
+    assert (first.codex_home / "auth.json").is_file()
+    assert (second.codex_home / "auth.json").is_file()
+
+
+def test_materialize_vault_env_rejects_symlinked_actor_parent(tmp_path):
+    artifact_dir = tmp_path / "artifact"
+    outside = tmp_path / "outside-actors"
+    outside.mkdir()
+    actors_dir = artifact_dir / "actor_runtime" / "actors"
+    actors_dir.parent.mkdir(parents=True)
+    actors_dir.symlink_to(outside, target_is_directory=True)
+    auth_home = tmp_path / "auth"
+    auth_home.mkdir()
+    (auth_home / "auth.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsafe vault material"):
+        materialize_vault_environment(
+            artifact_dir=artifact_dir,
+            auth_home=auth_home,
+            base_environ={},
+            actor="planner",
+        )
 
 
 def test_materialize_vault_env_rejects_preexisting_codex_surfaces(tmp_path):
@@ -300,8 +345,10 @@ def test_runtime_evidence_uses_relative_vault_refs(tmp_path, monkeypatch):
     result = runtime.run(build_invocation(handle, "planner"))
 
     evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
-    assert evidence["vault_codex_home_ref"] == "actor_runtime/actors/planner/codex_home"
-    assert evidence["vault_evidence_dir_ref"] == "actor_runtime/actors/planner/evidence"
+    assert evidence["vault_codex_home_ref"].startswith("actor_runtime/actors/planner/")
+    assert evidence["vault_codex_home_ref"].endswith("/codex_home")
+    assert evidence["vault_evidence_dir_ref"].startswith("actor_runtime/actors/planner/")
+    assert evidence["vault_evidence_dir_ref"].endswith("/evidence")
     serialized = json.dumps(evidence)
     assert str(handle.artifact_dir) not in serialized
     assert str(rail_home) not in serialized

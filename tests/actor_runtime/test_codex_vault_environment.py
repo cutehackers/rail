@@ -345,8 +345,9 @@ def test_runtime_evidence_uses_relative_vault_refs(tmp_path, monkeypatch):
     result = runtime.run(build_invocation(handle, "planner"))
 
     evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
-    assert evidence["vault_codex_home_ref"].startswith("actor_runtime/actors/planner/")
-    assert evidence["vault_codex_home_ref"].endswith("/codex_home")
+    assert "vault_codex_home_ref" not in evidence
+    assert evidence["codex_vault_home_ref"].startswith("actor_runtime/actors/planner/")
+    assert evidence["codex_vault_home_ref"].endswith("/codex_home")
     assert evidence["vault_evidence_dir_ref"].startswith("actor_runtime/actors/planner/")
     assert evidence["vault_evidence_dir_ref"].endswith("/evidence")
     serialized = json.dumps(evidence)

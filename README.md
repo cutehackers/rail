@@ -94,7 +94,7 @@ Validation evidence is tied to the applied patch and target tree digest. Evaluat
 
 ## Credentials
 
-SDK credentials come from approved operator-controlled sources only. Target-local credential files and target-local environment requests are rejected.
+The default `codex_vault` path uses Rail-owned Codex auth configured through `rail auth login` and checked with `rail auth doctor`. `openai_agents_sdk` credentials are optional operator-controlled inputs for explicit API-key environments. Target-local credential files and target-local environment requests are rejected.
 
 Actor environments receive the minimum necessary variables. Secret canaries and common API key shapes are redacted from traces, normalized events, validation logs, runtime evidence, terminal summaries, and result projection.
 

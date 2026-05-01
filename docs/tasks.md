@@ -169,7 +169,7 @@ Completed closure plans:
 
 - [x] Add a Python release gate script
   Done when a single local script runs the full Python test suite, lint, typing,
-  docs guard, no-legacy guard, and deterministic SDK-adapter smoke.
+  docs guard, no-legacy guard, and deterministic Actor Runtime smoke.
 
 ## Completed Later
 

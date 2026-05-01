@@ -1036,6 +1036,7 @@ def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
         Path("docs/SPEC.md"),
         Path("docs/ARCHITECTURE.md"),
         Path("docs/CONVENTIONS.md"),
+        Path("docs/tasks.md"),
         Path("skills/rail/SKILL.md"),
         Path("assets/skill/Rail/SKILL.md"),
         Path("src/rail/package_assets/skill/Rail/SKILL.md"),
@@ -1078,7 +1079,7 @@ Run:
 
 ```bash
 uv run --python 3.12 pytest tests/docs/test_removed_runtime_surfaces.py tests/docs/test_no_home_paths.py tests/build/test_package_assets.py -q
-rg -n "rail\\.normalize_request|def normalize_request|sealed_codex|vault_codex|actor backend|SDK-backed actors|SDK-powered|SDK traces|SDK trace|SDK Actor Runtime|SDK-adapter|SDK adapter" README.md README-kr.md docs/SPEC.md docs/ARCHITECTURE.md docs/CONVENTIONS.md skills/rail/SKILL.md assets/skill/Rail/SKILL.md src/rail/package_assets/skill/Rail/SKILL.md
+rg -n "rail\\.normalize_request|def normalize_request|sealed_codex|vault_codex|actor backend|SDK-backed actors|SDK-powered|SDK traces|SDK trace|SDK Actor Runtime|SDK-adapter|SDK adapter" README.md README-kr.md docs/SPEC.md docs/ARCHITECTURE.md docs/CONVENTIONS.md docs/tasks.md skills/rail/SKILL.md assets/skill/Rail/SKILL.md src/rail/package_assets/skill/Rail/SKILL.md
 ```
 
 Expected: pytest PASS. `rg` returns no matches.
@@ -1214,6 +1215,7 @@ git commit -m "fix: stabilize codex vault runtime checks"
 - [x] `rail.specify(draft)` is the only public request specification API.
 - [x] The removed request API is not exported, documented, or used in active product code.
 - [x] `codex_vault` is the default local Actor Runtime provider in repo and packaged policy defaults.
+- [x] Default setup and migration docs do not require `OPENAI_API_KEY`; SDK credentials remain optional operator-only inputs.
 - [x] Incorrect provider spellings and old provider names do not appear in active product surfaces.
 - [x] `openai_agents_sdk` remains available for explicit operator/API-key environments.
 - [x] Target-local policy cannot select or switch runtime provider.

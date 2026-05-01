@@ -737,7 +737,7 @@ class CodexVaultActorRuntime:
                 "copied_auth_material": vault_environment.copied_auth_material,
             },
             "runtime_provider": self.policy.runtime.provider,
-            "vault_codex_home_ref": vault_environment.codex_home.relative_to(invocation.artifact_dir).as_posix(),
+            "codex_vault_home_ref": vault_environment.codex_home.relative_to(invocation.artifact_dir).as_posix(),
             "vault_evidence_dir_ref": vault_environment.evidence_dir.relative_to(invocation.artifact_dir).as_posix(),
         }
         if blocked_category is not None:

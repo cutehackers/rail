@@ -33,6 +33,15 @@ def test_migrate_skill_installs_packaged_rail_skill(tmp_path):
     assert "Use this skill" in skill.read_text(encoding="utf-8")
 
 
+def test_migrate_skill_default_path_points_to_codex_auth_not_openai_api_key(tmp_path):
+    report = migrate_skill(codex_home=tmp_path, environ={}, homebrew_detector=lambda: False)
+
+    rendered = report.render()
+    assert "OPENAI_API_KEY" not in rendered
+    assert "export OPENAI_API_KEY" not in report.next_steps
+    assert report.next_steps == ["rail auth login", "rail auth doctor"]
+
+
 def test_setup_doctor_with_codex_vault_default_does_not_require_openai_api_key(tmp_path):
     report = build_setup_doctor_report(
         project_root=tmp_path,

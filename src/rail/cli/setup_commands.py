@@ -43,6 +43,7 @@ class MigrationReport(BaseModel):
     skill_dir: Path
     skill_installed: bool
     openai_key_configured: bool
+    sdk_credentials_required: bool = False
     old_homebrew_detected: bool
     next_steps: list[str]
 
@@ -51,10 +52,13 @@ class MigrationReport(BaseModel):
             f"{self.package_name} {self.package_version} migration",
             f"Rail skill: {'installed' if self.skill_installed else 'missing'} at {self.skill_dir}",
         ]
-        if self.openai_key_configured:
-            lines.append("OPENAI_API_KEY: configured")
-        else:
-            lines.append("OPENAI_API_KEY: missing")
+        if self.sdk_credentials_required:
+            if self.openai_key_configured:
+                lines.append("OPENAI_API_KEY: configured")
+            else:
+                lines.append("OPENAI_API_KEY: missing")
+        elif self.openai_key_configured:
+            lines.append("OPENAI_API_KEY: configured for optional operator SDK path")
         if self.old_homebrew_detected:
             lines.append("Old Homebrew rail: detected")
         lines.extend(f"Next: {step}" for step in self.next_steps)
@@ -166,7 +170,8 @@ def migrate_skill(
         skill_installed=True,
         openai_key_configured=openai_key_configured,
         old_homebrew_detected=old_homebrew_detected,
-        sdk_credentials_required=True,
+        sdk_credentials_required=False,
+        codex_auth_required=True,
     )
     return MigrationReport(
         package_name=PACKAGE_NAME,
@@ -174,6 +179,7 @@ def migrate_skill(
         skill_dir=skill_dir,
         skill_installed=(skill_dir / "SKILL.md").is_file(),
         openai_key_configured=openai_key_configured,
+        sdk_credentials_required=False,
         old_homebrew_detected=old_homebrew_detected,
         next_steps=next_steps,
     )
@@ -372,12 +378,15 @@ def _next_steps(
     openai_key_configured: bool,
     old_homebrew_detected: bool,
     sdk_credentials_required: bool,
+    codex_auth_required: bool = False,
 ) -> list[str]:
     steps: list[str] = []
     if old_homebrew_detected:
         steps.append("brew uninstall rail && brew cleanup rail")
     if not skill_installed:
         steps.append("rail migrate")
+    if codex_auth_required:
+        steps.extend(["rail auth login", "rail auth doctor"])
     if sdk_credentials_required and not openai_key_configured:
         steps.append("export OPENAI_API_KEY=...")
     if not steps:

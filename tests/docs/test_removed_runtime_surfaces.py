@@ -113,6 +113,7 @@ def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
         Path("docs/SPEC.md"),
         Path("docs/ARCHITECTURE.md"),
         Path("docs/CONVENTIONS.md"),
+        Path("docs/tasks.md"),
         Path("skills/rail/SKILL.md"),
         Path("assets/skill/Rail/SKILL.md"),
         Path("src/rail/package_assets/skill/Rail/SKILL.md"),
@@ -170,6 +171,14 @@ def test_readme_default_install_does_not_require_sdk_api_key():
     assert "export OPENAI_API_KEY=..." not in readme_kr
     assert "rail auth login" in readme
     assert "rail auth doctor" in readme
+
+
+def test_readme_credentials_section_is_provider_neutral():
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "SDK credentials come from approved operator-controlled sources only." not in readme
+    assert "Rail-owned Codex auth" in readme
+    assert "openai_agents_sdk" in readme
 
 
 def test_rail_migration_script_exists():

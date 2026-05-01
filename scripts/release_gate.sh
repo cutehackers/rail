@@ -11,7 +11,9 @@ uv run --python 3.12 python scripts/check_package_asset_alignment.py
 uv build
 uv run --python 3.12 python scripts/check_python_package_assets.py dist
 uv run --python 3.12 python scripts/check_installed_wheel.py dist
-uv run --python 3.12 pytest -q --ignore=tests/e2e/test_optional_live_sdk_smoke.py
+uv run --python 3.12 pytest -q \
+  --ignore=tests/e2e/test_optional_live_sdk_smoke.py \
+  --ignore=tests/e2e/test_optional_codex_vault_smoke.py
 uv run --python 3.12 ruff check src tests
 uv run --python 3.12 mypy src/rail
 
@@ -24,4 +26,10 @@ if [[ "${RAIL_ACTOR_RUNTIME_LIVE_SMOKE:-0}" == "1" ]]; then
   uv run --python 3.12 pytest tests/e2e/test_optional_live_sdk_smoke.py -q
 else
   echo "Skipping optional live SDK smoke; set RAIL_ACTOR_RUNTIME_LIVE_SMOKE=1 to opt in."
+fi
+
+if [[ "${RAIL_CODEX_VAULT_LIVE_SMOKE:-0}" == "1" ]]; then
+  uv run --python 3.12 pytest tests/e2e/test_optional_codex_vault_smoke.py -q
+else
+  echo "Skipping optional Codex Vault smoke; set RAIL_CODEX_VAULT_LIVE_SMOKE=1 to opt in."
 fi

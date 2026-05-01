@@ -445,32 +445,6 @@ class CodexVaultActorRuntime:
             "codex_returncode": command_result.returncode,
         }
 
-        if command_result.returncode != 0:
-            reason = "Codex command execution failed"
-            events_ref, evidence_ref = write_runtime_evidence(
-                invocation.artifact_dir,
-                invocation.actor,
-                self._evidence_payload(
-                    invocation,
-                    readiness=readiness,
-                    vault_environment=vault_environment,
-                    status="interrupted",
-                    blocked_category="runtime",
-                    error=reason,
-                    raw_events=raw_events,
-                    normalized_events=normalized_events,
-                    extra=base_extra | {"stderr": command_result.stderr},
-                ),
-                events=normalized_events or None,
-            )
-            return ActorResult(
-                status="interrupted",
-                structured_output={"error": reason},
-                events_ref=events_ref,
-                runtime_evidence_ref=evidence_ref,
-                blocked_category="runtime",
-            )
-
         policy_violation = _codex_event_policy_violation(
             raw_events,
             sandbox_root=sandbox.sandbox_root,
@@ -530,6 +504,32 @@ class CodexVaultActorRuntime:
                 events_ref=events_ref,
                 runtime_evidence_ref=evidence_ref,
                 blocked_category="policy",
+            )
+
+        if command_result.returncode != 0:
+            reason = "Codex command execution failed"
+            events_ref, evidence_ref = write_runtime_evidence(
+                invocation.artifact_dir,
+                invocation.actor,
+                self._evidence_payload(
+                    invocation,
+                    readiness=readiness,
+                    vault_environment=vault_environment,
+                    status="interrupted",
+                    blocked_category="runtime",
+                    error=reason,
+                    raw_events=raw_events,
+                    normalized_events=normalized_events,
+                    extra=base_extra | {"stderr": command_result.stderr},
+                ),
+                events=normalized_events or None,
+            )
+            return ActorResult(
+                status="interrupted",
+                structured_output={"error": reason},
+                events_ref=events_ref,
+                runtime_evidence_ref=evidence_ref,
+                blocked_category="runtime",
             )
 
         if final_output is None:

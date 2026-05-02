@@ -1,96 +1,147 @@
-# Actor Live Smoke Self-Repair Design
+# Actor Live Smoke Repair Design
 
 ## Goal
 
-Define a `codex_vault`-only live smoke environment that runs each Rail actor in
-isolation, uses the real Codex command path, detects invalid actor behavior,
-and automatically repairs Rail-owned `prompt`, `runtime`, and `asset` logic
-when the failure is attributable to the Rail control plane.
+Define a `codex_vault` live smoke environment that can isolate actor-level
+failures, classify the owning Rail control-plane surface, and produce repair
+guidance that can later become safe automatic repair.
 
-The goal is not only to detect regressions. The system must support
-`detect -> localize -> apply -> rerun` so that a live smoke failure can drive
-targeted self-repair inside this repository and re-validate the same actor
-under the same fixture conditions.
+The long-term direction remains `detect -> localize -> repair -> rerun`.
+However, v1 must not self-mutate the repository on shallow actor evidence.
+The first implementation must prove isolated live execution and reliable
+localization before automatic apply or commit behavior is allowed.
 
 ## Problem
 
-The current optional live path is supervisor-oriented. It is useful for proving
-that the end-to-end flow can run, but it is inefficient for debugging and
-repair:
+The current optional live path is supervisor-oriented. It proves that an
+end-to-end flow can run, but it is inefficient for debugging and repair:
 
-- failures surface late and often after unrelated actor work
-- policy violations are discovered, but the failing actor is not isolated as the
-  primary diagnostic unit
-- repeated live verification is expensive because the whole flow must be
-  replayed
-- evidence often shows that the fix belongs to Rail-owned prompts, runtime
-  contracts, or packaged assets rather than to the target repository
+- failures surface after unrelated actor work
+- policy violations are discovered without a narrow actor-level diagnostic unit
+- repeated live verification is expensive because the whole flow is replayed
+- evidence often points to Rail-owned prompts, runtime contracts, or packaged
+  assets rather than target repository code
 
 Recent failures such as forbidden `grep` usage in `context_builder`, sandbox
-path escape attempts, and interpreter-selection drift show that the main value
-of live smoke is to expose Rail control-plane mistakes and close them quickly.
+path escape attempts, and interpreter-selection drift show that live smoke must
+help locate Rail control-plane mistakes quickly. The first version should make
+those failures actionable without creating an unsafe self-mutating harness.
 
 ## Scope
 
-This design covers:
+### V1 Scope
 
-- `codex_vault` as the only v1 live provider
-- all supervisor actors as actor-isolated live smoke targets
+V1 covers:
+
+- `codex_vault` as the only live provider
+- actor-isolated live smoke for `planner` and `context_builder`
 - real Codex command execution
 - real sandbox preparation and real policy audit
-- actor-specific `policy smoke` and lightweight `behavior smoke`
-- automatic self-repair when the fix belongs to Rail-owned `prompt`,
-  `runtime`, or packaged `asset` surfaces
-- `pytest` and CLI entrypoints built on one shared runner
+- immutable fixture target snapshots
+- report-only failure classification
+- repair proposal generation for Rail-owned `prompt`, `runtime`, and `asset`
+  surfaces
+- one shared runner used by `pytest` and CLI entrypoints
 
-This design does not cover:
+V1 explicitly excludes:
 
+- automatic patch application
+- automatic branch creation or commits
+- all non-initial actors unless they receive canonical seeded inputs in a later
+  phase
 - `openai_agents_sdk` live execution
 - arbitrary external target repositories
 - replacing supervisor end-to-end live smoke
 - semantic grading of actor output quality beyond smoke-level contracts
-- automatic policy relaxation
-- automatic edits to the target repository, auth homes, or runtime evidence
+- policy relaxation
+- edits to target repositories, auth homes, runtime evidence, or smoke evidence
+
+### Later Phases
+
+Later phases may add:
+
+- canonical seeded inputs for `critic`, `generator`, `executor`, and `evaluator`
+- installed-wheel asset verification
+- automatic apply-and-rerun in a disposable repair worktree
+- repair branch creation and actor-scoped commits
+- full actor coverage once upstream seed contracts are stable
+
+Those phases require the safety gates defined in this document before
+self-mutation is enabled.
 
 ## Design Principles
 
 - Keep the normal product contract skill-first and Python-API-first.
 - Fail closed on readiness, policy, and evidence ambiguity.
 - Use real provider behavior, not mocks, for live smoke.
-- Treat each actor as the primary repair unit.
-- Limit automatic repair to small, reviewable Rail-owned changes.
-- Preserve strong separation between live smoke artifacts and normal task
-  artifacts.
-- Prefer deterministic fixture targets over realistic but noisy external
-  projects.
+- Treat each actor as the primary diagnostic unit.
+- Do not auto-apply or auto-commit changes until cross-surface safety gates
+  exist.
+- Keep live smoke artifacts separate from normal resumable Rail task artifacts.
+- Use deterministic fixture snapshots instead of external target projects.
+- Preserve policy strictness; repair Rail guidance and contracts instead of
+  loosening guardrails.
 
 ## Runtime Model
 
-### Live Target
+### Fixture Target
 
-Live smoke runs against a repo-owned fixture target workspace stored inside this
-repository. The fixture is small, deterministic, and intentionally shaped to
-exercise the actor prompts, runtime contracts, and audit rules that Rail owns.
+Live smoke runs against a repo-owned fixture target workspace. The fixture is
+small, deterministic, and shaped to exercise the actor prompts, runtime
+contracts, and audit rules that Rail owns.
 
-Each actor run uses a fresh copy of the fixture target so that one actor's
-mutations cannot contaminate the next actor's live smoke result.
+Each actor run receives a fresh immutable copy of the fixture. The runner records
+a fixture digest before execution and rejects runs when the fixture source has
+unexpected local changes.
+
+Smoke outputs must live outside the copied fixture and outside normal Rail task
+artifacts. Later actor runs must not be able to read prior smoke reports as
+target context.
 
 ### Execution Boundary
 
-Each live smoke run must include:
+Each v1 live smoke run includes:
 
-1. fixture target preparation
-2. actor-local artifact and attempt directory allocation
-3. real actor invocation construction
-4. `codex_vault` sandbox materialization
-5. real Codex command execution
-6. normalized event capture
-7. runtime evidence capture
-8. policy audit
-9. actor smoke contract evaluation
+1. fixture source digest check
+2. fresh fixture target copy
+3. smoke-only artifact/report directory allocation
+4. real actor invocation construction
+5. `codex_vault` sandbox materialization
+6. real Codex command execution
+7. normalized event capture
+8. runtime evidence capture
+9. policy audit
+10. actor smoke contract evaluation
+11. failure classification and repair proposal generation
 
 The runner does not execute the full supervisor graph. It executes one actor at
 a time while preserving the real provider boundary and the real audit path.
+
+## Actor Coverage
+
+### V1 Actors
+
+V1 includes only `planner` and `context_builder`.
+
+These actors are first because they can be isolated with request-level inputs and
+do not require synthetic outputs from prior actors. They are also the actors most
+directly involved in recent policy and context-gathering failures.
+
+### Deferred Actors
+
+`critic`, `generator`, `executor`, and `evaluator` are deferred until the runner
+defines canonical seeded inputs for each actor. A deferred actor must not be
+added to live smoke until its upstream input seed is:
+
+- schema-valid
+- versioned
+- fixture-digest-bound
+- realistic enough to exercise the actor's policy boundary
+- clearly marked as synthetic so failures can be localized correctly
+
+Without these seed contracts, a failing downstream actor could reflect bad
+synthetic upstream state rather than a problem in that actor's prompt or runtime
+contract.
 
 ## Actor Smoke Contracts
 
@@ -98,79 +149,95 @@ Each actor live smoke uses two layers of checks.
 
 ### Policy Smoke
 
-Every actor must pass the same strict policy checks:
+Every actor must pass strict policy checks:
 
 - readiness requirements are satisfied
-- the actor runs inside the expected sandbox boundary
-- the actor does not read parent directories, host paths, or hidden user config
-- the actor does not invoke forbidden executables or forbidden shell patterns
-- the actor does not use disallowed auth or capability sources
-- evidence is recorded and attributable to the current actor run
+- execution happens inside the expected sandbox boundary
+- parent directories, host paths, and hidden user config are not read
+- forbidden executables and forbidden shell patterns are not used
+- disallowed auth or capability sources are not used
+- normalized events and runtime evidence are recorded for the current actor run
 
 Any policy failure is terminal for that actor attempt and becomes the primary
-repair input.
+diagnostic input.
 
 ### Behavior Smoke
 
-Each actor also has a lightweight shape contract that checks only the minimum
-required output for that actor's role. These checks must stay intentionally
-shallow so the live harness remains a regression detector rather than a semantic
-grading system.
+Behavior smoke checks only the minimum output shape needed to prove that the
+actor executed its role. It must stay intentionally shallow so the live harness
+does not become a flaky semantic grading system.
 
-Examples:
+V1 behavior checks:
 
-- `planner`: structured plan output exists and required goal/constraint/completion
-  fields are present
+- `planner`: structured plan output exists and required goal, constraint, and
+  completion fields are present
 - `context_builder`: context pack output is schema-valid and includes non-empty
   relevant files, repo patterns, forbidden changes, and implementation hints
-- `critic`: critique output is schema-valid and contains actionable findings or
-  explicit no-issue reasoning in the required shape
-- `generator`: generation output is schema-valid and references the intended
-  mutation surface
-- `executor`: patch bundle output or explicit no-op output is shape-valid and
-  attributable
-- `evaluator`: terminal recommendation, risk, evidence refs, and next-step
-  fields are shape-valid
 
-Actor-specific behavior smoke must remain limited to structural and
-minimum-presence checks. It must not attempt to score overall implementation
-quality.
+Later downstream actors may require stronger contracts, especially `executor`
+and `evaluator`, because they own mutation and evidence decisions.
 
 ## Failure Classification
 
-When an actor live smoke fails, the runner normalizes the failure into one of
-the following classes:
+V1 classification is report-only. It must not trigger automatic patch
+application.
 
-- `policy`
-- `prompt_drift`
-- `runtime_contract_gap`
+The report records both a symptom class and a suspected owning surface.
+
+Symptom classes:
+
+- `readiness_failure`
+- `provider_transient_failure`
+- `policy_violation`
 - `schema_mismatch`
-- `asset_drift`
-- `readiness`
+- `fixture_digest_mismatch`
+- `fixture_prep_failure`
+- `evidence_writer_failure`
+- `behavior_smoke_failure`
+- `unknown_failure`
+
+Owning surfaces:
+
+- `actor_prompt`
+- `runtime_invocation`
+- `runtime_contract`
+- `packaged_asset`
+- `fixture`
+- `provider`
+- `operator_environment`
 - `unknown`
 
-The classification result must identify both the failure class and the owning
-repair surface:
+The runner may produce a repair proposal only when:
 
-- actor prompt
-- runtime invocation or runtime contract
-- packaged skill or packaged default asset
+- the symptom is reproducible in the current run
+- the owning surface is Rail-owned
+- the proposal does not relax policy
+- the proposal does not alter target files, auth homes, evidence, or schemas to
+  hide bad output
 
-The runner must not classify a failure as automatically repairable unless the
-owning surface is inside the Rail control plane and the proposed change falls
-within the allowed automatic repair scope.
+Examples:
 
-## Self-Repair Loop
+- `grep` used by `context_builder`: classify as `policy_violation`, likely
+  owning surface `actor_prompt` or `runtime_contract`
+- parent directory read attempt: classify as `policy_violation`, likely owning
+  surface `actor_prompt` or `runtime_contract`
+- missing Rail auth: classify as `readiness_failure`, owning surface
+  `operator_environment`
+- malformed actor output: classify as `schema_mismatch` or
+  `behavior_smoke_failure`, owning surface `actor_prompt` unless evidence points
+  elsewhere
 
-### Allowed Repair Scope
+## Repair Proposal Model
 
-Automatic repair is allowed only for Rail-owned:
+V1 creates repair proposals but does not apply them automatically.
+
+Allowed proposal surfaces:
 
 - actor prompts
 - runtime invocation and runtime contract logic
 - packaged skill or packaged default assets
 
-Typical repair actions include:
+Typical proposals include:
 
 - strengthening prompt wording to forbid invalid fallback behavior
 - adding or tightening actor runtime contract fields
@@ -178,53 +245,52 @@ Typical repair actions include:
 - aligning packaged actor defaults with repo-owned actor prompts
 - tightening executable guidance where policy already requires it
 
-### Forbidden Repair Scope
-
-The harness must never automatically:
+Forbidden proposal actions:
 
 - relax policy to make a failing actor pass
 - edit the fixture target to hide a Rail-owned problem
 - edit any external target repository
 - mutate auth homes
-- modify runtime evidence or normalized event output
+- modify runtime evidence or normalized events
 - loosen output schemas only to accommodate bad actor output
 
-### Loop Shape
+The repair report must include:
 
-For one actor run:
+- failed actor
+- symptom class
+- suspected owning surface
+- evidence refs
+- proposed file paths
+- proposed change summary
+- why the proposal preserves fail-closed behavior
+
+## Automatic Repair Gate
+
+Automatic apply-and-rerun is a later phase. It cannot be enabled until all of
+these gates exist:
+
+- disposable repair worktree creation
+- clean-index precondition in the source worktree
+- allowlisted staging paths
+- generated smoke output exclusion
+- no branch switching in the operator's current worktree
+- per-actor repair commits only after rerun success
+- cross-actor or supervisor smoke check for changes that can affect multiple
+  actors
+- installed-wheel asset verification when packaged assets are repaired
+- explicit retry limit
+
+Once these gates exist, automatic repair may use:
 
 1. execute live smoke
-2. classify the failure
-3. localize the owning Rail surface
-4. generate a minimal repair patch
-5. apply the patch
-6. rerun the same actor against the same fixture shape
-7. stop on pass or after the retry limit is reached
+2. classify failure
+3. generate a minimal patch in the disposable repair worktree
+4. rerun the same actor against a fresh fixture snapshot
+5. run required cross-surface smoke checks for shared prompt/runtime/asset
+   changes
+6. commit the actor-scoped repair only on the repair branch
 
-The retry limit must be low and explicit. v1 should cap the automatic repair
-loop at a small fixed number of reruns so the system does not drift into
-unbounded exploration.
-
-## Persistence And Git Behavior
-
-Automatic repair uses `apply-and-rerun`.
-
-When a repair succeeds:
-
-- the fix remains in the working tree
-- the harness records the failure class, owning surface, applied patch summary,
-  and rerun result
-- the harness commits the change automatically
-
-Git safety rules for v1:
-
-- create a repair branch only when the first actual repair is needed
-- use a repair-only branch, not the caller's current branch
-- commit each actor's successful repair immediately as its own commit
-- do not wait for all actors to pass before creating commits
-
-This structure preserves precise blame and rollback boundaries for each actor
-repair.
+Until then, v1 remains report-only.
 
 ## Runner And Interfaces
 
@@ -238,8 +304,8 @@ The core implementation should live in one shared runner API that owns:
 - evidence loading
 - smoke contract evaluation
 - failure classification
-- automatic repair orchestration
-- artifact and report persistence
+- repair proposal generation
+- smoke report persistence
 
 Both test and CLI entrypoints must call this shared runner rather than re-create
 actor execution logic in parallel.
@@ -248,22 +314,22 @@ actor execution logic in parallel.
 
 `pytest` integration should support:
 
-- selecting all live actor smokes
-- selecting one actor or a subset of actors
-- clear assertion messages that lead with actor name, blocked reason, and
-  artifact/report path
+- selecting all v1 live actor smokes
+- selecting one actor
+- clear assertion messages that lead with actor name, symptom class, blocked
+  reason, and report path
 
 Readiness failures must be hard test failures, not skips, because the explicit
-purpose of this suite is to validate that the live environment is actually ready
-to execute and repair actors.
+purpose of this suite is to validate that the live environment is ready.
 
 ### CLI Interface
 
-The CLI should expose an operator-facing surface for ad hoc diagnosis, such as:
+The CLI should expose an operator-facing surface for ad hoc diagnosis:
 
-- run one actor live smoke
-- run all actor live smokes
-- preserve artifacts and reports for inspection
+- run one v1 actor live smoke
+- run all v1 actor live smokes
+- preserve smoke reports for inspection
+- print repair proposals without applying them
 
 The CLI is a thin wrapper over the shared runner. It must not introduce a
 separate execution model.
@@ -273,53 +339,70 @@ separate execution model.
 Live smoke outputs must not be confused with normal resumable Rail task
 artifacts.
 
-v1 should use a separate artifact namespace for actor live smoke data that
-stores:
+V1 uses a separate smoke report namespace that stores:
 
 - actor name
-- fixture identity
+- fixture digest
 - invocation snapshot
 - normalized events
 - runtime evidence
 - smoke verdict
-- failure classification
-- applied repair summary
-- rerun verdict
-- created repair branch and commit refs when applicable
+- symptom class
+- suspected owning surface
+- repair proposal summary
 
 These reports are diagnostic products, not resumable task handles.
+
+Smoke report paths must be excluded from fixture target copies and from actor
+context collection.
+
+## Packaged Asset Verification
+
+V1 may identify packaged asset drift, but it must distinguish repo-source
+verification from installed-surface verification.
+
+If a proposal touches packaged skill or default actor assets, the report must
+state whether the installed wheel or installed tool surface was exercised. A
+proposal that only checks repo-local files must not claim that the shipped
+surface has been proven.
+
+Installed-surface verification is required before later automatic repair can
+commit packaged asset changes.
 
 ## Release And Operations
 
 Actor-isolated live smoke is an explicit operator path. It is not part of the
 default local test suite and it is not enabled by default in the release gate.
 
-v1 should be wired behind an explicit flag so operators can opt in to the full
-live self-repair path when they want to validate or harden the Rail control
-plane. Once invoked, readiness failures must fail closed.
+V1 should be wired behind an explicit flag so operators can opt in to live
+diagnostics. Once invoked, readiness failures must fail closed.
 
 Supervisor-level live smoke remains valuable as a separate end-to-end proof, but
-it no longer carries the full burden of diagnosing or repairing actor-level
-drift.
+it no longer carries the full burden of diagnosing actor-level drift.
 
 ## Success Criteria
 
-This design is successful when:
+V1 is successful when:
 
-- each supervisor actor can be live-smoked in isolation through `codex_vault`
-- failures are classified into actionable Rail-owned repair surfaces
-- allowed failures can be repaired automatically through `prompt`, `runtime`, or
-  `asset` changes
-- the same actor can be rerun immediately after repair and produce a passing
-  smoke result
-- repair commits are isolated on a repair-only branch
-- the live smoke outputs make debugging faster than replaying full supervisor
-  runs
+- `planner` and `context_builder` can be live-smoked in isolation through
+  `codex_vault`
+- policy failures are localized to actionable symptom and owning-surface pairs
+- smoke reports include evidence refs and repair proposals for Rail-owned
+  prompt, runtime, or asset surfaces
+- fixture snapshots are immutable and digest-bound
+- smoke artifacts cannot be mistaken for resumable Rail task artifacts
+- no automatic patch, branch, or commit behavior exists in v1
 
-## Open Decisions Deferred From v1
+The broader self-repair direction is successful only after later phases prove
+that automatic apply, rerun, and commit behavior can run inside disposable
+worktrees with allowlisted staging and cross-surface validation.
 
-- Whether multi-actor chained smoke should exist alongside isolated actor smoke
-- Whether successful repairs should later be squashed into fewer commits
-- Whether a supervised end-to-end live run should consume actor-level smoke
-  reports as prerequisites
-- Whether additional provider backends should reuse the same self-repair model
+## Open Decisions Deferred From V1
+
+- Canonical seeded input contracts for downstream actors
+- Whether all actors should eventually be repaired independently or in groups
+- Exact cross-surface checks required before auto-commit
+- Whether successful repair commits should be squashed after review
+- Whether supervisor live runs should consume actor-level smoke reports as
+  prerequisites
+- Whether additional providers should reuse the same repair model

@@ -24,6 +24,7 @@ _ALLOWED_ENV_KEYS = {"PATH", "HOME", "CODEX_HOME", "TMPDIR", "TMP", "TEMP"}
 _ALLOWED_AUTH_MATERIAL = {"auth.json"}
 _TRUSTED_PROCESS_PATH = "/usr/bin:/bin"
 _CAPABILITY_IDENTITY_KEYS = ("type", "kind", "tool", "name")
+_BEHAVIOR_SIGNAL_KEYS = ("type", "kind", "category", "message")
 _CAPABILITY_EVENT_TYPES = {
     "tool_call",
     "tool_invocation",
@@ -49,7 +50,7 @@ _TOOL_EVENT_TYPES = {
     "mcp_tool_call",
 }
 _CAPABILITY_EXECUTION_TYPES = {"capability_call", "capability_execution", "capability_invocation"}
-_BEHAVIOR_AFFECTING_SOURCES = {"user", "parent", "target", "unknown", ""}
+_BEHAVIOR_AFFECTING_SOURCES = {"user", "parent", "target", "unknown"}
 _PASSIVE_EVENT_TERMS = {"plugin_cache", "skill_registry", "metadata", "discovery", "actor-local config inspected"}
 _HOOK_RULE_CONFIG_EVENT_TYPES = {
     "hook_execution",
@@ -144,6 +145,7 @@ def audit_codex_event_capabilities(events: list[dict[str, object]]) -> VaultAudi
             event_kind = _event_token(mapping, "kind")
             event_source = _event_token(mapping, "source")
             identity = _event_identity_text(mapping)
+            behavior_signal = _event_behavior_signal_text(mapping)
             if _is_mcp_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=identity):
                 return _violation(code="mcp_capability_used", reason="MCP invocation is not allowed", audit_layer="capability")
             if _is_plugin_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=identity):
@@ -156,8 +158,8 @@ def audit_codex_event_capabilities(events: list[dict[str, object]]) -> VaultAudi
                 identity=identity,
             ):
                 return _violation(code="skill_capability_used", reason="skill invocation is not allowed", audit_layer="capability")
-            if _is_hook_rule_config_capability_event(event_type=event_type, event_kind=event_kind, identity=identity):
-                return _hook_rule_config_violation(event_type or event_kind or identity)
+            if _is_hook_rule_config_capability_event(event_type=event_type, event_kind=event_kind, behavior_signal=behavior_signal):
+                return _hook_rule_config_violation(behavior_signal)
     return None
 
 
@@ -202,16 +204,18 @@ def _is_skill_capability_event(
 ) -> bool:
     if event_type in {"skill_invocation", "skill_execution"} or event_kind in {"skill_invocation", "skill_execution"}:
         return True
+    if _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind) and event_source in _BEHAVIOR_AFFECTING_SOURCES:
+        return True
     if "skill" not in identity:
         return False
     return _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind) and event_source in _BEHAVIOR_AFFECTING_SOURCES
 
 
-def _is_hook_rule_config_capability_event(*, event_type: str, event_kind: str, identity: str) -> bool:
+def _is_hook_rule_config_capability_event(*, event_type: str, event_kind: str, behavior_signal: str) -> bool:
     if event_type in _HOOK_RULE_CONFIG_EVENT_TYPES or event_kind in _HOOK_RULE_CONFIG_EVENT_TYPES:
         return True
     behavior_change_terms = ("applied", "execution", "executed", "loaded", "load", "materialized")
-    return any(term in identity for term in ("hook", "rule", "config")) and any(term in identity for term in behavior_change_terms)
+    return any(term in behavior_signal for term in ("hook", "rule", "config")) and any(term in behavior_signal for term in behavior_change_terms)
 
 
 def _hook_rule_config_violation(value: str) -> VaultAuditViolation:
@@ -219,7 +223,7 @@ def _hook_rule_config_violation(value: str) -> VaultAuditViolation:
         return _violation(code="hook_capability_used", reason="hook materialization is not allowed", audit_layer="capability")
     if "rule" in value:
         return _violation(code="rule_capability_used", reason="user rule materialization is not allowed", audit_layer="capability")
-    return _violation(code="config_capability_used", reason="unexpected config inheritance is not allowed", audit_layer="capability")
+    return _violation(code="inherited_config_applied", reason="unexpected config inheritance is not allowed", audit_layer="capability")
 
 
 def _is_tool_or_capability_call(mapping: dict[str, object], *, event_type: str, event_kind: str) -> bool:
@@ -241,6 +245,10 @@ def _event_token(mapping: dict[str, object], key: str) -> str:
 
 def _event_identity_text(mapping: dict[str, object]) -> str:
     return " ".join(str(mapping.get(key)).lower() for key in _CAPABILITY_IDENTITY_KEYS if mapping.get(key) is not None)
+
+
+def _event_behavior_signal_text(mapping: dict[str, object]) -> str:
+    return " ".join(str(mapping.get(key)).lower() for key in _BEHAVIOR_SIGNAL_KEYS if mapping.get(key) is not None)
 
 
 def _violation(

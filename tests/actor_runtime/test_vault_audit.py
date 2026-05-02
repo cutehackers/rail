@@ -188,6 +188,28 @@ def test_capability_audit_blocks_actual_mcp_tool_invocation():
     assert violation.audit_layer == "capability"
 
 
+def test_capability_audit_blocks_user_sourced_generic_capability_call():
+    events = [{"type": "capability_call", "source": "user", "name": "something"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "skill_capability_used"
+    assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_blocks_user_config_loaded_event():
+    events = [{"type": "event", "category": "config", "message": "user config loaded", "source": "user"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "inherited_config_applied"
+    assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_allows_passive_actor_local_config_inspection():
+    events = [{"type": "event", "category": "config", "message": "actor-local config inspected"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is None
+
+
 def test_capability_audit_blocks_user_skill_invocation():
     events = [{"type": "skill_invocation", "name": "rail", "source": "user"}]
     violation = audit_codex_event_capabilities(events)

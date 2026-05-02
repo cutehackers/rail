@@ -22,6 +22,8 @@ def live_smoke_fixture_source() -> Path:
 
 
 def copy_fixture_target(target_root: Path, *, report_root: Path) -> CopiedFixtureTarget:
+    if target_root.exists():
+        shutil.rmtree(target_root)
     shutil.copytree(
         live_smoke_fixture_source(),
         target_root,

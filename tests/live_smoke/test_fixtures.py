@@ -23,3 +23,16 @@ def test_copy_fixture_target_records_digest_and_excludes_smoke_reports(tmp_path:
     assert copied.fixture_digest.startswith("sha256:")
     assert copied.target_root != live_smoke_fixture_source()
     assert not (copied.target_root / "smoke-reports").exists()
+
+
+def test_copy_fixture_target_replaces_existing_target(tmp_path: Path) -> None:
+    target_root = tmp_path / "target"
+    target_root.mkdir()
+    stale_file = target_root / "stale.txt"
+    stale_file.write_text("old fixture content", encoding="utf-8")
+
+    copied = copy_fixture_target(target_root, report_root=tmp_path / "smoke-reports")
+
+    assert not stale_file.exists()
+    assert (copied.target_root / "README.md").is_file()
+    assert (copied.target_root / "app" / "service.py").is_file()

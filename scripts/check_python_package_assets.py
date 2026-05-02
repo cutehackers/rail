@@ -15,6 +15,11 @@ REQUIRED_PACKAGE_ASSETS = (
     "package_assets/defaults/supervisor/actor_runtime.yaml",
     "package_assets/defaults/rules/allowed_commands.md",
     "package_assets/defaults/rubrics/bug_fix.yaml",
+    "package_assets/live_smoke/fixture_target/README.md",
+    "package_assets/live_smoke/fixture_target/docs/ARCHITECTURE.md",
+    "package_assets/live_smoke/fixture_target/docs/CONVENTIONS.md",
+    "package_assets/live_smoke/fixture_target/app/service.py",
+    "package_assets/live_smoke/fixture_target/tests/test_service.py",
 )
 
 

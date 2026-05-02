@@ -8,7 +8,7 @@ from pathlib import Path
 
 from scripts.check_package_asset_alignment import find_alignment_drift
 from scripts.check_package_asset_alignment import default_alignment_pairs
-from scripts.check_python_package_assets import find_missing_assets
+from scripts.check_python_package_assets import REQUIRED_PACKAGE_ASSETS, find_missing_assets
 
 
 def test_release_gate_runs_asset_alignment_checker():
@@ -126,6 +126,14 @@ def test_package_asset_checker_reports_missing_required_assets(tmp_path: Path):
     assert "wheel: rail/package_assets/defaults/supervisor/actor_runtime.yaml" in missing
 
 
+def test_required_package_assets_include_live_smoke_fixture_target():
+    assert "package_assets/live_smoke/fixture_target/README.md" in REQUIRED_PACKAGE_ASSETS
+    assert "package_assets/live_smoke/fixture_target/docs/ARCHITECTURE.md" in REQUIRED_PACKAGE_ASSETS
+    assert "package_assets/live_smoke/fixture_target/docs/CONVENTIONS.md" in REQUIRED_PACKAGE_ASSETS
+    assert "package_assets/live_smoke/fixture_target/app/service.py" in REQUIRED_PACKAGE_ASSETS
+    assert "package_assets/live_smoke/fixture_target/tests/test_service.py" in REQUIRED_PACKAGE_ASSETS
+
+
 def test_package_asset_checker_accepts_required_assets(tmp_path: Path):
     dist = tmp_path / "dist"
     dist.mkdir()
@@ -138,15 +146,7 @@ def test_package_asset_checker_accepts_required_assets(tmp_path: Path):
 
 
 def _required_asset_paths() -> list[str]:
-    return [
-        "package_assets/skill/Rail/SKILL.md",
-        "package_assets/skill/Rail/references/examples.md",
-        "package_assets/defaults/actors/planner.md",
-        "package_assets/defaults/templates/plan.schema.yaml",
-        "package_assets/defaults/supervisor/actor_runtime.yaml",
-        "package_assets/defaults/rules/allowed_commands.md",
-        "package_assets/defaults/rubrics/bug_fix.yaml",
-    ]
+    return list(REQUIRED_PACKAGE_ASSETS)
 
 
 def _write_wheel(path: Path, members: list[str]) -> None:

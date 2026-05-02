@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from collections.abc import Sequence
 from pathlib import Path
@@ -16,6 +17,8 @@ from rail.cli.setup_commands import (
     package_version,
     run_codex_login,
 )
+from rail.live_smoke import LiveSmokeActor, LiveSmokeVerdict
+from rail.live_smoke.runner import LiveSmokeRunner
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -53,8 +56,35 @@ def main(argv: Sequence[str] | None = None) -> int:
             auth_login = login_codex_auth(environ=os.environ, runner=run_codex_login)
             print(auth_login.render())
             return auth_login.returncode
+    if args.command == "smoke":
+        return _run_smoke_command(args)
     parser.print_help()
     return 1
+
+
+def _run_smoke_command(args: argparse.Namespace) -> int:
+    if not getattr(args, "live", False):
+        print("--live is required for actor live smoke")
+        return 1
+
+    if args.smoke_command == "actor":
+        try:
+            actor = LiveSmokeActor(args.actor_name)
+        except ValueError:
+            print(f"unsupported v1 live smoke actor: {args.actor_name}")
+            return 1
+        runner = LiveSmokeRunner(report_root=args.report_root)
+        reports = [runner.run_actor(actor)]
+    elif args.smoke_command == "actors":
+        runner = LiveSmokeRunner(report_root=args.report_root)
+        reports = runner.run_all()
+    else:
+        return 1
+
+    for report in reports:
+        print(json.dumps(report.model_dump(mode="json"), sort_keys=True))
+
+    return 0 if all(report.verdict == LiveSmokeVerdict.PASSED for report in reports) else 1
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -84,6 +114,28 @@ def _parser() -> argparse.ArgumentParser:
         "--live-check",
         action="store_true",
         help="run explicit live auth validation when supported by Rail",
+    )
+
+    smoke = subparsers.add_parser("smoke", help="run optional Rail smoke diagnostics")
+    smoke_subparsers = smoke.add_subparsers(dest="smoke_command")
+
+    smoke_actor = smoke_subparsers.add_parser("actor", help="run one v1 actor live smoke")
+    smoke_actor.add_argument("actor_name")
+    smoke_actor.add_argument("--live", action="store_true", help="run the live actor smoke")
+    smoke_actor.add_argument(
+        "--report-root",
+        type=Path,
+        default=Path(".harness/live-smoke"),
+        help="directory for live smoke reports; defaults to .harness/live-smoke",
+    )
+
+    smoke_actors = smoke_subparsers.add_parser("actors", help="run all v1 actor live smokes")
+    smoke_actors.add_argument("--live", action="store_true", help="run the live actor smokes")
+    smoke_actors.add_argument(
+        "--report-root",
+        type=Path,
+        default=Path(".harness/live-smoke"),
+        help="directory for live smoke reports; defaults to .harness/live-smoke",
     )
 
     return parser

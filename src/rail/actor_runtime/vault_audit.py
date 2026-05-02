@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+from rail.actor_runtime.codex_bootstrap_profile import bootstrap_profile_violation
 from rail.actor_runtime.vault_env import VaultEnvironment
 
 VaultAuditLayer = Literal["materialization", "bootstrap", "provenance", "capability"]
@@ -22,18 +22,8 @@ class VaultAuditViolation(BaseModel):
 
 _ALLOWED_ENV_KEYS = {"PATH", "HOME", "CODEX_HOME", "TMPDIR", "TMP", "TEMP"}
 _ALLOWED_AUTH_MATERIAL = {"auth.json"}
-_ALLOWED_OPERATIONAL_DIRS = {"cache", "log", "memories", "shell_snapshots", "tmp", ".tmp"}
-_ALLOWED_OPERATIONAL_FILES = {"installation_id", "models_cache.json"}
-_ALLOWED_CODEX_SYSTEM_SKILLS = {"imagegen", "openai-docs", "plugin-creator", "skill-creator", "skill-installer"}
 _TRUSTED_PROCESS_PATH = "/usr/bin:/bin"
 _EVENT_AUDIT_KEYS = ("type", "event", "kind", "tool", "name", "server", "source", "path", "category")
-_FORBIDDEN_CODEX_HOME_ENTRIES = {
-    "mcp": "MCP config materialization is not allowed",
-    "hooks": "hook materialization is not allowed",
-    "rules": "user rule materialization is not allowed",
-    "config.json": "unexpected config inheritance is not allowed",
-    "settings.json": "unexpected config inheritance is not allowed",
-}
 
 
 def audit_vault_materialization(vault_environment: VaultEnvironment, *, artifact_dir: Path) -> VaultAuditViolation | None:
@@ -90,9 +80,23 @@ def audit_vault_materialization(vault_environment: VaultEnvironment, *, artifact
 
     if vault_environment.codex_home.exists():
         for child in vault_environment.codex_home.iterdir():
-            materialization_violation = _codex_home_entry_violation(child, artifact_dir=artifact_dir)
+            if child.name in _ALLOWED_AUTH_MATERIAL:
+                if child.is_symlink() or not child.is_file():
+                    return _violation(
+                        code="unsafe_vault_material",
+                        reason="unsafe vault material",
+                        audit_layer="materialization",
+                        path=child,
+                        artifact_dir=artifact_dir,
+                    )
+                continue
+            materialization_violation = bootstrap_profile_violation(child, codex_home=vault_environment.codex_home)
             if materialization_violation is not None:
-                return materialization_violation
+                return _with_artifact_path_ref(
+                    materialization_violation,
+                    codex_home=vault_environment.codex_home,
+                    artifact_dir=artifact_dir,
+                )
     return None
 
 
@@ -132,170 +136,19 @@ def _violation(
     return VaultAuditViolation(code=code, reason=reason, audit_layer=audit_layer, path_ref=path_ref)
 
 
-def _codex_home_entry_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation | None:
-    forbidden_violation = _FORBIDDEN_CODEX_HOME_ENTRIES.get(path.name)
-    if forbidden_violation is not None:
-        code = {
-            "mcp": "mcp_config_materialized",
-            "hooks": "hook_materialized",
-            "rules": "user_rule_materialized",
-            "config.json": "inherited_config_applied",
-            "settings.json": "inherited_config_applied",
-        }[path.name]
-        return _violation(
-            code=code,
-            reason=forbidden_violation,
-            audit_layer="provenance",
-            path=path,
-            artifact_dir=artifact_dir,
-        )
-    if path.name in _ALLOWED_AUTH_MATERIAL:
-        if path.is_symlink() or not path.is_file():
-            return _violation(
-                code="unsafe_vault_material",
-                reason="unsafe vault material",
-                audit_layer="materialization",
-                path=path,
-                artifact_dir=artifact_dir,
-            )
-        return None
-    if path.name in _ALLOWED_OPERATIONAL_DIRS:
-        if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
-            return _violation(
-                code="unsafe_vault_material",
-                reason="unsafe vault material",
-                audit_layer="materialization",
-                path=path,
-                artifact_dir=artifact_dir,
-            )
-        return None
-    if path.name in _ALLOWED_OPERATIONAL_FILES:
-        if path.is_symlink() or not path.is_file():
-            return _violation(
-                code="unsafe_vault_material",
-                reason="unsafe vault material",
-                audit_layer="materialization",
-                path=path,
-                artifact_dir=artifact_dir,
-            )
-        return None
-    if path.name == "config.toml":
-        return _config_toml_violation(path, artifact_dir=artifact_dir)
-    if path.name == "skills":
-        return _skills_materialization_violation(path, artifact_dir=artifact_dir)
-    if path.name == "plugins":
-        return _plugins_materialization_violation(path, artifact_dir=artifact_dir)
-    return _violation(
-        code="unknown_auth_material",
-        reason="auth material outside the allowlist is not allowed",
-        audit_layer="materialization",
-        path=path,
-        artifact_dir=artifact_dir,
-    )
-
-
-def _config_toml_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation | None:
-    if path.is_symlink() or not path.is_file():
-        return _violation(
-            code="unsafe_vault_material",
-            reason="unsafe vault material",
-            audit_layer="materialization",
-            path=path,
-            artifact_dir=artifact_dir,
-        )
+def _with_artifact_path_ref(
+    violation: VaultAuditViolation,
+    *,
+    codex_home: Path,
+    artifact_dir: Path,
+) -> VaultAuditViolation:
+    if violation.path_ref is None:
+        return violation
     try:
-        config = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
-        return _inherited_config_violation(path, artifact_dir=artifact_dir)
-    if set(config) != {"plugins"}:
-        return _inherited_config_violation(path, artifact_dir=artifact_dir)
-    plugins = config.get("plugins")
-    if not isinstance(plugins, dict) or not plugins:
-        return _inherited_config_violation(path, artifact_dir=artifact_dir)
-    for name, settings in plugins.items():
-        if not isinstance(name, str) or not name.endswith("@openai-curated"):
-            return _inherited_config_violation(path, artifact_dir=artifact_dir)
-        if settings != {"enabled": True}:
-            return _inherited_config_violation(path, artifact_dir=artifact_dir)
-    return None
-
-
-def _inherited_config_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation:
-    return _violation(
-        code="inherited_config_applied",
-        reason="unexpected config inheritance is not allowed",
-        audit_layer="provenance",
-        path=path,
-        artifact_dir=artifact_dir,
-    )
-
-
-def _skills_materialization_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation | None:
-    if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
-        return _violation(
-            code="unsafe_vault_material",
-            reason="unsafe vault material",
-            audit_layer="materialization",
-            path=path,
-            artifact_dir=artifact_dir,
-        )
-    children = {child.name for child in path.iterdir()}
-    if children != {".system"}:
-        user_skill = next((child for child in path.iterdir() if child.name != ".system"), path)
-        return _violation(
-            code="user_skill_materialized",
-            reason="user-controlled skill materialized in actor-local CODEX_HOME",
-            audit_layer="provenance",
-            path=user_skill,
-            artifact_dir=artifact_dir,
-        )
-    system_skills = path / ".system"
-    marker = system_skills / ".codex-system-skills.marker"
-    if not marker.is_file() or marker.is_symlink():
-        return _violation(
-            code="bootstrap_profile_mismatch",
-            reason="skill materialization is not allowed",
-            audit_layer="bootstrap",
-            path=path,
-            artifact_dir=artifact_dir,
-        )
-    system_children = {child.name for child in system_skills.iterdir()}
-    allowed_children = _ALLOWED_CODEX_SYSTEM_SKILLS | {".codex-system-skills.marker"}
-    if not system_children <= allowed_children:
-        return _violation(
-            code="bootstrap_profile_mismatch",
-            reason="skill materialization is not allowed",
-            audit_layer="bootstrap",
-            path=path,
-            artifact_dir=artifact_dir,
-        )
-    return None
-
-
-def _plugins_materialization_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation | None:
-    if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
-        return _violation(
-            code="unsafe_vault_material",
-            reason="unsafe vault material",
-            audit_layer="materialization",
-            path=path,
-            artifact_dir=artifact_dir,
-        )
-    children = {child.name for child in path.iterdir()}
-    if not children <= {"cache"}:
-        user_plugin = next((child for child in path.iterdir() if child.name != "cache"), path)
-        return _violation(
-            code="user_plugin_materialized",
-            reason="plugin materialization is not allowed",
-            audit_layer="provenance",
-            path=user_plugin,
-            artifact_dir=artifact_dir,
-        )
-    return None
-
-
-def _contains_symlink(path: Path) -> bool:
-    return any(child.is_symlink() for child in path.rglob("*"))
+        codex_home_ref = codex_home.relative_to(artifact_dir).as_posix()
+    except ValueError:
+        return violation.model_copy(update={"path_ref": None})
+    return violation.model_copy(update={"path_ref": f"{codex_home_ref}/{violation.path_ref}"})
 
 
 def _event_dicts(event: dict[str, object]) -> list[dict[str, object]]:

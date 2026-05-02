@@ -74,13 +74,49 @@ def test_passed_live_smoke_report_accepts_success_payload(tmp_path: Path) -> Non
         verdict=LiveSmokeVerdict.PASSED,
         symptom_class=None,
         owning_surface=None,
+        artifact_id="rail-abc",
+        artifact_dir=tmp_path / ".harness" / "artifacts" / "rail-abc",
         report_dir=tmp_path,
         fixture_digest="sha256:abc",
-        evidence_refs=[],
+        evidence_refs=["runs/attempt-0001/planner.events.jsonl"],
         repair_proposal=None,
     )
 
     assert report.verdict == LiveSmokeVerdict.PASSED
+    assert report.artifact_id == "rail-abc"
+
+
+def test_live_smoke_report_rejects_evidence_without_artifact_metadata(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValidationError):
+        LiveSmokeReport(
+            actor=LiveSmokeActor.PLANNER,
+            verdict=LiveSmokeVerdict.PASSED,
+            symptom_class=None,
+            owning_surface=None,
+            report_dir=tmp_path,
+            fixture_digest="sha256:abc",
+            evidence_refs=["runs/attempt-0001/planner.events.jsonl"],
+            repair_proposal=None,
+        )
+
+
+def test_live_smoke_report_requires_complete_artifact_metadata(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValidationError):
+        LiveSmokeReport(
+            actor=LiveSmokeActor.PLANNER,
+            verdict=LiveSmokeVerdict.PASSED,
+            symptom_class=None,
+            owning_surface=None,
+            artifact_id="rail-abc",
+            report_dir=tmp_path,
+            fixture_digest="sha256:abc",
+            evidence_refs=[],
+            repair_proposal=None,
+        )
 
 
 def test_failed_live_smoke_report_accepts_failure_classification(

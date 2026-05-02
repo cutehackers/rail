@@ -12,12 +12,19 @@ from rail.actor_runtime.runtime import ActorRuntime, build_invocation
 from rail.live_smoke.classification import classify_actor_result
 from rail.live_smoke.contracts import V1_LIVE_SMOKE_ACTORS, evaluate_behavior_smoke
 from rail.live_smoke.fixtures import copy_fixture_target
-from rail.live_smoke.models import LiveSmokeActor, LiveSmokeReport, LiveSmokeVerdict
+from rail.live_smoke.models import (
+    LiveSmokeActor,
+    LiveSmokeReport,
+    LiveSmokeVerdict,
+    OwningSurface,
+    SymptomClass,
+)
 from rail.policy import load_effective_policy
 
 RuntimeFactory = Callable[[Path], ActorRuntime]
 
 _REPORT_FILE_NAME = "live_smoke_report.json"
+_UNAVAILABLE_FIXTURE_DIGEST = "sha256:fixture-unavailable"
 _PLANNER_PRIOR_OUTPUT = {
     "summary": "Inspect the packaged live smoke fixture and produce a safe implementation plan.",
     "substeps": [
@@ -47,19 +54,45 @@ class LiveSmokeRunner:
     def run_actor(self, actor: LiveSmokeActor) -> LiveSmokeReport:
         report_dir = self.report_root / actor.value
         target_root = report_dir / "target"
-        copied_fixture = copy_fixture_target(target_root, report_root=self.report_root)
-        policy = load_effective_policy(copied_fixture.target_root)
-        handle = bind_effective_policy(
-            start_task(_request_draft(actor, copied_fixture.target_root)),
-            policy,
-        )
-        invocation = build_invocation(
-            handle,
-            actor.value,
-            attempt_ref=allocate_run_attempt(handle.artifact_dir),
-            prior_outputs=_prior_outputs_for(actor),
-        )
-        result = self.runtime_factory(copied_fixture.target_root).run(invocation)
+        try:
+            copied_fixture = copy_fixture_target(target_root, report_root=self.report_root)
+            policy = load_effective_policy(copied_fixture.target_root)
+            handle = bind_effective_policy(
+                start_task(_request_draft(actor, copied_fixture.target_root)),
+                policy,
+            )
+            invocation = build_invocation(
+                handle,
+                actor.value,
+                attempt_ref=allocate_run_attempt(handle.artifact_dir),
+                prior_outputs=_prior_outputs_for(actor),
+            )
+        except Exception:
+            report = _failure_report(
+                actor=actor,
+                report_dir=report_dir,
+                fixture_digest=_UNAVAILABLE_FIXTURE_DIGEST,
+                symptom_class=SymptomClass.FIXTURE_PREP_FAILURE,
+                owning_surface=OwningSurface.FIXTURE,
+            )
+            _write_report(report)
+            return report
+
+        try:
+            result = self.runtime_factory(copied_fixture.target_root).run(invocation)
+        except Exception:
+            report = _failure_report(
+                actor=actor,
+                report_dir=report_dir,
+                fixture_digest=copied_fixture.fixture_digest,
+                symptom_class=SymptomClass.PROVIDER_TRANSIENT_FAILURE,
+                owning_surface=OwningSurface.PROVIDER,
+                artifact_id=handle.artifact_id,
+                artifact_dir=handle.artifact_dir,
+            )
+            _write_report(report)
+            return report
+
         behavior_error = None
         if result.status == "succeeded":
             behavior_error = evaluate_behavior_smoke(actor, result.structured_output)
@@ -73,6 +106,8 @@ class LiveSmokeRunner:
             verdict=_verdict_for(classification.symptom_class),
             symptom_class=classification.symptom_class,
             owning_surface=classification.owning_surface,
+            artifact_id=handle.artifact_id,
+            artifact_dir=handle.artifact_dir,
             report_dir=report_dir,
             fixture_digest=copied_fixture.fixture_digest,
             evidence_refs=[
@@ -124,6 +159,30 @@ def _verdict_for(symptom_class: object | None) -> LiveSmokeVerdict:
     if symptom_class is None:
         return LiveSmokeVerdict.PASSED
     return LiveSmokeVerdict.FAILED
+
+
+def _failure_report(
+    *,
+    actor: LiveSmokeActor,
+    report_dir: Path,
+    fixture_digest: str,
+    symptom_class: SymptomClass,
+    owning_surface: OwningSurface,
+    artifact_id: str | None = None,
+    artifact_dir: Path | None = None,
+) -> LiveSmokeReport:
+    return LiveSmokeReport(
+        actor=actor,
+        verdict=LiveSmokeVerdict.FAILED,
+        symptom_class=symptom_class,
+        owning_surface=owning_surface,
+        artifact_id=artifact_id,
+        artifact_dir=artifact_dir,
+        report_dir=report_dir,
+        fixture_digest=fixture_digest,
+        evidence_refs=[],
+        repair_proposal=None,
+    )
 
 
 def _write_report(report: LiveSmokeReport) -> None:

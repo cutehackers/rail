@@ -135,6 +135,8 @@ class LiveSmokeReport(BaseModel):
     verdict: LiveSmokeVerdict
     symptom_class: SymptomClass | None
     owning_surface: OwningSurface | None
+    artifact_id: str | None = None
+    artifact_dir: Path | None = None
     report_dir: Path
     fixture_digest: str
     evidence_refs: list[str]
@@ -164,5 +166,12 @@ class LiveSmokeReport(BaseModel):
                     raise ValueError(
                         "repair proposal owning_surface must match report owning_surface"
                     )
+
+        has_artifact_id = self.artifact_id is not None
+        has_artifact_dir = self.artifact_dir is not None
+        if has_artifact_id != has_artifact_dir:
+            raise ValueError("artifact_id and artifact_dir must be recorded together")
+        if self.evidence_refs and not has_artifact_dir:
+            raise ValueError("evidence_refs require artifact metadata")
 
         return self

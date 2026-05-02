@@ -41,7 +41,7 @@ class RaisingRuntime:
 
 
 def test_runner_passes_planner_smoke(tmp_path: Path) -> None:
-    runtime = FakeRuntime(
+    runtime = WritingRuntime(
         ActorResult(
             status="succeeded",
             structured_output={"summary": "Plan", "substeps": [], "risks": [], "acceptance_criteria_refined": []},
@@ -55,7 +55,26 @@ def test_runner_passes_planner_smoke(tmp_path: Path) -> None:
 
     assert report.verdict == LiveSmokeVerdict.PASSED
     assert report.symptom_class is None
-    assert runtime.invocation_actors == ["planner"]
+
+
+def test_runner_fails_when_runtime_omits_evidence_files(tmp_path: Path) -> None:
+    runtime = FakeRuntime(
+        ActorResult(
+            status="succeeded",
+            structured_output={"summary": "Plan", "substeps": [], "risks": [], "acceptance_criteria_refined": []},
+            events_ref=Path("runs/attempt-0001/planner.events.jsonl"),
+            runtime_evidence_ref=Path("runs/attempt-0001/planner.runtime_evidence.json"),
+        )
+    )
+    runner = LiveSmokeRunner(report_root=tmp_path / "reports", runtime_factory=lambda _target: runtime)
+
+    report = runner.run_actor(LiveSmokeActor.PLANNER)
+
+    payload = json.loads((report.report_dir / "live_smoke_report.json").read_text(encoding="utf-8"))
+    assert report.verdict == LiveSmokeVerdict.FAILED
+    assert report.symptom_class == SymptomClass.EVIDENCE_WRITER_FAILURE
+    assert report.owning_surface == OwningSurface.PROVIDER
+    assert payload["symptom_class"] == "evidence_writer_failure"
 
 
 def test_runner_writes_json_report_with_resolvable_artifact_evidence(tmp_path: Path) -> None:
@@ -82,7 +101,7 @@ def test_runner_writes_json_report_with_resolvable_artifact_evidence(tmp_path: P
 
 
 def test_runner_reports_context_builder_policy_failure(tmp_path: Path) -> None:
-    runtime = FakeRuntime(
+    runtime = WritingRuntime(
         ActorResult(
             status="interrupted",
             structured_output={"error": "shell executable is not allowed: grep"},
@@ -101,7 +120,7 @@ def test_runner_reports_context_builder_policy_failure(tmp_path: Path) -> None:
 
 
 def test_runner_reports_behavior_smoke_failure(tmp_path: Path) -> None:
-    runtime = FakeRuntime(
+    runtime = WritingRuntime(
         ActorResult(
             status="succeeded",
             structured_output={"summary": "Plan"},

@@ -8,7 +8,7 @@ from rail.api import start_task
 from rail.artifacts import bind_effective_policy
 from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.actor_runtime.codex_vault import CodexVaultActorRuntime
-from rail.actor_runtime.runtime import ActorRuntime, build_invocation
+from rail.actor_runtime.runtime import ActorResult, ActorRuntime, build_invocation
 from rail.live_smoke.classification import classify_actor_result
 from rail.live_smoke.contracts import V1_LIVE_SMOKE_ACTORS, evaluate_behavior_smoke
 from rail.live_smoke.fixtures import copy_fixture_target
@@ -93,6 +93,20 @@ class LiveSmokeRunner:
             _write_report(report)
             return report
 
+        evidence_error = _evidence_error(handle.artifact_dir, result)
+        if evidence_error is not None:
+            report = _failure_report(
+                actor=actor,
+                report_dir=report_dir,
+                fixture_digest=copied_fixture.fixture_digest,
+                symptom_class=SymptomClass.EVIDENCE_WRITER_FAILURE,
+                owning_surface=OwningSurface.PROVIDER,
+                artifact_id=handle.artifact_id,
+                artifact_dir=handle.artifact_dir,
+            )
+            _write_report(report)
+            return report
+
         behavior_error = None
         if result.status == "succeeded":
             behavior_error = evaluate_behavior_smoke(actor, result.structured_output)
@@ -159,6 +173,32 @@ def _verdict_for(symptom_class: object | None) -> LiveSmokeVerdict:
     if symptom_class is None:
         return LiveSmokeVerdict.PASSED
     return LiveSmokeVerdict.FAILED
+
+
+def _evidence_error(artifact_dir: Path, result: ActorResult) -> str | None:
+    for evidence_ref in (result.events_ref, result.runtime_evidence_ref):
+        if evidence_ref.is_absolute():
+            return "evidence refs must be relative to artifact_dir"
+        if ".." in evidence_ref.parts:
+            return "evidence refs must not contain traversal"
+        if len(evidence_ref.parts) < 2 or evidence_ref.parts[0] != "runs":
+            return "evidence refs must be attempt-scoped under runs/"
+        if not evidence_ref.parts[1].startswith("attempt-"):
+            return "evidence refs must be attempt-scoped under runs/attempt-*"
+
+        evidence_path = artifact_dir / evidence_ref
+        try:
+            resolved = evidence_path.resolve(strict=True)
+            artifact_root = artifact_dir.resolve(strict=True)
+        except OSError:
+            return "evidence refs must resolve to existing files"
+        if artifact_root not in (resolved, *resolved.parents):
+            return "evidence refs must resolve inside artifact_dir"
+        if evidence_path.is_symlink():
+            return "evidence refs must not point at symlinks"
+        if not evidence_path.is_file():
+            return "evidence refs must resolve to files"
+    return None
 
 
 def _failure_report(

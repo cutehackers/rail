@@ -2,6 +2,16 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.6.5 - 2026-05-02
+
+### Changed
+
+- Updated fix(runtime): guide actor execution within vault policy.
+
+### Verification
+
+- `scripts/release_gate.sh`
+
 ## v0.6.4 - 2026-05-02
 
 ### Changed

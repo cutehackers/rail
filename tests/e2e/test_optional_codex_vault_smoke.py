@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 import os
-import json
-from pathlib import Path
 
 import pytest
 
-import rail
-from rail.artifacts.run_attempts import allocate_run_attempt
-from rail.actor_runtime.codex_vault import CodexVaultActorRuntime
-from rail.actor_runtime.runtime import build_invocation
-from rail.policy import load_effective_policy
-from rail.workspace.isolation import target_mutation_digest
+from rail.live_smoke.contracts import V1_LIVE_SMOKE_ACTORS
+from rail.live_smoke.models import LiveSmokeActor, LiveSmokeVerdict
+from rail.live_smoke.runner import LiveSmokeRunner
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RAIL_CODEX_VAULT_LIVE_SMOKE") != "1",
@@ -19,30 +14,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_optional_codex_vault_live_smoke_runs_planner_actor_without_openai_api_key(tmp_path, monkeypatch):
+@pytest.mark.parametrize("actor", V1_LIVE_SMOKE_ACTORS)
+def test_optional_codex_vault_live_smoke_runs_v1_actor_without_openai_api_key(
+    tmp_path,
+    monkeypatch,
+    actor: LiveSmokeActor,
+) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    target = tmp_path / "target"
-    target.mkdir()
-    handle = rail.start_task(
-        {
-            "project_root": str(target),
-            "task_type": "bug_fix",
-            "goal": "Run optional Codex Vault planner smoke without mutating target.",
-            "definition_of_done": ["Planner returns structured output."],
-        }
+    runner = LiveSmokeRunner(report_root=tmp_path / "reports")
+
+    report = runner.run_actor(actor)
+
+    assert report.verdict == LiveSmokeVerdict.PASSED, (
+        f"actor={report.actor.value} symptom={report.symptom_class} "
+        f"surface={report.owning_surface} report={report.report_dir}"
     )
-    runtime = CodexVaultActorRuntime(project_root=Path("."), policy=load_effective_policy(target))
-
-    before = target_mutation_digest(target)
-    result = runtime.run(build_invocation(handle, "planner", attempt_ref=allocate_run_attempt(handle.artifact_dir)))
-    after = target_mutation_digest(target)
-
-    assert result.status == "succeeded"
-    assert result.events_ref.as_posix().startswith("runs/attempt-0001/")
-    assert result.runtime_evidence_ref.as_posix().startswith("runs/attempt-0001/")
-    assert "summary" in result.structured_output
-    assert after == before
-    evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
-    assert evidence["provider"] == "codex_vault"
-    assert "policy_violation" not in evidence
-    assert "OPENAI_API_KEY" not in json.dumps(evidence)

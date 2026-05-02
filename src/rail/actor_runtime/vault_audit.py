@@ -24,9 +24,9 @@ class VaultAuditViolation(BaseModel):
 _ALLOWED_ENV_KEYS = {"PATH", "HOME", "CODEX_HOME", "TMPDIR", "TMP", "TEMP"}
 _ALLOWED_AUTH_MATERIAL = {"auth.json"}
 _TRUSTED_PROCESS_PATH = "/usr/bin:/bin"
-_CAPABILITY_IDENTITY_KEYS = ("type", "kind", "tool", "name")
-_MCP_IDENTITY_KEYS = ("type", "kind", "tool")
-_BEHAVIOR_SIGNAL_KEYS = ("type", "kind", "category", "message")
+_CAPABILITY_IDENTITY_KEYS = ("type", "event", "kind", "tool", "name")
+_MCP_IDENTITY_KEYS = ("type", "event", "kind", "tool", "server")
+_BEHAVIOR_SIGNAL_KEYS = ("type", "event", "kind", "category", "message")
 _CAPABILITY_EVENT_TYPES = {
     "tool_call",
     "tool_invocation",
@@ -142,7 +142,7 @@ def audit_vault_materialization(vault_environment: VaultEnvironment, *, artifact
 def audit_codex_event_capabilities(events: list[dict[str, object]]) -> VaultAuditViolation | None:
     for event in events:
         for mapping in _event_dicts(event):
-            event_type = _event_token(mapping, "type")
+            event_type = _event_action_token(mapping)
             event_kind = _event_token(mapping, "kind")
             event_source = _event_source(mapping)
             identity = _event_identity_text(mapping)
@@ -279,6 +279,18 @@ def _is_non_shell_tool_call(mapping: dict[str, object], *, event_type: str, even
 def _event_token(mapping: dict[str, object], key: str) -> str:
     value = mapping.get(key)
     return value.lower() if isinstance(value, str) else ""
+
+
+def _event_action_token(mapping: dict[str, object]) -> str:
+    event_type = _event_token(mapping, "type")
+    event_name = _event_token(mapping, "event")
+    if _is_behavior_event_token(event_name):
+        return event_name
+    return event_type or event_name
+
+
+def _is_behavior_event_token(value: str) -> bool:
+    return value in _CAPABILITY_EVENT_TYPES or value in _TOOL_EVENT_TYPES or value in _CAPABILITY_EXECUTION_TYPES or value in _HOOK_RULE_CONFIG_EVENT_TYPES
 
 
 def _event_source(mapping: dict[str, object]) -> str:

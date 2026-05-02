@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 from rail.actor_runtime.vault_audit import audit_codex_event_capabilities, audit_vault_materialization
 from rail.actor_runtime.vault_env import VaultEnvironment
 
@@ -236,6 +238,23 @@ def test_capability_audit_blocks_actual_mcp_tool_invocation():
     violation = audit_codex_event_capabilities(events)
     assert violation is not None
     assert violation.code == "mcp_capability_used"
+    assert violation.audit_layer == "capability"
+
+
+@pytest.mark.parametrize(
+    ("event", "expected_code"),
+    [
+        ({"event": "mcp_invocation", "server": "filesystem"}, "mcp_capability_used"),
+        ({"event": "skill_invocation", "name": "rail"}, "skill_capability_used"),
+        ({"event": "hook_execution", "path": "hooks/pre_tool.py"}, "hook_capability_used"),
+        ({"event": "rule_applied", "path": "rules/user.md"}, "rule_capability_used"),
+        ({"event": "config_loaded", "path": "config.toml"}, "inherited_config_applied"),
+    ],
+)
+def test_capability_audit_blocks_event_shaped_capability_use(event, expected_code):
+    violation = audit_codex_event_capabilities([event])
+    assert violation is not None
+    assert violation.code == expected_code
     assert violation.audit_layer == "capability"
 
 

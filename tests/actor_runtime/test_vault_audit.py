@@ -245,6 +245,9 @@ def test_capability_audit_blocks_actual_mcp_tool_invocation():
     ("event", "expected_code"),
     [
         ({"event": "mcp_invocation", "server": "filesystem"}, "mcp_capability_used"),
+        ({"event": "plugin_invocation", "name": "github"}, "plugin_capability_used"),
+        ({"event": "plugin_execution", "name": "github"}, "plugin_capability_used"),
+        ({"event": "plugin_call", "name": "github"}, "plugin_capability_used"),
         ({"event": "skill_invocation", "name": "rail"}, "skill_capability_used"),
         ({"event": "hook_execution", "path": "hooks/pre_tool.py"}, "hook_capability_used"),
         ({"event": "rule_applied", "path": "rules/user.md"}, "rule_capability_used"),

@@ -724,6 +724,29 @@ def test_codex_vault_runtime_blocks_event_shaped_mcp_invocation(tmp_path):
     assert evidence["policy_violation"]["code"] == "mcp_capability_used"
 
 
+def test_codex_vault_runtime_blocks_event_shaped_plugin_invocation(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"event": "plugin_invocation", "name": "github"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert result.structured_output["error"] == "plugin capability use is not allowed"
+    assert evidence["policy_violation"]["code"] == "plugin_capability_used"
+
+
 def test_codex_vault_runtime_blocks_tool_event_nested_in_content_array(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(

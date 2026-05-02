@@ -88,6 +88,17 @@ def _skills_materialization_violation(path: Path, *, codex_home: Path) -> VaultA
     allowed_children = ALLOWED_CODEX_SYSTEM_SKILLS | {".codex-system-skills.marker"}
     if not system_children <= allowed_children:
         return _skill_profile_mismatch(path, codex_home=codex_home)
+    for child in system_skills.iterdir():
+        if child.name == ".codex-system-skills.marker":
+            continue
+        if child.is_symlink() or not child.is_dir():
+            return _violation(
+                code="user_skill_materialized",
+                reason="user-controlled skill materialized in actor-local CODEX_HOME",
+                audit_layer="provenance",
+                path=child,
+                codex_home=codex_home,
+            )
     return None
 
 

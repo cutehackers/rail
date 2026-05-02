@@ -38,3 +38,17 @@ def test_bootstrap_profile_rejects_custom_plugin_material(tmp_path):
     assert violation is not None
     assert violation.code == "user_plugin_materialized"
     assert violation.audit_layer == "provenance"
+
+
+def test_bootstrap_profile_rejects_system_skill_file_material(tmp_path):
+    codex_home = tmp_path / "codex_home"
+    system_skills = codex_home / "skills" / ".system"
+    system_skills.mkdir(parents=True)
+    (system_skills / ".codex-system-skills.marker").write_text("marker\n", encoding="utf-8")
+    (system_skills / "openai-docs").write_text("# OpenAI docs\n", encoding="utf-8")
+
+    violation = bootstrap_profile_violation(codex_home / "skills", codex_home=codex_home)
+
+    assert violation is not None
+    assert violation.code == "user_skill_materialized"
+    assert violation.audit_layer == "provenance"

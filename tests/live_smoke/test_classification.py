@@ -52,6 +52,24 @@ def test_classifies_grep_policy_violation_as_prompt_or_contract_gap() -> None:
     assert classification.repair_proposal.preserves_fail_closed_policy is True
 
 
+def test_classifies_generic_policy_violation_as_unknown_surface() -> None:
+    result = _actor_result(
+        status="interrupted",
+        structured_output={"error": "capability use is not allowed"},
+        blocked_category="policy",
+    )
+
+    classification = classify_actor_result(
+        LiveSmokeActor.CONTEXT_BUILDER,
+        result,
+        behavior_error=None,
+    )
+
+    assert classification.symptom_class == SymptomClass.POLICY_VIOLATION
+    assert classification.owning_surface == OwningSurface.UNKNOWN
+    assert classification.repair_proposal is None
+
+
 def test_classifies_environment_block_as_readiness_failure() -> None:
     result = _actor_result(
         status="interrupted",
@@ -67,6 +85,24 @@ def test_classifies_environment_block_as_readiness_failure() -> None:
 
     assert classification.symptom_class == SymptomClass.READINESS_FAILURE
     assert classification.owning_surface == OwningSurface.OPERATOR_ENVIRONMENT
+    assert classification.repair_proposal is None
+
+
+def test_classifies_validation_block_as_schema_mismatch() -> None:
+    result = _actor_result(
+        status="failed",
+        structured_output={"error": "actor output failed validation"},
+        blocked_category="validation",
+    )
+
+    classification = classify_actor_result(
+        LiveSmokeActor.CONTEXT_BUILDER,
+        result,
+        behavior_error=None,
+    )
+
+    assert classification.symptom_class == SymptomClass.SCHEMA_MISMATCH
+    assert classification.owning_surface == OwningSurface.ACTOR_PROMPT
     assert classification.repair_proposal is None
 
 

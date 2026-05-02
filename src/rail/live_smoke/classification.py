@@ -44,6 +44,12 @@ def classify_actor_result(
             owning_surface=OwningSurface.OPERATOR_ENVIRONMENT,
         )
 
+    if result.blocked_category == "validation":
+        return LiveSmokeClassification(
+            symptom_class=SymptomClass.SCHEMA_MISMATCH,
+            owning_surface=OwningSurface.ACTOR_PROMPT,
+        )
+
     if result.blocked_category == "runtime":
         return LiveSmokeClassification(
             symptom_class=_runtime_symptom_class(error_text),
@@ -75,7 +81,7 @@ def _extract_error_text(result: ActorResult) -> str:
 def _policy_owning_surface(error_text: str) -> OwningSurface:
     if _SHELL_EXECUTABLE_NOT_ALLOWED in error_text:
         return OwningSurface.RUNTIME_CONTRACT
-    return OwningSurface.RUNTIME_CONTRACT
+    return OwningSurface.UNKNOWN
 
 
 def _policy_repair_proposal(

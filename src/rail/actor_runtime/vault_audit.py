@@ -214,7 +214,7 @@ def _is_skill_capability_event(
 def _is_hook_rule_config_capability_event(*, event_type: str, event_kind: str, behavior_signal: str) -> bool:
     if event_type in _HOOK_RULE_CONFIG_EVENT_TYPES or event_kind in _HOOK_RULE_CONFIG_EVENT_TYPES:
         return True
-    behavior_change_terms = ("applied", "execution", "executed", "loaded", "load", "materialized")
+    behavior_change_terms = ("applied", "executed", "loaded")
     return any(term in behavior_signal for term in ("hook", "rule", "config")) and any(term in behavior_signal for term in behavior_change_terms)
 
 
@@ -239,10 +239,21 @@ def _is_tool_or_capability_call(mapping: dict[str, object], *, event_type: str, 
 
 
 def _is_behavior_affecting_capability_call(mapping: dict[str, object], *, event_type: str, event_kind: str) -> bool:
+    if _is_explicit_capability_event(event_type=event_type, event_kind=event_kind):
+        return True
     return _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind) and not _is_shell_command_event(
         mapping,
         event_type=event_type,
         event_kind=event_kind,
+    )
+
+
+def _is_explicit_capability_event(*, event_type: str, event_kind: str) -> bool:
+    return (
+        event_type in _CAPABILITY_EVENT_TYPES
+        or event_kind in _CAPABILITY_EVENT_TYPES
+        or event_type in _CAPABILITY_EXECUTION_TYPES
+        or event_kind in _CAPABILITY_EXECUTION_TYPES
     )
 
 

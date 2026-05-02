@@ -235,12 +235,40 @@ def test_capability_audit_blocks_generic_capability_call_with_missing_source():
     assert violation.audit_layer == "capability"
 
 
+def test_capability_audit_blocks_unknown_capability_call_with_command():
+    events = [{"type": "capability_call", "source": "unknown", "name": "something", "command": "cat app.txt"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "skill_capability_used"
+    assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_blocks_user_capability_call_with_read_only_command():
+    events = [{"type": "capability_call", "source": "user", "name": "something", "command": "cat app.txt"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "skill_capability_used"
+    assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_allows_plain_shell_command_event_for_shell_policy():
+    events = [{"type": "command_execution", "command": "cat app.txt"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is None
+
+
 def test_capability_audit_blocks_user_config_loaded_event():
     events = [{"type": "event", "category": "config", "message": "user config loaded", "source": "user"}]
     violation = audit_codex_event_capabilities(events)
     assert violation is not None
     assert violation.code == "inherited_config_applied"
     assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_allows_config_load_candidate_discovery():
+    events = [{"type": "event", "category": "config", "message": "config load candidate discovered"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is None
 
 
 def test_capability_audit_allows_passive_actor_local_config_inspection():

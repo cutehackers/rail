@@ -218,10 +218,40 @@ def test_v1_live_smoke_actor_scope_is_planner_and_context_builder_only() -> None
 def test_planner_behavior_smoke_requires_minimum_fields() -> None:
     error = evaluate_behavior_smoke(
         LiveSmokeActor.PLANNER,
-        {"summary": "Plan", "substeps": [], "risks": [], "acceptance_criteria_refined": []},
+        {
+            "summary": "Plan",
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
     )
 
     assert error is None
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    [
+        "summary",
+        "substeps",
+        "risks",
+        "acceptance_criteria_refined",
+    ],
+)
+def test_planner_behavior_smoke_reports_missing_required_field(
+    missing_field: str,
+) -> None:
+    output = {
+        "summary": "Plan",
+        "substeps": [],
+        "risks": [],
+        "acceptance_criteria_refined": [],
+    }
+    del output[missing_field]
+
+    error = evaluate_behavior_smoke(LiveSmokeActor.PLANNER, output)
+
+    assert error == f"planner output must include {missing_field}"
 
 
 def test_context_builder_behavior_smoke_requires_non_empty_context() -> None:
@@ -239,19 +269,60 @@ def test_context_builder_behavior_smoke_requires_non_empty_context() -> None:
     assert error is None
 
 
-def test_context_builder_behavior_smoke_rejects_empty_relevant_files() -> None:
+@pytest.mark.parametrize(
+    "missing_field",
+    [
+        "relevant_files",
+        "repo_patterns",
+        "test_patterns",
+        "forbidden_changes",
+        "implementation_hints",
+    ],
+)
+def test_context_builder_behavior_smoke_reports_missing_required_field(
+    missing_field: str,
+) -> None:
+    output = {
+        "relevant_files": [{"path": "README.md", "why": "entry point"}],
+        "repo_patterns": ["small service module"],
+        "test_patterns": ["pytest unit test"],
+        "forbidden_changes": ["do not edit auth"],
+        "implementation_hints": ["keep changes scoped"],
+    }
+    del output[missing_field]
+
+    error = evaluate_behavior_smoke(LiveSmokeActor.CONTEXT_BUILDER, output)
+
+    assert error == f"context_builder output must include {missing_field}"
+
+
+@pytest.mark.parametrize(
+    "empty_field",
+    [
+        "relevant_files",
+        "repo_patterns",
+        "forbidden_changes",
+        "implementation_hints",
+    ],
+)
+def test_context_builder_behavior_smoke_rejects_empty_required_context(
+    empty_field: str,
+) -> None:
+    output = {
+        "relevant_files": [{"path": "README.md", "why": "entry point"}],
+        "repo_patterns": ["small service module"],
+        "test_patterns": ["pytest unit test"],
+        "forbidden_changes": ["do not edit auth"],
+        "implementation_hints": ["keep changes scoped"],
+    }
+    output[empty_field] = []
+
     error = evaluate_behavior_smoke(
         LiveSmokeActor.CONTEXT_BUILDER,
-        {
-            "relevant_files": [],
-            "repo_patterns": ["pattern"],
-            "test_patterns": ["test"],
-            "forbidden_changes": ["forbidden"],
-            "implementation_hints": ["hint"],
-        },
+        output,
     )
 
-    assert error == "context_builder output must include non-empty relevant_files"
+    assert error == f"context_builder output must include non-empty {empty_field}"
 
 
 @pytest.mark.parametrize(

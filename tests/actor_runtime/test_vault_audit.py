@@ -161,7 +161,7 @@ def test_capability_audit_blocks_plugin_tool_execution():
 def test_capability_audit_allows_incidental_mcp_message_and_path_mentions():
     events = [
         {"type": "event", "message": "MCP metadata discovered", "path": "docs/mcp-notes.md"},
-        {"type": "tool_call", "tool": "shell.read", "name": "read", "message": "Inspect MCP notes", "path": "docs/mcp-notes.md"},
+        {"type": "tool_call", "tool": "shell.read", "name": "read", "source": "system", "message": "Inspect MCP notes", "path": "docs/mcp-notes.md"},
     ]
 
     violation = audit_codex_event_capabilities(events)
@@ -188,8 +188,22 @@ def test_capability_audit_blocks_actual_mcp_tool_invocation():
     assert violation.audit_layer == "capability"
 
 
+def test_capability_audit_allows_non_mcp_tool_call_with_incidental_mcp_name():
+    events = [{"type": "tool_call", "tool": "shell.read", "name": "mcp notes", "source": "system"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is None
+
+
 def test_capability_audit_blocks_user_sourced_generic_capability_call():
     events = [{"type": "capability_call", "source": "user", "name": "something"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "skill_capability_used"
+    assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_blocks_generic_capability_call_with_missing_source():
+    events = [{"type": "capability_call", "name": "something"}]
     violation = audit_codex_event_capabilities(events)
     assert violation is not None
     assert violation.code == "skill_capability_used"

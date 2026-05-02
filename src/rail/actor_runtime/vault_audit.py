@@ -24,6 +24,7 @@ _ALLOWED_ENV_KEYS = {"PATH", "HOME", "CODEX_HOME", "TMPDIR", "TMP", "TEMP"}
 _ALLOWED_AUTH_MATERIAL = {"auth.json"}
 _TRUSTED_PROCESS_PATH = "/usr/bin:/bin"
 _CAPABILITY_IDENTITY_KEYS = ("type", "kind", "tool", "name")
+_MCP_IDENTITY_KEYS = ("type", "kind", "tool")
 _BEHAVIOR_SIGNAL_KEYS = ("type", "kind", "category", "message")
 _CAPABILITY_EVENT_TYPES = {
     "tool_call",
@@ -143,10 +144,11 @@ def audit_codex_event_capabilities(events: list[dict[str, object]]) -> VaultAudi
                 continue
             event_type = _event_token(mapping, "type")
             event_kind = _event_token(mapping, "kind")
-            event_source = _event_token(mapping, "source")
+            event_source = _event_source(mapping)
             identity = _event_identity_text(mapping)
+            mcp_identity = _event_mcp_identity_text(mapping)
             behavior_signal = _event_behavior_signal_text(mapping)
-            if _is_mcp_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=identity):
+            if _is_mcp_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=mcp_identity):
                 return _violation(code="mcp_capability_used", reason="MCP invocation is not allowed", audit_layer="capability")
             if _is_plugin_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=identity):
                 return _violation(code="plugin_capability_used", reason="plugin invocation is not allowed", audit_layer="capability")
@@ -204,7 +206,7 @@ def _is_skill_capability_event(
 ) -> bool:
     if event_type in {"skill_invocation", "skill_execution"} or event_kind in {"skill_invocation", "skill_execution"}:
         return True
-    if _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind) and event_source in _BEHAVIOR_AFFECTING_SOURCES:
+    if _is_behavior_affecting_capability_call(mapping, event_type=event_type, event_kind=event_kind) and event_source in _BEHAVIOR_AFFECTING_SOURCES:
         return True
     if "skill" not in identity:
         return False
@@ -238,13 +240,37 @@ def _is_tool_or_capability_call(mapping: dict[str, object], *, event_type: str, 
     )
 
 
+def _is_behavior_affecting_capability_call(mapping: dict[str, object], *, event_type: str, event_kind: str) -> bool:
+    return _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind) and not _is_shell_command_event(
+        mapping,
+        event_type=event_type,
+        event_kind=event_kind,
+    )
+
+
+def _is_shell_command_event(mapping: dict[str, object], *, event_type: str, event_kind: str) -> bool:
+    return event_type in {"command_execution", "exec_command", "exec_command_begin"} or event_kind in {
+        "command_execution",
+        "exec_command",
+        "exec_command_begin",
+    } or "command" in mapping
+
+
 def _event_token(mapping: dict[str, object], key: str) -> str:
     value = mapping.get(key)
     return value.lower() if isinstance(value, str) else ""
 
 
+def _event_source(mapping: dict[str, object]) -> str:
+    return _event_token(mapping, "source") or "unknown"
+
+
 def _event_identity_text(mapping: dict[str, object]) -> str:
     return " ".join(str(mapping.get(key)).lower() for key in _CAPABILITY_IDENTITY_KEYS if mapping.get(key) is not None)
+
+
+def _event_mcp_identity_text(mapping: dict[str, object]) -> str:
+    return " ".join(str(mapping.get(key)).lower() for key in _MCP_IDENTITY_KEYS if mapping.get(key) is not None)
 
 
 def _event_behavior_signal_text(mapping: dict[str, object]) -> str:

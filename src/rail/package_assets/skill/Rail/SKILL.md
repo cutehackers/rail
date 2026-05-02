@@ -87,6 +87,19 @@ Should I start this as a fresh Rail task, or continue an existing artifact? If c
 
 Do not ask users to choose task ids. Do not derive identity from `.harness/requests/request.yaml`.
 
+## Python API Interpreter
+
+Resolve a Python API interpreter before running the snippets. Use the first
+candidate that can import `rail`:
+
+1. `$RAIL_PYTHON`, when set.
+2. The interpreter from the installed `rail` console script shebang.
+3. `python3`, only when `python3 -c "import rail"` succeeds.
+
+Do not run a Rail task with an interpreter that failed `import rail`. Do not
+report a failed default-Python probe as task progress; resolve the interpreter
+first, then run the Python API flow.
+
 ## Python API Flow
 
 Fresh task:

@@ -138,9 +138,21 @@ def test_active_docs_define_codex_vault_bounded_isolation():
     assert "passive Codex-owned bootstrap" in combined
     assert "capability use" in combined
     assert "provenance" in combined
+
+
+def test_active_spec_defines_guided_actor_runtime_direction():
+    text = Path("docs/SPEC.md").read_text(encoding="utf-8")
+    normalized = " ".join(text.split())
+
+    assert "Guided Actor Runtime Execution" in text
+    assert "must remain authoritative" in normalized
+    assert "recover from policy violations by patching runtime internals" in normalized
+    assert "context builder receives a compact runtime contract" in normalized
+    assert "Non-context actors must continue to receive the normal invocation contract" in normalized
+    assert "resolve a Python API interpreter before executing Rail API snippets" in normalized
     forbidden_terms = ["actor " + "backend", "vault_" + "codex", "normalize_" + "request"]
     for term in forbidden_terms:
-        assert term not in combined.lower()
+        assert term not in text.lower()
 
 
 def test_release_gate_exists_and_uses_python_runtime_only():

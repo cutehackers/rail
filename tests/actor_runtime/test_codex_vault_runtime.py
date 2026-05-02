@@ -9,10 +9,12 @@ import rail
 from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.actor_runtime import codex_vault
 from rail.actor_runtime.codex_vault import CodexVaultActorRuntime
+from rail.actor_runtime.prompts import SUPERVISOR_ACTORS
 from rail.actor_runtime.runtime import build_invocation as _build_invocation
 from rail.actor_runtime.vault_env import VaultEnvironment
 from rail.policy import load_effective_policy
 from rail.workspace.isolation import tree_digest
+from tests.actor_runtime_test_fixtures import fake_actor_output
 
 
 def test_codex_vault_runtime_validates_actor_output_and_writes_evidence(tmp_path):
@@ -70,6 +72,43 @@ def test_codex_vault_runtime_validates_actor_output_and_writes_evidence(tmp_path
     assert evidence["structured_output"]["summary"] == "Plan"
     assert evidence["raw_events"]
     assert evidence["normalized_events"]
+
+
+def test_context_builder_invocation_carries_compact_runtime_contract(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    invocation = build_invocation(handle, "context_builder")
+
+    assert invocation.input["runtime_contract"] == {
+        "filesystem_scope": "sandbox_relative_paths_only",
+        "forbidden_shell_patterns": ["..", "|", "&&", ";", "$", "`"],
+        "result_source": "rail_result_projection_only",
+    }
+
+
+def test_runtime_contract_is_not_added_to_non_context_builder_invocations(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+
+    invocation = build_invocation(handle, "planner")
+
+    assert "runtime_contract" not in invocation.input
+
+
+def test_codex_vault_runtime_accepts_all_supervisor_actor_invocations(tmp_path):
+    for actor in SUPERVISOR_ACTORS:
+        handle = rail.start_task(_draft(_target_repo(tmp_path)))
+        runner = FakeCodexRunner(final_output=fake_actor_output(actor))
+        runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+        result = runtime.run(build_invocation(handle, actor))
+
+        assert result.status == "succeeded", actor
+        assert result.blocked_category is None
+        actor_input = json.loads(runner.prompts[0].split("Actor input JSON:\n", 1)[1])
+        if actor == "context_builder":
+            assert actor_input["runtime_contract"]["filesystem_scope"] == "sandbox_relative_paths_only"
+        else:
+            assert "runtime_contract" not in actor_input
 
 
 def test_codex_vault_runtime_parses_codex_item_message_text_output(tmp_path):

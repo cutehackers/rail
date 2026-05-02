@@ -97,6 +97,32 @@ governed by Rail policy. Parent or user skills, plugin tools, MCP servers,
 hooks, rules, inherited config, direct target mutation, and actor-invented
 validation remain blocked.
 
+### Guided Actor Runtime Execution
+
+Rail keeps Actor Runtime isolation, but actor execution should be guided enough
+that normal runs reach the supervisor graph instead of repeatedly failing on
+avoidable policy violations.
+
+Policy and evidence audits must remain authoritative. Prompt text, actor input
+contracts, and skill guidance are friction reducers only; they must not loosen
+runtime policy, bypass post-run audits, or let the Rail skill recover from
+policy violations by patching runtime internals, actor prompts, sandbox
+behavior, auth homes, or target files during an active task session.
+
+The context builder receives a compact runtime contract because it is the actor
+most likely to perform repository discovery. That contract must remind the
+actor to use sandbox-relative paths, avoid parent directory traversal, avoid
+shell pipelines and compound operators, and prefer direct read-only inspection
+commands. Non-context actors must continue to receive the normal invocation
+contract unless a concrete actor-specific failure justifies a narrowly scoped
+contract.
+
+The Rail skill must resolve a Python API interpreter before executing Rail API
+snippets. It should prefer an explicit configured interpreter or the installed
+Rail console script interpreter, and use default `python3` only after verifying
+that it can import `rail`. Failed interpreter probes are setup details, not task
+progress.
+
 ## Required User Flows
 
 ### Fresh Work

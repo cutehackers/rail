@@ -10,6 +10,8 @@ Collect only the repository context needed for implementation.
 - Exclude unrelated architecture modules.
 - Read only sandbox-relative paths.
 - Do not inspect parent directories, absolute host paths, or hidden user config.
+- Do not use shell pipelines or compound shell operators.
+- Prefer direct commands such as `rg -n PATTERN path`, `find . -maxdepth N -type f -print`, and `sed -n A,Bp path`.
 
 ## Input
 - `plan`

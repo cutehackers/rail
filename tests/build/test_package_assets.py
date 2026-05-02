@@ -79,6 +79,20 @@ def test_rail_skill_blocks_without_runtime_repair_instructions():
         assert "move auth directories" not in text
 
 
+def test_rail_skill_resolves_python_api_interpreter_before_running_api():
+    skill_paths = [
+        Path("skills/rail/SKILL.md"),
+        Path("assets/skill/Rail/SKILL.md"),
+        Path("src/rail/package_assets/skill/Rail/SKILL.md"),
+    ]
+
+    for path in skill_paths:
+        text = path.read_text(encoding="utf-8")
+        assert "Resolve a Python API interpreter before running the snippets" in text
+        assert "installed `rail` console script shebang" in text
+        assert "Do not run a Rail task with an interpreter that failed `import rail`" in text
+
+
 def test_context_builder_prompt_limits_collection_to_sandbox_relative_paths():
     prompt_paths = [
         Path(".harness/actors/context_builder.md"),
@@ -90,6 +104,8 @@ def test_context_builder_prompt_limits_collection_to_sandbox_relative_paths():
         text = path.read_text(encoding="utf-8")
         assert "Read only sandbox-relative paths" in text
         assert "Do not inspect parent directories" in text
+        assert "Do not use shell pipelines or compound shell operators" in text
+        assert "`find . -maxdepth N -type f -print`" in text
 
 
 def test_repo_harness_defaults_match_packaged_defaults():

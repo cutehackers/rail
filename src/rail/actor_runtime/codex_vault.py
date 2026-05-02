@@ -301,6 +301,7 @@ class CodexVaultActorRuntime:
 
         materialization_violation = audit_vault_materialization(vault_environment, artifact_dir=invocation.artifact_dir)
         if materialization_violation is not None:
+            reason = materialization_violation.reason
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.attempt_ref,
@@ -311,13 +312,13 @@ class CodexVaultActorRuntime:
                     vault_environment=vault_environment,
                     status="interrupted",
                     blocked_category="policy",
-                    error=materialization_violation,
-                    extra={"policy_violation": {"reason": materialization_violation}},
+                    error=reason,
+                    extra={"policy_violation": materialization_violation.model_dump()},
                 ),
             )
             return ActorResult(
                 status="interrupted",
-                structured_output={"error": materialization_violation},
+                structured_output={"error": reason},
                 events_ref=events_ref,
                 runtime_evidence_ref=evidence_ref,
                 blocked_category="policy",
@@ -484,6 +485,7 @@ class CodexVaultActorRuntime:
                 )
             materialization_violation = audit_vault_materialization(vault_environment, artifact_dir=invocation.artifact_dir)
             if materialization_violation is not None:
+                reason = materialization_violation.reason
                 events_ref, evidence_ref = write_runtime_evidence(
                     invocation.artifact_dir,
                     invocation.attempt_ref,
@@ -494,16 +496,16 @@ class CodexVaultActorRuntime:
                         vault_environment=vault_environment,
                         status="interrupted",
                         blocked_category="policy",
-                        error=materialization_violation,
+                        error=reason,
                         raw_events=raw_events,
                         normalized_events=normalized_events,
-                        extra=extra | {"policy_violation": {"reason": materialization_violation}},
+                        extra=extra | {"policy_violation": materialization_violation.model_dump()},
                     ),
                     events=normalized_events or None,
                 )
                 return ActorResult(
                     status="interrupted",
-                    structured_output={"error": materialization_violation},
+                    structured_output={"error": reason},
                     events_ref=events_ref,
                     runtime_evidence_ref=evidence_ref,
                     blocked_category="policy",
@@ -581,6 +583,7 @@ class CodexVaultActorRuntime:
 
         materialization_violation = audit_vault_materialization(vault_environment, artifact_dir=invocation.artifact_dir)
         if materialization_violation is not None:
+            reason = materialization_violation.reason
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.attempt_ref,
@@ -591,16 +594,16 @@ class CodexVaultActorRuntime:
                     vault_environment=vault_environment,
                     status="interrupted",
                     blocked_category="policy",
-                    error=materialization_violation,
+                    error=reason,
                     raw_events=raw_events,
                     normalized_events=normalized_events,
-                    extra=base_extra | {"policy_violation": {"reason": materialization_violation}},
+                    extra=base_extra | {"policy_violation": materialization_violation.model_dump()},
                 ),
                 events=normalized_events or None,
             )
             return ActorResult(
                 status="interrupted",
-                structured_output={"error": materialization_violation},
+                structured_output={"error": reason},
                 events_ref=events_ref,
                 runtime_evidence_ref=evidence_ref,
                 blocked_category="policy",

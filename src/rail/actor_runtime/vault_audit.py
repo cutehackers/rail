@@ -2,8 +2,23 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from typing import Literal
 
+from pydantic import BaseModel, ConfigDict
 from rail.actor_runtime.vault_env import VaultEnvironment
+
+VaultAuditLayer = Literal["materialization", "bootstrap", "provenance", "capability"]
+
+
+class VaultAuditViolation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: Literal["policy"] = "policy"
+    code: str
+    reason: str
+    audit_layer: VaultAuditLayer
+    path_ref: str | None = None
+
 
 _ALLOWED_ENV_KEYS = {"PATH", "HOME", "CODEX_HOME", "TMPDIR", "TMP", "TEMP"}
 _ALLOWED_AUTH_MATERIAL = {"auth.json"}
@@ -21,18 +36,34 @@ _FORBIDDEN_CODEX_HOME_ENTRIES = {
 }
 
 
-def audit_vault_materialization(vault_environment: VaultEnvironment, *, artifact_dir: Path) -> str | None:
+def audit_vault_materialization(vault_environment: VaultEnvironment, *, artifact_dir: Path) -> VaultAuditViolation | None:
     artifact_root = artifact_dir.resolve(strict=False)
     for path in (vault_environment.codex_home, vault_environment.evidence_dir, vault_environment.temp_dir):
         resolved = path.resolve(strict=False)
         if not _is_relative_to(resolved, artifact_root):
-            return "vault materialization escaped artifact directory"
+            return _violation(
+                code="unsafe_vault_material",
+                reason="vault materialization escaped artifact directory",
+                audit_layer="materialization",
+                path=path,
+                artifact_dir=artifact_dir,
+            )
         if path.is_symlink():
-            return "unsafe vault material"
+            return _violation(
+                code="unsafe_vault_material",
+                reason="unsafe vault material",
+                audit_layer="materialization",
+                path=path,
+                artifact_dir=artifact_dir,
+            )
 
     unexpected_env = sorted(set(vault_environment.environ) - _ALLOWED_ENV_KEYS)
     if unexpected_env:
-        return "unexpected config inheritance is not allowed"
+        return _violation(
+            code="inherited_config_applied",
+            reason="unexpected config inheritance is not allowed",
+            audit_layer="provenance",
+        )
     expected_env = {
         "PATH": _TRUSTED_PROCESS_PATH,
         "HOME": vault_environment.codex_home.as_posix(),
@@ -43,15 +74,23 @@ def audit_vault_materialization(vault_environment: VaultEnvironment, *, artifact
     }
     for key, value in expected_env.items():
         if vault_environment.environ.get(key) != value:
-            return "unexpected config inheritance is not allowed"
+            return _violation(
+                code="inherited_config_applied",
+                reason="unexpected config inheritance is not allowed",
+                audit_layer="provenance",
+            )
 
     unexpected_auth = sorted(set(vault_environment.copied_auth_material) - _ALLOWED_AUTH_MATERIAL)
     if unexpected_auth:
-        return "auth material outside the allowlist is not allowed"
+        return _violation(
+            code="unknown_auth_material",
+            reason="auth material outside the allowlist is not allowed",
+            audit_layer="materialization",
+        )
 
     if vault_environment.codex_home.exists():
         for child in vault_environment.codex_home.iterdir():
-            materialization_violation = _codex_home_entry_violation(child)
+            materialization_violation = _codex_home_entry_violation(child, artifact_dir=artifact_dir)
             if materialization_violation is not None:
                 return materialization_violation
     return None
@@ -76,74 +115,182 @@ def audit_codex_event_contamination(events: list[dict[str, object]]) -> str | No
     return None
 
 
-def _codex_home_entry_violation(path: Path) -> str | None:
+def _violation(
+    *,
+    code: str,
+    reason: str,
+    audit_layer: VaultAuditLayer,
+    path: Path | None = None,
+    artifact_dir: Path | None = None,
+) -> VaultAuditViolation:
+    path_ref = None
+    if path is not None and artifact_dir is not None:
+        try:
+            path_ref = path.relative_to(artifact_dir).as_posix()
+        except ValueError:
+            path_ref = None
+    return VaultAuditViolation(code=code, reason=reason, audit_layer=audit_layer, path_ref=path_ref)
+
+
+def _codex_home_entry_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation | None:
     forbidden_violation = _FORBIDDEN_CODEX_HOME_ENTRIES.get(path.name)
     if forbidden_violation is not None:
-        return forbidden_violation
+        code = {
+            "mcp": "mcp_config_materialized",
+            "hooks": "hook_materialized",
+            "rules": "user_rule_materialized",
+            "config.json": "inherited_config_applied",
+            "settings.json": "inherited_config_applied",
+        }[path.name]
+        return _violation(
+            code=code,
+            reason=forbidden_violation,
+            audit_layer="provenance",
+            path=path,
+            artifact_dir=artifact_dir,
+        )
     if path.name in _ALLOWED_AUTH_MATERIAL:
         if path.is_symlink() or not path.is_file():
-            return "unsafe vault material"
+            return _violation(
+                code="unsafe_vault_material",
+                reason="unsafe vault material",
+                audit_layer="materialization",
+                path=path,
+                artifact_dir=artifact_dir,
+            )
         return None
     if path.name in _ALLOWED_OPERATIONAL_DIRS:
         if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
-            return "unsafe vault material"
+            return _violation(
+                code="unsafe_vault_material",
+                reason="unsafe vault material",
+                audit_layer="materialization",
+                path=path,
+                artifact_dir=artifact_dir,
+            )
         return None
     if path.name in _ALLOWED_OPERATIONAL_FILES:
         if path.is_symlink() or not path.is_file():
-            return "unsafe vault material"
+            return _violation(
+                code="unsafe_vault_material",
+                reason="unsafe vault material",
+                audit_layer="materialization",
+                path=path,
+                artifact_dir=artifact_dir,
+            )
         return None
     if path.name == "config.toml":
-        return _config_toml_violation(path)
+        return _config_toml_violation(path, artifact_dir=artifact_dir)
     if path.name == "skills":
-        return _skills_materialization_violation(path)
+        return _skills_materialization_violation(path, artifact_dir=artifact_dir)
     if path.name == "plugins":
-        return _plugins_materialization_violation(path)
-    return "auth material outside the allowlist is not allowed"
+        return _plugins_materialization_violation(path, artifact_dir=artifact_dir)
+    return _violation(
+        code="unknown_auth_material",
+        reason="auth material outside the allowlist is not allowed",
+        audit_layer="materialization",
+        path=path,
+        artifact_dir=artifact_dir,
+    )
 
 
-def _config_toml_violation(path: Path) -> str | None:
+def _config_toml_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation | None:
     if path.is_symlink() or not path.is_file():
-        return "unsafe vault material"
+        return _violation(
+            code="unsafe_vault_material",
+            reason="unsafe vault material",
+            audit_layer="materialization",
+            path=path,
+            artifact_dir=artifact_dir,
+        )
     try:
         config = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
-        return "unexpected config inheritance is not allowed"
+        return _inherited_config_violation(path, artifact_dir=artifact_dir)
     if set(config) != {"plugins"}:
-        return "unexpected config inheritance is not allowed"
+        return _inherited_config_violation(path, artifact_dir=artifact_dir)
     plugins = config.get("plugins")
     if not isinstance(plugins, dict) or not plugins:
-        return "unexpected config inheritance is not allowed"
+        return _inherited_config_violation(path, artifact_dir=artifact_dir)
     for name, settings in plugins.items():
         if not isinstance(name, str) or not name.endswith("@openai-curated"):
-            return "unexpected config inheritance is not allowed"
+            return _inherited_config_violation(path, artifact_dir=artifact_dir)
         if settings != {"enabled": True}:
-            return "unexpected config inheritance is not allowed"
+            return _inherited_config_violation(path, artifact_dir=artifact_dir)
     return None
 
 
-def _skills_materialization_violation(path: Path) -> str | None:
+def _inherited_config_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation:
+    return _violation(
+        code="inherited_config_applied",
+        reason="unexpected config inheritance is not allowed",
+        audit_layer="provenance",
+        path=path,
+        artifact_dir=artifact_dir,
+    )
+
+
+def _skills_materialization_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation | None:
     if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
-        return "unsafe vault material"
+        return _violation(
+            code="unsafe_vault_material",
+            reason="unsafe vault material",
+            audit_layer="materialization",
+            path=path,
+            artifact_dir=artifact_dir,
+        )
     children = {child.name for child in path.iterdir()}
     if children != {".system"}:
-        return "skill materialization is not allowed"
+        user_skill = next((child for child in path.iterdir() if child.name != ".system"), path)
+        return _violation(
+            code="user_skill_materialized",
+            reason="user-controlled skill materialized in actor-local CODEX_HOME",
+            audit_layer="provenance",
+            path=user_skill,
+            artifact_dir=artifact_dir,
+        )
     system_skills = path / ".system"
     marker = system_skills / ".codex-system-skills.marker"
     if not marker.is_file() or marker.is_symlink():
-        return "skill materialization is not allowed"
+        return _violation(
+            code="bootstrap_profile_mismatch",
+            reason="skill materialization is not allowed",
+            audit_layer="bootstrap",
+            path=path,
+            artifact_dir=artifact_dir,
+        )
     system_children = {child.name for child in system_skills.iterdir()}
     allowed_children = _ALLOWED_CODEX_SYSTEM_SKILLS | {".codex-system-skills.marker"}
     if not system_children <= allowed_children:
-        return "skill materialization is not allowed"
+        return _violation(
+            code="bootstrap_profile_mismatch",
+            reason="skill materialization is not allowed",
+            audit_layer="bootstrap",
+            path=path,
+            artifact_dir=artifact_dir,
+        )
     return None
 
 
-def _plugins_materialization_violation(path: Path) -> str | None:
+def _plugins_materialization_violation(path: Path, *, artifact_dir: Path) -> VaultAuditViolation | None:
     if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
-        return "unsafe vault material"
+        return _violation(
+            code="unsafe_vault_material",
+            reason="unsafe vault material",
+            audit_layer="materialization",
+            path=path,
+            artifact_dir=artifact_dir,
+        )
     children = {child.name for child in path.iterdir()}
     if not children <= {"cache"}:
-        return "plugin materialization is not allowed"
+        user_plugin = next((child for child in path.iterdir() if child.name != "cache"), path)
+        return _violation(
+            code="user_plugin_materialized",
+            reason="plugin materialization is not allowed",
+            audit_layer="provenance",
+            path=user_plugin,
+            artifact_dir=artifact_dir,
+        )
     return None
 
 

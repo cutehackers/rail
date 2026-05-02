@@ -48,7 +48,26 @@ def test_vault_audit_rejects_user_skill_materialization(tmp_path):
 
     violation = audit_vault_materialization(env, artifact_dir=artifact_dir)
 
-    assert violation == "skill materialization is not allowed"
+    assert violation is not None
+    assert violation.code == "user_skill_materialized"
+    assert violation.audit_layer == "provenance"
+    assert violation.reason == "user-controlled skill materialized in actor-local CODEX_HOME"
+    assert violation.path_ref == "actor_runtime/codex_home/skills/rail"
+
+
+def test_vault_audit_reports_unknown_auth_material_code(tmp_path):
+    artifact_dir = tmp_path / "artifact"
+    env = _vault_environment(artifact_dir).model_copy(update={"copied_auth_material": ["auth.json", "session.db"]})
+    env.codex_home.mkdir(parents=True)
+    (env.codex_home / "auth.json").write_text("{}", encoding="utf-8")
+
+    violation = audit_vault_materialization(env, artifact_dir=artifact_dir)
+
+    assert violation is not None
+    assert violation.code == "unknown_auth_material"
+    assert violation.audit_layer == "materialization"
+    assert violation.reason == "auth material outside the allowlist is not allowed"
+    assert violation.path_ref is None
 
 
 def test_vault_audit_rejects_unmarked_system_skills(tmp_path):
@@ -60,7 +79,11 @@ def test_vault_audit_rejects_unmarked_system_skills(tmp_path):
 
     violation = audit_vault_materialization(env, artifact_dir=artifact_dir)
 
-    assert violation == "skill materialization is not allowed"
+    assert violation is not None
+    assert violation.code == "bootstrap_profile_mismatch"
+    assert violation.audit_layer == "bootstrap"
+    assert violation.reason == "skill materialization is not allowed"
+    assert violation.path_ref == "actor_runtime/codex_home/skills"
 
 
 def test_vault_audit_rejects_plugin_materialization_outside_cache(tmp_path):
@@ -72,7 +95,11 @@ def test_vault_audit_rejects_plugin_materialization_outside_cache(tmp_path):
 
     violation = audit_vault_materialization(env, artifact_dir=artifact_dir)
 
-    assert violation == "plugin materialization is not allowed"
+    assert violation is not None
+    assert violation.code == "user_plugin_materialized"
+    assert violation.audit_layer == "provenance"
+    assert violation.reason == "plugin materialization is not allowed"
+    assert violation.path_ref == "actor_runtime/codex_home/plugins/custom-plugin"
 
 
 def test_vault_audit_rejects_unexpected_config_toml(tmp_path):
@@ -84,7 +111,11 @@ def test_vault_audit_rejects_unexpected_config_toml(tmp_path):
 
     violation = audit_vault_materialization(env, artifact_dir=artifact_dir)
 
-    assert violation == "unexpected config inheritance is not allowed"
+    assert violation is not None
+    assert violation.code == "inherited_config_applied"
+    assert violation.audit_layer == "provenance"
+    assert violation.reason == "unexpected config inheritance is not allowed"
+    assert violation.path_ref == "actor_runtime/codex_home/config.toml"
 
 
 def test_vault_audit_rejects_symlink_inside_allowed_material(tmp_path):
@@ -100,7 +131,11 @@ def test_vault_audit_rejects_symlink_inside_allowed_material(tmp_path):
 
     violation = audit_vault_materialization(env, artifact_dir=artifact_dir)
 
-    assert violation == "unsafe vault material"
+    assert violation is not None
+    assert violation.code == "unsafe_vault_material"
+    assert violation.audit_layer == "materialization"
+    assert violation.reason == "unsafe vault material"
+    assert violation.path_ref == "actor_runtime/codex_home/plugins"
 
 
 def _vault_environment(artifact_dir: Path) -> VaultEnvironment:

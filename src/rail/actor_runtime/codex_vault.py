@@ -20,7 +20,7 @@ from rail.actor_runtime.events import normalize_sdk_event
 from rail.actor_runtime.output_schema import compile_codex_output_schema
 from rail.actor_runtime.prompts import load_actor_catalog
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
-from rail.actor_runtime.vault_audit import audit_codex_event_capabilities, audit_vault_materialization
+from rail.actor_runtime.vault_audit import VaultAuditViolation, audit_codex_event_capabilities, audit_vault_materialization
 from rail.actor_runtime.vault_env import VaultEnvironment, materialize_vault_environment
 from rail.auth.credentials import codex_auth_home
 from rail.auth.redaction import redact_secrets
@@ -301,7 +301,7 @@ class CodexVaultActorRuntime:
 
         materialization_violation = audit_vault_materialization(vault_environment, artifact_dir=invocation.artifact_dir)
         if materialization_violation is not None:
-            reason = materialization_violation.reason
+            reason = _policy_violation_reason(materialization_violation)
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.attempt_ref,
@@ -313,7 +313,7 @@ class CodexVaultActorRuntime:
                     status="interrupted",
                     blocked_category="policy",
                     error=reason,
-                    extra={"policy_violation": materialization_violation.model_dump()},
+                    extra={"policy_violation": _policy_violation_payload(materialization_violation)},
                 ),
             )
             return ActorResult(
@@ -383,6 +383,7 @@ class CodexVaultActorRuntime:
             sandbox_root=sandbox.sandbox_root,
         )
         if invocation_path_failure is not None:
+            reason = _policy_violation_reason(invocation_path_failure)
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.attempt_ref,
@@ -393,18 +394,18 @@ class CodexVaultActorRuntime:
                     vault_environment=vault_environment,
                     status="interrupted",
                     blocked_category="policy",
-                    error=invocation_path_failure,
+                    error=reason,
                     extra={
                         "sandbox_root_ref": sandbox.sandbox_root.as_posix(),
                         "target_pre_run_tree_digest": target_pre_run_tree_digest,
                         "sandbox_base_tree_digest": tree_digest(sandbox.sandbox_root),
-                        "policy_violation": {"reason": invocation_path_failure},
+                        "policy_violation": _policy_violation_payload(invocation_path_failure),
                     },
                 ),
             )
             return ActorResult(
                 status="interrupted",
-                structured_output={"error": invocation_path_failure},
+                structured_output={"error": reason},
                 events_ref=events_ref,
                 runtime_evidence_ref=evidence_ref,
                 blocked_category="policy",
@@ -472,7 +473,7 @@ class CodexVaultActorRuntime:
                         error=reason,
                         raw_events=raw_events,
                         normalized_events=normalized_events,
-                        extra=extra | {"policy_violation": {"reason": reason}},
+                        extra=extra | {"policy_violation": _policy_violation_payload(reason)},
                     ),
                     events=normalized_events or None,
                 )
@@ -485,7 +486,7 @@ class CodexVaultActorRuntime:
                 )
             materialization_violation = audit_vault_materialization(vault_environment, artifact_dir=invocation.artifact_dir)
             if materialization_violation is not None:
-                reason = materialization_violation.reason
+                reason = _policy_violation_reason(materialization_violation)
                 events_ref, evidence_ref = write_runtime_evidence(
                     invocation.artifact_dir,
                     invocation.attempt_ref,
@@ -499,7 +500,7 @@ class CodexVaultActorRuntime:
                         error=reason,
                         raw_events=raw_events,
                         normalized_events=normalized_events,
-                        extra=extra | {"policy_violation": materialization_violation.model_dump()},
+                        extra=extra | {"policy_violation": _policy_violation_payload(materialization_violation)},
                     ),
                     events=normalized_events or None,
                 )
@@ -521,6 +522,7 @@ class CodexVaultActorRuntime:
                 shell_enabled=self.policy.tools.shell.enabled,
             )
             if policy_violation is not None:
+                reason = _policy_violation_reason(policy_violation)
                 events_ref, evidence_ref = write_runtime_evidence(
                     invocation.artifact_dir,
                     invocation.attempt_ref,
@@ -531,16 +533,16 @@ class CodexVaultActorRuntime:
                         vault_environment=vault_environment,
                         status="interrupted",
                         blocked_category="policy",
-                        error=policy_violation,
+                        error=reason,
                         raw_events=raw_events,
                         normalized_events=normalized_events,
-                        extra=extra | {"policy_violation": {"reason": policy_violation}},
+                        extra=extra | {"policy_violation": _policy_violation_payload(policy_violation)},
                     ),
                     events=normalized_events or None,
                 )
                 return ActorResult(
                     status="interrupted",
-                    structured_output={"error": policy_violation},
+                    structured_output={"error": reason},
                     events_ref=events_ref,
                     runtime_evidence_ref=evidence_ref,
                     blocked_category="policy",
@@ -583,7 +585,7 @@ class CodexVaultActorRuntime:
 
         materialization_violation = audit_vault_materialization(vault_environment, artifact_dir=invocation.artifact_dir)
         if materialization_violation is not None:
-            reason = materialization_violation.reason
+            reason = _policy_violation_reason(materialization_violation)
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.attempt_ref,
@@ -597,7 +599,7 @@ class CodexVaultActorRuntime:
                     error=reason,
                     raw_events=raw_events,
                     normalized_events=normalized_events,
-                    extra=base_extra | {"policy_violation": materialization_violation.model_dump()},
+                    extra=base_extra | {"policy_violation": _policy_violation_payload(materialization_violation)},
                 ),
                 events=normalized_events or None,
             )
@@ -620,6 +622,7 @@ class CodexVaultActorRuntime:
             shell_enabled=self.policy.tools.shell.enabled,
         )
         if policy_violation is not None:
+            reason = _policy_violation_reason(policy_violation)
             events_ref, evidence_ref = write_runtime_evidence(
                 invocation.artifact_dir,
                 invocation.attempt_ref,
@@ -630,16 +633,16 @@ class CodexVaultActorRuntime:
                     vault_environment=vault_environment,
                     status="interrupted",
                     blocked_category="policy",
-                    error=policy_violation,
+                    error=reason,
                     raw_events=raw_events,
                     normalized_events=normalized_events,
-                    extra=base_extra | {"policy_violation": {"reason": policy_violation}},
+                    extra=base_extra | {"policy_violation": _policy_violation_payload(policy_violation)},
                 ),
                 events=normalized_events or None,
             )
             return ActorResult(
                 status="interrupted",
-                structured_output={"error": policy_violation},
+                structured_output={"error": reason},
                 events_ref=events_ref,
                 runtime_evidence_ref=evidence_ref,
                 blocked_category="policy",
@@ -660,7 +663,7 @@ class CodexVaultActorRuntime:
                     error=reason,
                     raw_events=raw_events,
                     normalized_events=normalized_events,
-                    extra=base_extra | {"policy_violation": {"reason": reason}},
+                    extra=base_extra | {"policy_violation": _policy_violation_payload(reason)},
                 ),
                 events=normalized_events or None,
             )
@@ -1010,6 +1013,16 @@ def _json_object_from_text(text: str) -> dict[str, object] | None:
     return decoded if isinstance(decoded, dict) else None
 
 
+def _policy_violation_payload(violation: VaultAuditViolation | str) -> dict[str, object]:
+    if isinstance(violation, VaultAuditViolation):
+        return violation.model_dump(mode="json", exclude_none=True)
+    return {"reason": violation}
+
+
+def _policy_violation_reason(violation: VaultAuditViolation | str) -> str:
+    return violation.reason if isinstance(violation, VaultAuditViolation) else violation
+
+
 def _codex_event_policy_violation(
     events: list[dict[str, object]],
     *,
@@ -1020,10 +1033,10 @@ def _codex_event_policy_violation(
     rail_auth_home: Path,
     shell_allowlist: set[str],
     shell_enabled: bool,
-) -> str | None:
+) -> VaultAuditViolation | str | None:
     capability_violation = audit_codex_event_capabilities(events)
     if capability_violation is not None:
-        return capability_violation.reason
+        return capability_violation
     forbidden_roots = [
         invocation.target_root.resolve(strict=False),
         invocation.artifact_dir.resolve(strict=False),

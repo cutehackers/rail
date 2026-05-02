@@ -153,7 +153,7 @@ def audit_codex_event_capabilities(events: list[dict[str, object]]) -> VaultAudi
             if _is_mcp_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=mcp_identity):
                 return _violation(code="mcp_capability_used", reason="MCP invocation is not allowed", audit_layer="capability")
             if _is_plugin_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=identity):
-                return _violation(code="plugin_capability_used", reason="plugin invocation is not allowed", audit_layer="capability")
+                return _violation(code="plugin_capability_used", reason="plugin capability use is not allowed", audit_layer="capability")
             if _is_skill_capability_event(
                 mapping,
                 event_type=event_type,

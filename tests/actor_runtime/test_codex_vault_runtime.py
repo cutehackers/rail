@@ -255,6 +255,31 @@ def test_codex_vault_runtime_blocks_write_capable_shell_event(tmp_path):
     assert evidence["policy_violation"]["reason"] == "shell executable is not allowed: touch"
 
 
+def test_codex_vault_runtime_writes_structured_policy_violation(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "tool_call", "tool": "plugin.github.search", "name": "github"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert result.structured_output["error"] == "plugin capability use is not allowed"
+    assert evidence["policy_violation"]["code"] == "plugin_capability_used"
+    assert evidence["policy_violation"]["audit_layer"] == "capability"
+    assert evidence["policy_violation"]["reason"] == "plugin capability use is not allowed"
+
+
 def test_codex_vault_runtime_allows_passive_codex_discovery_events(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(
@@ -360,7 +385,7 @@ def test_vault_materialization_contamination_blocks_actor(tmp_path):
         user_skill = env.codex_home / "skills" / "rail"
         user_skill.mkdir(parents=True)
         (user_skill / "SKILL.md").write_text("# Rail\n", encoding="utf-8")
-        return env.model_copy(update={"copied_auth_material": ["auth.json", "session.db"]})
+        return env
 
     runtime = CodexVaultActorRuntime(
         project_root=Path("."),
@@ -373,9 +398,13 @@ def test_vault_materialization_contamination_blocks_actor(tmp_path):
 
     result = runtime.run(build_invocation(handle, "planner"))
 
+    evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
     assert result.status == "interrupted"
     assert result.blocked_category == "policy"
-    assert "skill" in result.structured_output["error"] or "auth material" in result.structured_output["error"]
+    assert "skill" in result.structured_output["error"]
+    assert evidence["policy_violation"]["code"] == "user_skill_materialized"
+    assert evidence["policy_violation"]["audit_layer"] == "provenance"
+    assert evidence["policy_violation"]["path_ref"] == "actor_runtime/codex_home/skills/rail"
 
 
 def test_codex_vault_runtime_blocks_post_run_vault_contamination_on_success(tmp_path):

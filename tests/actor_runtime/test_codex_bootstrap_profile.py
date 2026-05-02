@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from rail.actor_runtime.codex_bootstrap_profile import bootstrap_profile_violation
 
 
@@ -47,6 +49,20 @@ def test_bootstrap_profile_rejects_plugin_cache_file_material(tmp_path):
     (plugins / "cache").write_text("not a cache directory\n", encoding="utf-8")
 
     violation = bootstrap_profile_violation(codex_home / "plugins", codex_home=codex_home)
+
+    assert violation is not None
+    assert violation.code == "unsafe_vault_material"
+    assert violation.audit_layer == "materialization"
+
+
+def test_bootstrap_profile_rejects_hardlinked_allowed_file_material(tmp_path):
+    codex_home = tmp_path / "codex_home"
+    codex_home.mkdir()
+    outside = tmp_path / "outside-models-cache.json"
+    outside.write_text("{}", encoding="utf-8")
+    os.link(outside, codex_home / "models_cache.json")
+
+    violation = bootstrap_profile_violation(codex_home / "models_cache.json", codex_home=codex_home)
 
     assert violation is not None
     assert violation.code == "unsafe_vault_material"

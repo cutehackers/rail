@@ -280,6 +280,52 @@ def test_codex_vault_runtime_writes_structured_policy_violation(tmp_path):
     assert evidence["policy_violation"]["reason"] == "plugin capability use is not allowed"
 
 
+def test_codex_vault_runtime_blocks_plugin_namespace_tool_violation(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "tool_call", "tool": "github.search", "source": "system"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert result.structured_output["error"] == "plugin capability use is not allowed"
+    assert evidence["policy_violation"]["code"] == "plugin_capability_used"
+
+
+def test_codex_vault_runtime_routes_shell_tool_call_to_shell_policy(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[{"type": "tool_call", "tool": "shell.read", "command": "touch app.txt"}],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    evidence = json.loads((handle.artifact_dir / result.runtime_evidence_ref).read_text(encoding="utf-8"))
+    assert result.status == "interrupted"
+    assert result.blocked_category == "policy"
+    assert "shell executable is not allowed" in result.structured_output["error"]
+    assert evidence["policy_violation"]["reason"] == "shell executable is not allowed: touch"
+
+
 def test_codex_vault_runtime_allows_passive_codex_discovery_events(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(

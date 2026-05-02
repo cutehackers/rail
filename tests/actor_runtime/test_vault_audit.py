@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from rail.actor_runtime.vault_audit import audit_codex_event_capabilities, audit_vault_materialization
@@ -68,6 +69,23 @@ def test_vault_audit_reports_unknown_auth_material_code(tmp_path):
     assert violation.audit_layer == "materialization"
     assert violation.reason == "auth material outside the allowlist is not allowed"
     assert violation.path_ref is None
+
+
+def test_vault_audit_rejects_hardlinked_auth_material(tmp_path):
+    artifact_dir = tmp_path / "artifact"
+    env = _vault_environment(artifact_dir)
+    env.codex_home.mkdir(parents=True)
+    outside = tmp_path / "outside-auth.json"
+    outside.write_text("{}", encoding="utf-8")
+    os.link(outside, env.codex_home / "auth.json")
+
+    violation = audit_vault_materialization(env, artifact_dir=artifact_dir)
+
+    assert violation is not None
+    assert violation.code == "unsafe_vault_material"
+    assert violation.audit_layer == "materialization"
+    assert violation.reason == "unsafe vault material"
+    assert violation.path_ref == "actor_runtime/codex_home/auth.json"
 
 
 def test_vault_audit_rejects_unmarked_system_skills(tmp_path):
@@ -152,6 +170,14 @@ def test_capability_audit_allows_passive_plugin_cache_discovery():
 
 def test_capability_audit_blocks_plugin_tool_execution():
     events = [{"type": "tool_call", "tool": "plugin.github.search", "name": "github"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "plugin_capability_used"
+    assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_blocks_plugin_namespace_tool_execution():
+    events = [{"type": "tool_call", "tool": "github.search", "source": "system"}]
     violation = audit_codex_event_capabilities(events)
     assert violation is not None
     assert violation.code == "plugin_capability_used"
@@ -253,6 +279,12 @@ def test_capability_audit_blocks_user_capability_call_with_read_only_command():
 
 def test_capability_audit_allows_plain_shell_command_event_for_shell_policy():
     events = [{"type": "command_execution", "command": "cat app.txt"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is None
+
+
+def test_capability_audit_allows_shell_tool_call_with_missing_source_for_shell_policy():
+    events = [{"type": "tool_call", "tool": "shell.read", "command": "cat app.txt"}]
     violation = audit_codex_event_capabilities(events)
     assert violation is None
 

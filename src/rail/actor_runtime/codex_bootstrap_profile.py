@@ -4,6 +4,8 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rail.workspace.isolation import is_hardlink
+
 if TYPE_CHECKING:
     from rail.actor_runtime.vault_audit import VaultAuditLayer, VaultAuditViolation
 
@@ -25,11 +27,11 @@ def bootstrap_profile_violation(path: Path, *, codex_home: Path) -> VaultAuditVi
         code, reason = forbidden_violation
         return _violation(code=code, reason=reason, audit_layer="provenance", path=path, codex_home=codex_home)
     if path.name in ALLOWED_OPERATIONAL_DIRS:
-        if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
+        if path.is_symlink() or not path.is_dir() or _contains_unsafe_link(path):
             return _unsafe_vault_material_violation(path, codex_home=codex_home)
         return None
     if path.name in ALLOWED_OPERATIONAL_FILES:
-        if path.is_symlink() or not path.is_file():
+        if _is_unsafe_file(path):
             return _unsafe_vault_material_violation(path, codex_home=codex_home)
         return None
     if path.name == "config.toml":
@@ -48,7 +50,7 @@ def bootstrap_profile_violation(path: Path, *, codex_home: Path) -> VaultAuditVi
 
 
 def _config_toml_violation(path: Path, *, codex_home: Path) -> VaultAuditViolation | None:
-    if path.is_symlink() or not path.is_file():
+    if _is_unsafe_file(path):
         return _unsafe_vault_material_violation(path, codex_home=codex_home)
     try:
         config = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -68,7 +70,7 @@ def _config_toml_violation(path: Path, *, codex_home: Path) -> VaultAuditViolati
 
 
 def _skills_materialization_violation(path: Path, *, codex_home: Path) -> VaultAuditViolation | None:
-    if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
+    if path.is_symlink() or not path.is_dir() or _contains_unsafe_link(path):
         return _unsafe_vault_material_violation(path, codex_home=codex_home)
     children = {child.name for child in path.iterdir()}
     if children != {".system"}:
@@ -82,7 +84,7 @@ def _skills_materialization_violation(path: Path, *, codex_home: Path) -> VaultA
         )
     system_skills = path / ".system"
     marker = system_skills / ".codex-system-skills.marker"
-    if not marker.is_file() or marker.is_symlink():
+    if _is_unsafe_file(marker):
         return _skill_profile_mismatch(path, codex_home=codex_home)
     system_children = {child.name for child in system_skills.iterdir()}
     allowed_children = ALLOWED_CODEX_SYSTEM_SKILLS | {".codex-system-skills.marker"}
@@ -91,7 +93,7 @@ def _skills_materialization_violation(path: Path, *, codex_home: Path) -> VaultA
     for child in system_skills.iterdir():
         if child.name == ".codex-system-skills.marker":
             continue
-        if child.is_symlink() or not child.is_dir():
+        if child.is_symlink() or not child.is_dir() or _contains_unsafe_link(child):
             return _violation(
                 code="user_skill_materialized",
                 reason="user-controlled skill materialized in actor-local CODEX_HOME",
@@ -103,7 +105,7 @@ def _skills_materialization_violation(path: Path, *, codex_home: Path) -> VaultA
 
 
 def _plugins_materialization_violation(path: Path, *, codex_home: Path) -> VaultAuditViolation | None:
-    if path.is_symlink() or not path.is_dir() or _contains_symlink(path):
+    if path.is_symlink() or not path.is_dir() or _contains_unsafe_link(path):
         return _unsafe_vault_material_violation(path, codex_home=codex_home)
     children = {child.name for child in path.iterdir()}
     if not children <= {"cache"}:
@@ -116,7 +118,7 @@ def _plugins_materialization_violation(path: Path, *, codex_home: Path) -> Vault
             codex_home=codex_home,
         )
     plugin_cache = path / "cache"
-    if plugin_cache.exists() and (plugin_cache.is_symlink() or not plugin_cache.is_dir()):
+    if plugin_cache.exists() and (plugin_cache.is_symlink() or not plugin_cache.is_dir() or _contains_unsafe_link(plugin_cache)):
         return _unsafe_vault_material_violation(plugin_cache, codex_home=codex_home)
     return None
 
@@ -169,5 +171,9 @@ def _violation(
     return VaultAuditViolation(code=code, reason=reason, audit_layer=audit_layer, path_ref=path_ref)
 
 
-def _contains_symlink(path: Path) -> bool:
-    return any(child.is_symlink() for child in path.rglob("*"))
+def _is_unsafe_file(path: Path) -> bool:
+    return path.is_symlink() or not path.is_file() or is_hardlink(path)
+
+
+def _contains_unsafe_link(path: Path) -> bool:
+    return any(child.is_symlink() or (child.is_file() and is_hardlink(child)) for child in path.rglob("*"))

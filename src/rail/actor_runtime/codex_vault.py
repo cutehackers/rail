@@ -20,7 +20,7 @@ from rail.actor_runtime.events import normalize_sdk_event
 from rail.actor_runtime.output_schema import compile_codex_output_schema
 from rail.actor_runtime.prompts import load_actor_catalog
 from rail.actor_runtime.runtime import ActorInvocation, ActorResult
-from rail.actor_runtime.vault_audit import audit_codex_event_contamination, audit_vault_materialization
+from rail.actor_runtime.vault_audit import audit_codex_event_capabilities, audit_vault_materialization
 from rail.actor_runtime.vault_env import VaultEnvironment, materialize_vault_environment
 from rail.auth.credentials import codex_auth_home
 from rail.auth.redaction import redact_secrets
@@ -1021,9 +1021,9 @@ def _codex_event_policy_violation(
     shell_allowlist: set[str],
     shell_enabled: bool,
 ) -> str | None:
-    contamination_violation = audit_codex_event_contamination(events)
-    if contamination_violation is not None:
-        return contamination_violation
+    capability_violation = audit_codex_event_capabilities(events)
+    if capability_violation is not None:
+        return capability_violation.reason
     forbidden_roots = [
         invocation.target_root.resolve(strict=False),
         invocation.artifact_dir.resolve(strict=False),
@@ -1034,10 +1034,6 @@ def _codex_event_policy_violation(
         forbidden_roots.append(Path(user_codex_home).resolve(strict=False))
     for event in events:
         tool_type = _event_tool_type(event)
-        if tool_type == "mcp":
-            return "MCP invocation is not allowed"
-        if tool_type == "plugin":
-            return "plugin invocation is not allowed"
         if tool_type == "validation":
             return "validation execution is not allowed"
         if tool_type == "shell":
@@ -1070,10 +1066,6 @@ def _event_tool_type(event: dict[str, object]) -> str | None:
             ]
         )
     lowered = " ".join(str(value).lower() for value in values if value is not None)
-    if "mcp" in lowered:
-        return "mcp"
-    if "plugin" in lowered:
-        return "plugin"
     if "validation" in lowered:
         return "validation"
     if (

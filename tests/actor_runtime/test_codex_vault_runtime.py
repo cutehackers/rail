@@ -255,6 +255,28 @@ def test_codex_vault_runtime_blocks_write_capable_shell_event(tmp_path):
     assert evidence["policy_violation"]["reason"] == "shell executable is not allowed: touch"
 
 
+def test_codex_vault_runtime_allows_passive_codex_discovery_events(tmp_path):
+    handle = rail.start_task(_draft(_target_repo(tmp_path)))
+    runner = FakeCodexRunner(
+        final_output={
+            "summary": "Plan",
+            "likely_files": [],
+            "substeps": [],
+            "risks": [],
+            "acceptance_criteria_refined": [],
+        },
+        extra_events=[
+            {"type": "event", "category": "plugin_cache", "message": "plugin cache synchronized"},
+            {"type": "event", "category": "skill_registry", "message": "system skill registry indexed"},
+        ],
+    )
+    runtime = _runtime(tmp_path, command=_fake_codex_command(tmp_path), runner=runner)
+
+    result = runtime.run(build_invocation(handle, "planner"))
+
+    assert result.status == "succeeded"
+
+
 def test_parent_skill_contamination_blocks_actor(tmp_path):
     handle = rail.start_task(_draft(_target_repo(tmp_path)))
     runner = FakeCodexRunner(

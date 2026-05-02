@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rail.actor_runtime.vault_audit import audit_vault_materialization
+from rail.actor_runtime.vault_audit import audit_codex_event_capabilities, audit_vault_materialization
 from rail.actor_runtime.vault_env import VaultEnvironment
 
 
@@ -136,6 +136,33 @@ def test_vault_audit_rejects_symlink_inside_allowed_material(tmp_path):
     assert violation.audit_layer == "materialization"
     assert violation.reason == "unsafe vault material"
     assert violation.path_ref == "actor_runtime/codex_home/plugins"
+
+
+def test_capability_audit_allows_passive_plugin_cache_discovery():
+    events = [
+        {"type": "event", "category": "plugin_cache", "message": "plugin cache synchronized"},
+        {"type": "event", "category": "skill_registry", "message": "system skill registry indexed"},
+        {"type": "event", "category": "config", "message": "actor-local config inspected"},
+    ]
+
+    violation = audit_codex_event_capabilities(events)
+
+    assert violation is None
+
+
+def test_capability_audit_blocks_plugin_tool_execution():
+    events = [{"type": "tool_call", "tool": "plugin.github.search", "name": "github"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "plugin_capability_used"
+    assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_blocks_user_skill_invocation():
+    events = [{"type": "skill_invocation", "name": "rail", "source": "user"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "skill_capability_used"
 
 
 def _vault_environment(artifact_dir: Path) -> VaultEnvironment:

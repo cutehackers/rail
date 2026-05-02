@@ -40,5 +40,6 @@ where = ["src"]
 [tool.setuptools.package-data]
 rail = [
     "package_assets/**/*.md",
+    "package_assets/live_smoke/**/*",
     "package_assets/**/*.yaml",
 ]

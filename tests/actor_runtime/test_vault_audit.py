@@ -180,6 +180,31 @@ def test_capability_audit_allows_passive_message_only_discovery_events():
     assert violation is None
 
 
+def test_capability_audit_blocks_config_loaded_inside_metadata_event():
+    events = [{"type": "event", "category": "metadata", "message": "config loaded from user config"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "inherited_config_applied"
+    assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_blocks_rule_applied_inside_discovery_event():
+    events = [{"type": "event", "category": "discovery", "message": "rule applied from user rules"}]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is not None
+    assert violation.code == "rule_capability_used"
+    assert violation.audit_layer == "capability"
+
+
+def test_capability_audit_allows_passive_metadata_and_discovery_events():
+    events = [
+        {"type": "event", "category": "metadata", "message": "metadata indexed"},
+        {"type": "event", "category": "discovery", "message": "plugin registry discovered"},
+    ]
+    violation = audit_codex_event_capabilities(events)
+    assert violation is None
+
+
 def test_capability_audit_blocks_actual_mcp_tool_invocation():
     events = [{"type": "tool_call", "kind": "mcp_tool_call", "tool": "mcp.filesystem.read"}]
     violation = audit_codex_event_capabilities(events)

@@ -140,14 +140,16 @@ def audit_vault_materialization(vault_environment: VaultEnvironment, *, artifact
 def audit_codex_event_capabilities(events: list[dict[str, object]]) -> VaultAuditViolation | None:
     for event in events:
         for mapping in _event_dicts(event):
-            if _is_passive_discovery_event(mapping):
-                continue
             event_type = _event_token(mapping, "type")
             event_kind = _event_token(mapping, "kind")
             event_source = _event_source(mapping)
             identity = _event_identity_text(mapping)
             mcp_identity = _event_mcp_identity_text(mapping)
             behavior_signal = _event_behavior_signal_text(mapping)
+            if _is_hook_rule_config_capability_event(event_type=event_type, event_kind=event_kind, behavior_signal=behavior_signal):
+                return _hook_rule_config_violation(behavior_signal)
+            if _is_passive_discovery_event(mapping, event_type=event_type, event_kind=event_kind):
+                continue
             if _is_mcp_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=mcp_identity):
                 return _violation(code="mcp_capability_used", reason="MCP invocation is not allowed", audit_layer="capability")
             if _is_plugin_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=identity):
@@ -160,14 +162,10 @@ def audit_codex_event_capabilities(events: list[dict[str, object]]) -> VaultAudi
                 identity=identity,
             ):
                 return _violation(code="skill_capability_used", reason="skill invocation is not allowed", audit_layer="capability")
-            if _is_hook_rule_config_capability_event(event_type=event_type, event_kind=event_kind, behavior_signal=behavior_signal):
-                return _hook_rule_config_violation(behavior_signal)
     return None
 
 
-def _is_passive_discovery_event(mapping: dict[str, object]) -> bool:
-    event_type = _event_token(mapping, "type")
-    event_kind = _event_token(mapping, "kind")
+def _is_passive_discovery_event(mapping: dict[str, object], *, event_type: str, event_kind: str) -> bool:
     category = _event_token(mapping, "category")
     message = _event_token(mapping, "message")
     if _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind):

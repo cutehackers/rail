@@ -2,6 +2,36 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.6.4 - 2026-05-02
+
+### Changed
+
+- Updated refactor: extract codex bootstrap profile.
+- Updated refactor: structure codex vault audit violations.
+- Updated release documentation: define bounded codex vault isolation.
+- Updated release documentation: plan codex vault bounded isolation.
+- Updated release documentation: define codex vault bounded isolation.
+
+### Fixed
+
+- Fixed block plugin-shaped codex events.
+- Fixed audit event-shaped codex capabilities.
+- Fixed close codex vault audit review gaps.
+- Fixed write structured codex vault policy evidence.
+- Fixed fail closed on explicit capability command events.
+- Fixed prioritize behavior change audit signals.
+- Fixed tighten codex capability provenance matching.
+- Fixed block sourced capability and config load events.
+- Fixed narrow codex capability event matching.
+- Fixed distinguish passive discovery from capability use.
+- Fixed require codex plugin cache directory.
+- Fixed require codex system skill directories.
+- Fixed tolerate codex vault bootstrap material.
+
+### Verification
+
+- `scripts/release_gate.sh`
+
 ## v0.6.3 - 2026-05-01
 
 ### Fixed

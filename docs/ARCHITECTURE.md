@@ -45,6 +45,14 @@ operator/API-key environments. Each actor receives:
 - secret-safe environment
 - evidence writer
 
+The `codex_vault` provider audits actor execution in three layers:
+
+- bootstrap profile audit recognizes passive Codex-owned actor-local material
+- provenance audit blocks parent/user/target-local or behavior-affecting
+  unknown capability sources
+- capability-use audit blocks Rail-policy-forbidden tool, skill, plugin, MCP,
+  hook, rule, config, target mutation, or validation behavior
+
 Actors return structured output and attempt-scoped evidence references. The supervisor owns routing and terminal decisions.
 
 ### Supervisor

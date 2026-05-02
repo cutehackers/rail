@@ -84,6 +84,19 @@ The Actor Runtime owns:
 The Actor Runtime is not the source of truth for terminal outcome. Runtime
 events are evidence, not decision authority.
 
+### Codex Vault Bounded Isolation
+
+`codex_vault` provides bounded isolation. Rail does not require the
+actor-local `CODEX_HOME` to remain empty. Rail does require that parent,
+user, target-local, or behavior-affecting unknown capabilities do not flow
+into actor execution.
+
+The passive Codex-owned bootstrap material, discovery metadata, and cache state
+may exist inside the actor-local `CODEX_HOME`. Rail capability use remains
+governed by Rail policy. Parent or user skills, plugin tools, MCP servers,
+hooks, rules, inherited config, direct target mutation, and actor-invented
+validation remain blocked.
+
 ## Required User Flows
 
 ### Fresh Work

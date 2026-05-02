@@ -129,6 +129,20 @@ def test_active_docs_do_not_use_removed_request_api_or_wrong_provider_name():
     assert findings == []
 
 
+def test_active_docs_define_codex_vault_bounded_isolation():
+    combined = "\n".join(
+        Path(path).read_text(encoding="utf-8")
+        for path in ("docs/SPEC.md", "docs/ARCHITECTURE.md")
+    )
+    assert "bounded isolation" in combined
+    assert "passive Codex-owned bootstrap" in combined
+    assert "capability use" in combined
+    assert "provenance" in combined
+    forbidden_terms = ["actor " + "backend", "vault_" + "codex", "normalize_" + "request"]
+    for term in forbidden_terms:
+        assert term not in combined.lower()
+
+
 def test_release_gate_exists_and_uses_python_runtime_only():
     path = Path("scripts/release_gate.sh")
 

@@ -97,6 +97,9 @@ class RepairProposal(BaseModel):
     @field_validator("file_paths")
     @classmethod
     def validate_file_paths(cls, file_paths: list[str]) -> list[str]:
+        if not file_paths:
+            raise ValueError("repair proposals must include file_paths")
+
         for file_path in file_paths:
             if "\\" in file_path:
                 raise ValueError("repair file paths must use POSIX separators")
@@ -152,5 +155,14 @@ class LiveSmokeReport(BaseModel):
                 raise ValueError("failed reports must carry symptom_class")
             if self.owning_surface is None:
                 raise ValueError("failed reports must carry owning_surface")
+            if self.repair_proposal is not None:
+                if self.owning_surface not in _REPAIRABLE_OWNING_SURFACES:
+                    raise ValueError(
+                        "repair proposals require a repairable report owning_surface"
+                    )
+                if self.repair_proposal.owning_surface != self.owning_surface:
+                    raise ValueError(
+                        "repair proposal owning_surface must match report owning_surface"
+                    )
 
         return self

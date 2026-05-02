@@ -149,6 +149,52 @@ def test_failed_live_smoke_report_accepts_repair_proposal(tmp_path: Path) -> Non
     assert report.repair_proposal == proposal
 
 
+def test_failed_live_smoke_report_rejects_repair_proposal_for_nonrepairable_surface(
+    tmp_path: Path,
+) -> None:
+    proposal = RepairProposal(
+        owning_surface=OwningSurface.RUNTIME_INVOCATION,
+        file_paths=["src/rail/actor_runtime/runtime.py"],
+        summary="Keep runtime invocation compatible with live smoke.",
+        preserves_fail_closed_policy=True,
+    )
+
+    with pytest.raises(ValidationError):
+        LiveSmokeReport(
+            actor=LiveSmokeActor.PLANNER,
+            verdict=LiveSmokeVerdict.FAILED,
+            symptom_class=SymptomClass.PROVIDER_TRANSIENT_FAILURE,
+            owning_surface=OwningSurface.PROVIDER,
+            report_dir=tmp_path,
+            fixture_digest="sha256:abc",
+            evidence_refs=[],
+            repair_proposal=proposal,
+        )
+
+
+def test_failed_live_smoke_report_rejects_mismatched_repair_proposal_surface(
+    tmp_path: Path,
+) -> None:
+    proposal = RepairProposal(
+        owning_surface=OwningSurface.RUNTIME_CONTRACT,
+        file_paths=["src/rail/actor_runtime/schemas.py"],
+        summary="Keep live smoke actor output aligned with strict schemas.",
+        preserves_fail_closed_policy=True,
+    )
+
+    with pytest.raises(ValidationError):
+        LiveSmokeReport(
+            actor=LiveSmokeActor.CONTEXT_BUILDER,
+            verdict=LiveSmokeVerdict.FAILED,
+            symptom_class=SymptomClass.BEHAVIOR_SMOKE_FAILURE,
+            owning_surface=OwningSurface.ACTOR_PROMPT,
+            report_dir=tmp_path,
+            fixture_digest="sha256:abc",
+            evidence_refs=[],
+            repair_proposal=proposal,
+        )
+
+
 def test_repair_proposal_records_safe_rail_owned_surface() -> None:
     proposal = RepairProposal(
         owning_surface=OwningSurface.ACTOR_PROMPT,
@@ -201,6 +247,16 @@ def test_repair_proposal_rejects_forbidden_file_paths(file_path: str) -> None:
             owning_surface=OwningSurface.ACTOR_PROMPT,
             file_paths=[file_path],
             summary="Do not propose unsafe repair targets.",
+            preserves_fail_closed_policy=True,
+        )
+
+
+def test_repair_proposal_rejects_empty_file_paths() -> None:
+    with pytest.raises(ValidationError):
+        RepairProposal(
+            owning_surface=OwningSurface.ACTOR_PROMPT,
+            file_paths=[],
+            summary="Do not propose repairs without concrete files.",
             preserves_fail_closed_policy=True,
         )
 

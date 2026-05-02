@@ -56,7 +56,13 @@ def classify_actor_result(
             owning_surface=OwningSurface.ACTOR_PROMPT,
         )
 
-    return LiveSmokeClassification()
+    if result.status == "succeeded":
+        return LiveSmokeClassification()
+
+    return LiveSmokeClassification(
+        symptom_class=SymptomClass.UNKNOWN_FAILURE,
+        owning_surface=OwningSurface.UNKNOWN,
+    )
 
 
 def _extract_error_text(result: ActorResult) -> str:

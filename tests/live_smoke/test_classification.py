@@ -119,3 +119,20 @@ def test_classifies_succeeded_result_without_behavior_error_as_no_symptom() -> N
     assert classification.symptom_class is None
     assert classification.owning_surface is None
     assert classification.repair_proposal is None
+
+
+def test_classifies_unblocked_failed_result_as_unknown_failure() -> None:
+    result = _actor_result(
+        status="failed",
+        structured_output={"error": "actor failed without blocked category"},
+    )
+
+    classification = classify_actor_result(
+        LiveSmokeActor.CONTEXT_BUILDER,
+        result,
+        behavior_error=None,
+    )
+
+    assert classification.symptom_class == SymptomClass.UNKNOWN_FAILURE
+    assert classification.owning_surface == OwningSurface.UNKNOWN
+    assert classification.repair_proposal is None

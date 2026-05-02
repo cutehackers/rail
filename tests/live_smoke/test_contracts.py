@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from rail.live_smoke.contracts import V1_LIVE_SMOKE_ACTORS, evaluate_behavior_smoke
 from rail.live_smoke.models import (
     LiveSmokeActor,
     LiveSmokeReport,
@@ -205,6 +206,52 @@ def test_repair_proposal_records_safe_rail_owned_surface() -> None:
 
     assert proposal.owning_surface == OwningSurface.ACTOR_PROMPT
     assert proposal.preserves_fail_closed_policy is True
+
+
+def test_v1_live_smoke_actor_scope_is_planner_and_context_builder_only() -> None:
+    assert V1_LIVE_SMOKE_ACTORS == (
+        LiveSmokeActor.PLANNER,
+        LiveSmokeActor.CONTEXT_BUILDER,
+    )
+
+
+def test_planner_behavior_smoke_requires_minimum_fields() -> None:
+    error = evaluate_behavior_smoke(
+        LiveSmokeActor.PLANNER,
+        {"summary": "Plan", "substeps": [], "risks": [], "acceptance_criteria_refined": []},
+    )
+
+    assert error is None
+
+
+def test_context_builder_behavior_smoke_requires_non_empty_context() -> None:
+    error = evaluate_behavior_smoke(
+        LiveSmokeActor.CONTEXT_BUILDER,
+        {
+            "relevant_files": [{"path": "README.md", "why": "entry point"}],
+            "repo_patterns": ["small service module"],
+            "test_patterns": ["pytest unit test"],
+            "forbidden_changes": ["do not edit auth"],
+            "implementation_hints": ["keep changes scoped"],
+        },
+    )
+
+    assert error is None
+
+
+def test_context_builder_behavior_smoke_rejects_empty_relevant_files() -> None:
+    error = evaluate_behavior_smoke(
+        LiveSmokeActor.CONTEXT_BUILDER,
+        {
+            "relevant_files": [],
+            "repo_patterns": ["pattern"],
+            "test_patterns": ["test"],
+            "forbidden_changes": ["forbidden"],
+            "implementation_hints": ["hint"],
+        },
+    )
+
+    assert error == "context_builder output must include non-empty relevant_files"
 
 
 @pytest.mark.parametrize(

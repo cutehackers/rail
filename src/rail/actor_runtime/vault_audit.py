@@ -23,7 +23,7 @@ class VaultAuditViolation(BaseModel):
 _ALLOWED_ENV_KEYS = {"PATH", "HOME", "CODEX_HOME", "TMPDIR", "TMP", "TEMP"}
 _ALLOWED_AUTH_MATERIAL = {"auth.json"}
 _TRUSTED_PROCESS_PATH = "/usr/bin:/bin"
-_EVENT_AUDIT_KEYS = ("type", "event", "kind", "tool", "name", "server", "source", "path", "category", "message")
+_CAPABILITY_IDENTITY_KEYS = ("type", "kind", "tool", "name")
 _CAPABILITY_EVENT_TYPES = {
     "tool_call",
     "tool_invocation",
@@ -50,6 +50,7 @@ _TOOL_EVENT_TYPES = {
 }
 _CAPABILITY_EXECUTION_TYPES = {"capability_call", "capability_execution", "capability_invocation"}
 _BEHAVIOR_AFFECTING_SOURCES = {"user", "parent", "target", "unknown", ""}
+_PASSIVE_EVENT_TERMS = {"plugin_cache", "skill_registry", "metadata", "discovery", "actor-local config inspected"}
 _HOOK_RULE_CONFIG_EVENT_TYPES = {
     "hook_execution",
     "hook_applied",
@@ -142,31 +143,33 @@ def audit_codex_event_capabilities(events: list[dict[str, object]]) -> VaultAudi
             event_type = _event_token(mapping, "type")
             event_kind = _event_token(mapping, "kind")
             event_source = _event_token(mapping, "source")
-            lowered = _event_audit_text(mapping)
-            if _is_mcp_capability_event(mapping, event_type=event_type, event_kind=event_kind, lowered=lowered):
+            identity = _event_identity_text(mapping)
+            if _is_mcp_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=identity):
                 return _violation(code="mcp_capability_used", reason="MCP invocation is not allowed", audit_layer="capability")
-            if _is_plugin_capability_event(mapping, event_type=event_type, event_kind=event_kind, lowered=lowered):
+            if _is_plugin_capability_event(mapping, event_type=event_type, event_kind=event_kind, identity=identity):
                 return _violation(code="plugin_capability_used", reason="plugin invocation is not allowed", audit_layer="capability")
             if _is_skill_capability_event(
                 mapping,
                 event_type=event_type,
                 event_kind=event_kind,
                 event_source=event_source,
-                lowered=lowered,
+                identity=identity,
             ):
                 return _violation(code="skill_capability_used", reason="skill invocation is not allowed", audit_layer="capability")
-            if _is_hook_rule_config_capability_event(event_type=event_type, event_kind=event_kind, lowered=lowered):
-                return _hook_rule_config_violation(event_type or event_kind or lowered)
+            if _is_hook_rule_config_capability_event(event_type=event_type, event_kind=event_kind, identity=identity):
+                return _hook_rule_config_violation(event_type or event_kind or identity)
     return None
 
 
 def _is_passive_discovery_event(mapping: dict[str, object]) -> bool:
     event_type = _event_token(mapping, "type")
+    event_kind = _event_token(mapping, "kind")
     category = _event_token(mapping, "category")
     message = _event_token(mapping, "message")
-    if event_type == "event" and category in _PASSIVE_EVENT_CATEGORIES:
-        return True
-    return event_type == "event" and message == "actor-local config inspected"
+    if _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind):
+        return False
+    passive_text = f"{category} {message}"
+    return any(term in passive_text for term in _PASSIVE_EVENT_TERMS) or category in _PASSIVE_EVENT_CATEGORIES
 
 
 def _is_mcp_capability_event(
@@ -174,9 +177,9 @@ def _is_mcp_capability_event(
     *,
     event_type: str,
     event_kind: str,
-    lowered: str,
+    identity: str,
 ) -> bool:
-    return "mcp" in lowered and (_is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind) or event_type.startswith("mcp_"))
+    return "mcp" in identity and _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind)
 
 
 def _is_plugin_capability_event(
@@ -184,9 +187,9 @@ def _is_plugin_capability_event(
     *,
     event_type: str,
     event_kind: str,
-    lowered: str,
+    identity: str,
 ) -> bool:
-    return "plugin" in lowered and _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind)
+    return "plugin" in identity and _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind)
 
 
 def _is_skill_capability_event(
@@ -195,20 +198,20 @@ def _is_skill_capability_event(
     event_type: str,
     event_kind: str,
     event_source: str,
-    lowered: str,
+    identity: str,
 ) -> bool:
     if event_type in {"skill_invocation", "skill_execution"} or event_kind in {"skill_invocation", "skill_execution"}:
         return True
-    if "skill" not in lowered:
+    if "skill" not in identity:
         return False
     return _is_tool_or_capability_call(mapping, event_type=event_type, event_kind=event_kind) and event_source in _BEHAVIOR_AFFECTING_SOURCES
 
 
-def _is_hook_rule_config_capability_event(*, event_type: str, event_kind: str, lowered: str) -> bool:
+def _is_hook_rule_config_capability_event(*, event_type: str, event_kind: str, identity: str) -> bool:
     if event_type in _HOOK_RULE_CONFIG_EVENT_TYPES or event_kind in _HOOK_RULE_CONFIG_EVENT_TYPES:
         return True
     behavior_change_terms = ("applied", "execution", "executed", "loaded", "load", "materialized")
-    return any(term in lowered for term in ("hook", "rule", "config")) and any(term in lowered for term in behavior_change_terms)
+    return any(term in identity for term in ("hook", "rule", "config")) and any(term in identity for term in behavior_change_terms)
 
 
 def _hook_rule_config_violation(value: str) -> VaultAuditViolation:
@@ -236,8 +239,8 @@ def _event_token(mapping: dict[str, object], key: str) -> str:
     return value.lower() if isinstance(value, str) else ""
 
 
-def _event_audit_text(mapping: dict[str, object]) -> str:
-    return " ".join(str(mapping.get(key)).lower() for key in _EVENT_AUDIT_KEYS if mapping.get(key) is not None)
+def _event_identity_text(mapping: dict[str, object]) -> str:
+    return " ".join(str(mapping.get(key)).lower() for key in _CAPABILITY_IDENTITY_KEYS if mapping.get(key) is not None)
 
 
 def _violation(

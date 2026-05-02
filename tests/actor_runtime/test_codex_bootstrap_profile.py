@@ -40,6 +40,19 @@ def test_bootstrap_profile_rejects_custom_plugin_material(tmp_path):
     assert violation.audit_layer == "provenance"
 
 
+def test_bootstrap_profile_rejects_plugin_cache_file_material(tmp_path):
+    codex_home = tmp_path / "codex_home"
+    plugins = codex_home / "plugins"
+    plugins.mkdir(parents=True)
+    (plugins / "cache").write_text("not a cache directory\n", encoding="utf-8")
+
+    violation = bootstrap_profile_violation(codex_home / "plugins", codex_home=codex_home)
+
+    assert violation is not None
+    assert violation.code == "unsafe_vault_material"
+    assert violation.audit_layer == "materialization"
+
+
 def test_bootstrap_profile_rejects_system_skill_file_material(tmp_path):
     codex_home = tmp_path / "codex_home"
     system_skills = codex_home / "skills" / ".system"

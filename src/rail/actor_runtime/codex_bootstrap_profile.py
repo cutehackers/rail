@@ -115,6 +115,9 @@ def _plugins_materialization_violation(path: Path, *, codex_home: Path) -> Vault
             path=user_plugin,
             codex_home=codex_home,
         )
+    plugin_cache = path / "cache"
+    if plugin_cache.exists() and (plugin_cache.is_symlink() or not plugin_cache.is_dir()):
+        return _unsafe_vault_material_violation(plugin_cache, codex_home=codex_home)
     return None
 
 

@@ -44,14 +44,16 @@ def _repair_shell_policy_guidance(summary: RepairEvidenceSummary, repo_root: Pat
     if "shell executable is not allowed" not in (summary.policy_violation_reason or summary.error_text):
         return None
 
-    prompt_path = f".harness/actors/{summary.actor.value}.md"
-    updated = _append_line_if_missing(repo_root / prompt_path, _TOOL_PROBE_GUIDANCE)
-    if updated is None:
-        return None
+    file_contents: dict[str, str] = {}
+    for prompt_path in _actor_prompt_paths(summary.actor):
+        updated = _append_line_if_missing(repo_root / prompt_path, _TOOL_PROBE_GUIDANCE)
+        if updated is None:
+            return None
+        file_contents[prompt_path] = updated
     return _candidate(
         summary,
         repo_root=repo_root,
-        file_contents={prompt_path: updated},
+        file_contents=file_contents,
         risk_level=RepairRiskLevel.LOW,
         summary_text=f"Guide {summary.actor.value} live smoke away from forbidden tool probes.",
         validation_commands=["uv run --python 3.12 pytest tests/build/test_package_assets.py -q"],
@@ -85,17 +87,21 @@ def _repair_behavior_contract_prompt(summary: RepairEvidenceSummary, repo_root: 
     if summary.actor != LiveSmokeActor.EVALUATOR or "evaluator_input_digest" not in summary.error_text:
         return None
 
-    prompt_path = ".harness/actors/evaluator.md"
-    updated = _append_line_if_missing(repo_root / prompt_path, _EVALUATOR_DIGEST_GUIDANCE)
-    if updated is None:
-        return None
+    file_contents: dict[str, str] = {}
+    for prompt_path in _actor_prompt_paths(summary.actor):
+        updated = _append_line_if_missing(repo_root / prompt_path, _EVALUATOR_DIGEST_GUIDANCE)
+        if updated is None:
+            return None
+        file_contents[prompt_path] = updated
     return _candidate(
         summary,
         repo_root=repo_root,
-        file_contents={prompt_path: updated},
+        file_contents=file_contents,
         risk_level=RepairRiskLevel.LOW,
         summary_text="Guide evaluator live smoke to echo the bound evaluator input digest.",
-        validation_commands=["uv run --python 3.12 pytest tests/live_smoke/test_contracts.py -q"],
+        validation_commands=[
+            "uv run --python 3.12 pytest tests/live_smoke/test_contracts.py tests/build/test_package_assets.py -q"
+        ],
         auto_apply=True,
     )
 
@@ -132,6 +138,14 @@ def _candidate(
         validation_commands=validation_commands,
         preserves_fail_closed_policy=True,
         auto_apply=auto_apply,
+    )
+
+
+def _actor_prompt_paths(actor: LiveSmokeActor) -> tuple[str, str, str]:
+    return (
+        f".harness/actors/{actor.value}.md",
+        f"assets/defaults/actors/{actor.value}.md",
+        f"src/rail/package_assets/defaults/actors/{actor.value}.md",
     )
 
 

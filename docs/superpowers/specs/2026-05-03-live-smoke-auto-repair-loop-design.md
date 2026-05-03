@@ -99,8 +99,8 @@ Outputs:
 - per-iteration live smoke reports
 - per-iteration repair candidates
 - applied patch digests when apply mode is enabled
-- terminal status: `passed`, `repaired`, `unrepairable`, `budget_exhausted`, or
-  `failed_validation`
+- terminal status: `passed`, `candidate_ready`, `repaired`, `unrepairable`,
+  `budget_exhausted`, or `failed_validation`
 
 The loop writes a JSON report beside live smoke reports and returns a typed
 model to callers.
@@ -147,7 +147,9 @@ Input:
 
 Output:
 
-- patch candidate for the actor prompt and live smoke runtime contract
+- patch candidate for the actor prompt copies under `.harness/actors/`,
+  `assets/defaults/actors/`, and
+  `src/rail/package_assets/defaults/actors/`
 - never widens the runtime shell allowlist
 - adds guidance to avoid probing forbidden tools and to report unavailable
   tooling through structured output
@@ -174,7 +176,7 @@ Input:
 
 Output:
 
-- prompt-only patch candidate when the behavior check identifies a missing
+- prompt-copy patch candidate when the behavior check identifies a missing
   structured-output field or seed echo
 - refuses repair for semantic quality failures that require product judgment
 
@@ -195,6 +197,12 @@ Apply mode:
 
 Apply mode never commits. The operator or calling agent commits after reviewing
 the final diff and verification.
+
+When all actors are selected, apply mode checks for a dirty worktree once before
+the repair run starts. Repairs may intentionally make the Rail repo dirty; later
+actors in the same all-actor run must continue against that reviewed in-memory
+repair state rather than failing only because an earlier actor produced a
+candidate patch.
 
 ## CLI Surface
 
@@ -217,9 +225,10 @@ pass after repair.
 - Policy violations are repairable only when the repair tightens actor guidance
   or runtime contract metadata; they never broaden policy.
 - Every applied patch records a pre/post tree digest.
-- Every loop iteration writes evidence and can be inspected after interruption.
-- The loop stops on dirty worktree unless an explicit test-only override is
-  provided.
+- Every loop iteration writes stable report snapshots and can be inspected after
+  interruption, even if later reruns overwrite the actor's latest smoke report.
+- The loop stops on dirty worktree before apply mode starts unless an explicit
+  test-only override is provided.
 
 ## Success Criteria
 

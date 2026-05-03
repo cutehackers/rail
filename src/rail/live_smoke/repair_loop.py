@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -46,8 +47,28 @@ class LiveSmokeRepairLoop:
         self.allow_dirty_worktree = allow_dirty_worktree
 
     def run_all(self, *, apply: bool = False, max_iterations: int = 2) -> LiveSmokeRepairLoopReport:
+        if max_iterations < 1:
+            raise ValueError("max_iterations must be at least 1")
+        if apply and not self.allow_dirty_worktree and _worktree_is_dirty(self.repo_root):
+            report = LiveSmokeRepairLoopReport(
+                status=RepairLoopStatus.FAILED_VALIDATION,
+                actors=list(LIVE_SMOKE_ACTORS),
+                report_dir=self.report_root,
+                apply=apply,
+                max_iterations=max_iterations,
+                iterations=[],
+            )
+            _write_loop_report(report)
+            return report
+
         actor_reports = [
-            self.run_actor(actor, apply=apply, max_iterations=max_iterations, write_report=False)
+            self._run_actor(
+                actor,
+                apply=apply,
+                max_iterations=max_iterations,
+                write_report=False,
+                enforce_clean_worktree=False,
+            )
             for actor in LIVE_SMOKE_ACTORS
         ]
         report = LiveSmokeRepairLoopReport(
@@ -69,9 +90,26 @@ class LiveSmokeRepairLoop:
         max_iterations: int = 2,
         write_report: bool = True,
     ) -> LiveSmokeRepairLoopReport:
+        return self._run_actor(
+            actor,
+            apply=apply,
+            max_iterations=max_iterations,
+            write_report=write_report,
+            enforce_clean_worktree=True,
+        )
+
+    def _run_actor(
+        self,
+        actor: LiveSmokeActor,
+        *,
+        apply: bool,
+        max_iterations: int,
+        write_report: bool,
+        enforce_clean_worktree: bool,
+    ) -> LiveSmokeRepairLoopReport:
         if max_iterations < 1:
             raise ValueError("max_iterations must be at least 1")
-        if apply and not self.allow_dirty_worktree and _worktree_is_dirty(self.repo_root):
+        if apply and enforce_clean_worktree and not self.allow_dirty_worktree and _worktree_is_dirty(self.repo_root):
             report = self._failed_validation_report(actor, apply=apply, max_iterations=max_iterations, iterations=[])
             if write_report:
                 _write_loop_report(report)
@@ -81,7 +119,12 @@ class LiveSmokeRepairLoop:
         applied_any = False
         for iteration_number in range(1, max_iterations + 1):
             smoke_report = self._runner().run_actor(actor)
-            report_path = smoke_report.report_dir / "live_smoke_report.json"
+            report_path = _snapshot_smoke_report(
+                smoke_report.report_dir / "live_smoke_report.json",
+                report_root=self.report_root,
+                actor=actor,
+                iteration=iteration_number,
+            )
             if smoke_report.verdict == LiveSmokeVerdict.PASSED:
                 report = LiveSmokeRepairLoopReport(
                     status=RepairLoopStatus.REPAIRED if applied_any else RepairLoopStatus.PASSED,
@@ -254,13 +297,28 @@ def _combined_status(statuses: list[RepairLoopStatus]) -> RepairLoopStatus:
     for status in (
         RepairLoopStatus.FAILED_VALIDATION,
         RepairLoopStatus.BUDGET_EXHAUSTED,
-        RepairLoopStatus.CANDIDATE_READY,
         RepairLoopStatus.UNREPAIRABLE,
+        RepairLoopStatus.CANDIDATE_READY,
         RepairLoopStatus.REPAIRED,
     ):
         if status in statuses:
             return status
     return RepairLoopStatus.PASSED
+
+
+def _snapshot_smoke_report(report_path: Path, *, report_root: Path, actor: LiveSmokeActor, iteration: int) -> Path:
+    if not report_path.is_file():
+        return report_path
+    snapshot_path = (
+        report_root
+        / "repair_iterations"
+        / actor.value
+        / f"iteration-{iteration:04d}"
+        / "live_smoke_report.json"
+    )
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(report_path, snapshot_path)
+    return snapshot_path
 
 
 def _write_loop_report(report: LiveSmokeRepairLoopReport) -> None:

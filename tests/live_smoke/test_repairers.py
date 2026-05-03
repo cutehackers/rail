@@ -40,17 +40,20 @@ def test_repairer_registry_includes_known_repairable_failure_classes() -> None:
 
 
 def test_shell_policy_repairer_adds_prompt_guidance_without_widening_policy(tmp_path: Path) -> None:
-    prompt = tmp_path / ".harness" / "actors" / "generator.md"
-    prompt.parent.mkdir(parents=True)
-    prompt.write_text("You are the Generator actor.\n", encoding="utf-8")
+    _write_actor_prompt_copies(tmp_path, LiveSmokeActor.GENERATOR)
 
     candidate = build_repair_candidate(_summary(), repo_root=tmp_path)
 
     assert candidate is not None
     assert candidate.risk_level == RepairRiskLevel.LOW
-    assert candidate.file_paths == [".harness/actors/generator.md"]
-    assert "allowlist" not in candidate.patch_bundle.operations[0].content.lower()
-    assert "do not probe unavailable tools" in candidate.patch_bundle.operations[0].content
+    assert candidate.file_paths == [
+        ".harness/actors/generator.md",
+        "assets/defaults/actors/generator.md",
+        "src/rail/package_assets/defaults/actors/generator.md",
+    ]
+    for operation in candidate.patch_bundle.operations:
+        assert "allowlist" not in operation.content.lower()
+        assert "do not probe unavailable tools" in operation.content
 
 
 def test_schema_drift_repairer_updates_all_schema_template_copies(tmp_path: Path) -> None:
@@ -105,9 +108,7 @@ properties:
 
 
 def test_behavior_contract_repairer_adds_evaluator_digest_prompt_guidance(tmp_path: Path) -> None:
-    prompt = tmp_path / ".harness" / "actors" / "evaluator.md"
-    prompt.parent.mkdir(parents=True)
-    prompt.write_text("You are the Evaluator actor.\n", encoding="utf-8")
+    _write_actor_prompt_copies(tmp_path, LiveSmokeActor.EVALUATOR)
 
     candidate = build_repair_candidate(
         _summary(
@@ -121,8 +122,14 @@ def test_behavior_contract_repairer_adds_evaluator_digest_prompt_guidance(tmp_pa
     )
 
     assert candidate is not None
-    assert candidate.file_paths == [".harness/actors/evaluator.md"]
-    assert "evaluator_input_digest" in candidate.patch_bundle.operations[0].content
+    assert candidate.file_paths == [
+        ".harness/actors/evaluator.md",
+        "assets/defaults/actors/evaluator.md",
+        "src/rail/package_assets/defaults/actors/evaluator.md",
+    ]
+    assert "tests/build/test_package_assets.py" in " ".join(candidate.validation_commands)
+    for operation in candidate.patch_bundle.operations:
+        assert "evaluator_input_digest" in operation.content
 
 
 def test_repairers_return_none_for_unknown_or_nonrepairable_failures(tmp_path: Path) -> None:
@@ -137,3 +144,14 @@ def test_repairers_return_none_for_unknown_or_nonrepairable_failures(tmp_path: P
     )
 
     assert candidate is None
+
+
+def _write_actor_prompt_copies(repo_root: Path, actor: LiveSmokeActor) -> None:
+    for prompt_root in (
+        ".harness/actors",
+        "assets/defaults/actors",
+        "src/rail/package_assets/defaults/actors",
+    ):
+        prompt = repo_root / prompt_root / f"{actor.value}.md"
+        prompt.parent.mkdir(parents=True, exist_ok=True)
+        prompt.write_text(f"You are the {actor.value} actor.\n", encoding="utf-8")

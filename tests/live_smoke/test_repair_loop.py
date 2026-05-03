@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from rail.actor_runtime.runtime import ActorResult
+from rail.live_smoke.contracts import LIVE_SMOKE_ACTORS
 from rail.live_smoke.models import LiveSmokeActor, LiveSmokeVerdict
 from rail.live_smoke.repair_loop import LiveSmokeRepairLoop
 from rail.live_smoke.repair_models import RepairLoopStatus
@@ -74,6 +77,77 @@ class AllSuccessRuntime:
             evidence_path = invocation.artifact_dir / evidence_ref
             evidence_path.parent.mkdir(parents=True, exist_ok=True)
             evidence_path.write_text(json.dumps({"actor": invocation.actor}), encoding="utf-8")
+        return result
+
+
+class RepairFirstActorThenSuccessRuntime:
+    def __init__(self) -> None:
+        self.invocations = []
+        self.failed_once = False
+
+    def run(self, invocation):
+        self.invocations.append(invocation)
+        if invocation.actor == LiveSmokeActor.PLANNER.value and not self.failed_once:
+            self.failed_once = True
+            result = _policy_failure(LiveSmokeActor.PLANNER)
+        else:
+            result = ActorResult(
+                status="succeeded",
+                structured_output=_success_output_for(invocation),
+                events_ref=Path(f"runs/attempt-0001/{invocation.actor}.events.jsonl"),
+                runtime_evidence_ref=Path(f"runs/attempt-0001/{invocation.actor}.runtime_evidence.json"),
+            )
+
+        runtime_evidence = {
+            "actor": invocation.actor,
+            "error": result.structured_output.get("error", ""),
+            "policy_violation": {"reason": result.structured_output.get("error", "")},
+            "output_schema_ref": f"actor_runtime/schemas/{invocation.actor}.schema.json",
+        }
+        for evidence_ref in (result.events_ref, result.runtime_evidence_ref):
+            evidence_path = invocation.artifact_dir / evidence_ref
+            evidence_path.parent.mkdir(parents=True, exist_ok=True)
+            evidence_path.write_text(json.dumps(runtime_evidence), encoding="utf-8")
+        return result
+
+
+class CandidateAndUnrepairableRuntime:
+    def __init__(self) -> None:
+        self.invocations = []
+
+    def run(self, invocation):
+        self.invocations.append(invocation)
+        if invocation.actor == LiveSmokeActor.PLANNER.value:
+            result = _policy_failure(LiveSmokeActor.PLANNER)
+        elif invocation.actor == LiveSmokeActor.CONTEXT_BUILDER.value:
+            result = ActorResult(
+                status="interrupted",
+                structured_output={"error": "provider timeout"},
+                events_ref=Path("runs/attempt-0001/context_builder.events.jsonl"),
+                runtime_evidence_ref=Path("runs/attempt-0001/context_builder.runtime_evidence.json"),
+                blocked_category="environment",
+            )
+        else:
+            result = ActorResult(
+                status="succeeded",
+                structured_output=_success_output_for(invocation),
+                events_ref=Path(f"runs/attempt-0001/{invocation.actor}.events.jsonl"),
+                runtime_evidence_ref=Path(f"runs/attempt-0001/{invocation.actor}.runtime_evidence.json"),
+            )
+        for evidence_ref in (result.events_ref, result.runtime_evidence_ref):
+            evidence_path = invocation.artifact_dir / evidence_ref
+            evidence_path.parent.mkdir(parents=True, exist_ok=True)
+            evidence_path.write_text(
+                json.dumps(
+                    {
+                        "actor": invocation.actor,
+                        "error": result.structured_output.get("error", ""),
+                        "policy_violation": {"reason": result.structured_output.get("error", "")},
+                        "output_schema_ref": f"actor_runtime/schemas/{invocation.actor}.schema.json",
+                    }
+                ),
+                encoding="utf-8",
+            )
         return result
 
 
@@ -176,9 +250,15 @@ def _success_output_for(invocation) -> dict[str, object]:
 
 def _repo_root(tmp_path: Path) -> Path:
     repo_root = tmp_path / "repo"
-    prompt = repo_root / ".harness" / "actors" / "generator.md"
-    prompt.parent.mkdir(parents=True)
-    prompt.write_text("You are the Generator actor.\n", encoding="utf-8")
+    for actor in LiveSmokeActor:
+        for prompt_root in (
+            ".harness/actors",
+            "assets/defaults/actors",
+            "src/rail/package_assets/defaults/actors",
+        ):
+            prompt = repo_root / prompt_root / f"{actor.value}.md"
+            prompt.parent.mkdir(parents=True, exist_ok=True)
+            prompt.write_text(f"You are the {actor.value} actor.\n", encoding="utf-8")
     return repo_root
 
 
@@ -217,6 +297,48 @@ def test_repair_loop_apply_mode_applies_patch_and_reruns_actor(tmp_path: Path) -
     assert "do not probe unavailable tools" in (repo_root / ".harness" / "actors" / "generator.md").read_text(
         encoding="utf-8"
     )
+    assert json.loads(report.iterations[0].report_path.read_text(encoding="utf-8"))["verdict"] == LiveSmokeVerdict.FAILED
+    assert report.iterations[0].candidate is not None
+    assert report.iterations[0].candidate.source_report_path == report.iterations[0].report_path
+    assert json.loads(report.iterations[1].report_path.read_text(encoding="utf-8"))["verdict"] == LiveSmokeVerdict.PASSED
+
+
+def test_repair_loop_run_all_apply_continues_after_first_actor_repair(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    dirty_checks = []
+
+    def fake_worktree_is_dirty(_repo_root: Path) -> bool:
+        dirty_checks.append(True)
+        return len(dirty_checks) > 1
+
+    monkeypatch.setattr("rail.live_smoke.repair_loop._worktree_is_dirty", fake_worktree_is_dirty)
+    runtime = RepairFirstActorThenSuccessRuntime()
+    loop = LiveSmokeRepairLoop(
+        report_root=tmp_path / "reports",
+        repo_root=_repo_root(tmp_path),
+        runtime_factory=lambda _target: runtime,
+        validation_runner=lambda _candidate, _repo_root: True,
+    )
+
+    report = loop.run_all(apply=True, max_iterations=2)
+
+    assert report.status == RepairLoopStatus.REPAIRED
+    assert len(dirty_checks) == 1
+    assert [invocation.actor for invocation in runtime.invocations] == [
+        LiveSmokeActor.PLANNER.value,
+        LiveSmokeActor.PLANNER.value,
+        LiveSmokeActor.CONTEXT_BUILDER.value,
+        LiveSmokeActor.CRITIC.value,
+        LiveSmokeActor.GENERATOR.value,
+        LiveSmokeActor.EXECUTOR.value,
+        LiveSmokeActor.EVALUATOR.value,
+    ]
+    assert [iteration.actor for iteration in report.iterations] == [
+        LiveSmokeActor.PLANNER,
+        *LIVE_SMOKE_ACTORS,
+    ]
 
 
 def test_repair_loop_keeps_provider_failure_unrepairable(tmp_path: Path) -> None:
@@ -275,3 +397,18 @@ def test_repair_loop_run_all_passes_when_all_actors_pass(tmp_path: Path) -> None
         json.loads((iteration.report_path).read_text(encoding="utf-8"))["verdict"] == LiveSmokeVerdict.PASSED
         for iteration in report.iterations
     )
+
+
+def test_repair_loop_run_all_reports_unrepairable_over_candidate(tmp_path: Path) -> None:
+    runtime = CandidateAndUnrepairableRuntime()
+    loop = LiveSmokeRepairLoop(
+        report_root=tmp_path / "reports",
+        repo_root=_repo_root(tmp_path),
+        runtime_factory=lambda _target: runtime,
+    )
+
+    report = loop.run_all()
+
+    assert report.status == RepairLoopStatus.UNREPAIRABLE
+    assert any(iteration.candidate is not None for iteration in report.iterations)
+    assert any(iteration.candidate is None and iteration.actor == LiveSmokeActor.CONTEXT_BUILDER for iteration in report.iterations)

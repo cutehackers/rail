@@ -18,6 +18,7 @@ class RepairRiskLevel(StrEnum):
 
 class RepairLoopStatus(StrEnum):
     PASSED = "passed"
+    CANDIDATE_READY = "candidate_ready"
     REPAIRED = "repaired"
     UNREPAIRABLE = "unrepairable"
     BUDGET_EXHAUSTED = "budget_exhausted"

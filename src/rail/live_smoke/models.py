@@ -55,6 +55,7 @@ _REPAIRABLE_OWNING_SURFACES = frozenset(
 _ALLOWED_REPAIR_PATH_DIRS = (
     ".harness/actors",
     ".harness/templates",
+    "assets/defaults",
     "src/rail/actor_runtime",
     "src/rail/live_smoke",
     "src/rail/package_assets",

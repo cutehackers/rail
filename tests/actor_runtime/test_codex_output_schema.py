@@ -100,9 +100,12 @@ def test_real_implementation_schema_preserves_patch_bundle_alternatives():
     compiled = compile_codex_output_schema(_load_schema("implementation_result.schema.yaml"))
 
     assert compiled["additionalProperties"] is False
-    assert "oneOf" in compiled
+    assert "oneOf" not in compiled
     assert "patch_bundle_ref" in compiled["properties"]
     assert "patch_bundle" in compiled["properties"]
+    operation_schema = compiled["properties"]["patch_bundle"]["properties"]["operations"]["items"]
+    assert operation_schema["properties"]["binary"]["type"] == "boolean"
+    assert operation_schema["properties"]["executable"]["type"] == "boolean"
     assert_codex_strict_schema(compiled)
     validator = Draft202012Validator(compiled)
     for output in [
@@ -128,15 +131,30 @@ def test_real_implementation_schema_preserves_patch_bundle_alternatives():
         validator.validate(output)
 
 
-def test_real_execution_report_schema_keeps_optional_telemetry_nullable():
+def test_real_execution_report_schema_uses_minimal_actor_contract():
     compiled = compile_codex_output_schema(_load_schema("execution_report.schema.yaml"))
 
     assert compiled["additionalProperties"] is False
+    assert "allOf" not in compiled
     assert compiled["required"] == sorted(compiled["properties"])
-    assert _allows_null(compiled["properties"]["actor_graph"])
-    assert _allows_null(compiled["properties"]["approved_memory_consideration"])
+    assert set(compiled["properties"]) == {"format", "analyze", "tests", "failure_details", "logs"}
     assert_codex_strict_schema(compiled)
     Draft202012Validator.check_schema(compiled)
+
+
+def test_compiled_actor_schemas_omit_codex_unsupported_combiners():
+    unsupported_keys = {"oneOf", "anyOf", "allOf", "not", "if", "then", "else"}
+
+    for schema_name in (
+        "plan.schema.yaml",
+        "context_pack.schema.yaml",
+        "critic_report.schema.yaml",
+        "implementation_result.schema.yaml",
+        "execution_report.schema.yaml",
+        "evaluation_result.schema.yaml",
+    ):
+        compiled = compile_codex_output_schema(_load_schema(schema_name))
+        assert not _contains_any_key(compiled, unsupported_keys), schema_name
 
 
 def assert_codex_strict_schema(schema: Any) -> None:
@@ -202,3 +220,11 @@ def _allows_null(schema: dict[str, Any]) -> bool:
     if isinstance(schema_type, list) and "null" in schema_type:
         return True
     return any(_allows_null(option) for option in schema.get("anyOf", []) if isinstance(option, dict))
+
+
+def _contains_any_key(value: Any, keys: set[str]) -> bool:
+    if isinstance(value, dict):
+        return any(key in keys or _contains_any_key(item, keys) for key, item in value.items())
+    if isinstance(value, list):
+        return any(_contains_any_key(item, keys) for item in value)
+    return False

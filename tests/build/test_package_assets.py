@@ -108,6 +108,41 @@ def test_context_builder_prompt_limits_collection_to_sandbox_relative_paths():
         assert "`find . -maxdepth N -type f -print`" in text
 
 
+def test_generator_prompt_uses_live_smoke_fixture_digest_for_patch_bundle():
+    prompt_paths = [
+        Path(".harness/actors/generator.md"),
+        Path("assets/defaults/actors/generator.md"),
+        Path("src/rail/package_assets/defaults/actors/generator.md"),
+    ]
+
+    for path in prompt_paths:
+        text = path.read_text(encoding="utf-8")
+        assert "live_smoke_seed.fixture_digest" in text
+        assert "patch_bundle.base_tree_digest" in text
+        assert "Do not run Python, `uv`, test, format, or validation commands" in text
+        assert "only allowed shell executables" in text
+        assert "`ruff --version`" in text
+        assert "not `request.project_root`" in text
+
+
+def test_executor_prompt_reports_tooling_unavailable_in_live_smoke():
+    prompt_paths = [
+        Path(".harness/actors/executor.md"),
+        Path("assets/defaults/actors/executor.md"),
+        Path("src/rail/package_assets/defaults/actors/executor.md"),
+    ]
+
+    for path in prompt_paths:
+        text = path.read_text(encoding="utf-8")
+        assert "live_smoke_seed" in text
+        assert "class=tooling_unavailable" in text
+        assert "do not run validation tooling that is outside the Actor Runtime shell policy" in text
+        assert "only allowed shell executables" in text
+        assert "`python -V`" in text
+        assert "`ruff --version`" in text
+        assert "not `request.project_root`" in text
+
+
 def test_repo_harness_defaults_match_packaged_defaults():
     for subdir in ("actors", "rules", "rubrics", "supervisor", "templates"):
         _assert_tree_matches(Path(".harness") / subdir, Path("assets/defaults") / subdir)

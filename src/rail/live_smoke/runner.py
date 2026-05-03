@@ -6,11 +6,12 @@ from pathlib import Path
 
 from rail.api import start_task
 from rail.artifacts import bind_effective_policy
+from rail.artifacts.digests import digest_payload
 from rail.artifacts.run_attempts import allocate_run_attempt
 from rail.actor_runtime.codex_vault import CodexVaultActorRuntime
-from rail.actor_runtime.runtime import ActorResult, ActorRuntime, build_invocation
+from rail.actor_runtime.runtime import ActorInvocation, ActorResult, ActorRuntime, build_invocation
 from rail.live_smoke.classification import classify_actor_result
-from rail.live_smoke.contracts import V1_LIVE_SMOKE_ACTORS, evaluate_behavior_smoke
+from rail.live_smoke.contracts import LIVE_SMOKE_ACTORS, evaluate_behavior_smoke
 from rail.live_smoke.fixtures import copy_fixture_target
 from rail.live_smoke.models import (
     LiveSmokeActor,
@@ -19,24 +20,15 @@ from rail.live_smoke.models import (
     OwningSurface,
     SymptomClass,
 )
+from rail.live_smoke.seeds import LiveSmokeSeed, build_live_smoke_seed, canonical_prior_outputs_for
 from rail.policy import load_effective_policy
 
 RuntimeFactory = Callable[[Path], ActorRuntime]
 
 _REPORT_FILE_NAME = "live_smoke_report.json"
 _UNAVAILABLE_FIXTURE_DIGEST = "sha256:fixture-unavailable"
-_PLANNER_PRIOR_OUTPUT = {
-    "summary": "Inspect the packaged live smoke fixture and produce a safe implementation plan.",
-    "substeps": [
-        "Read the fixture README and docs.",
-        "Identify the minimal target files needed for the requested behavior.",
-    ],
-    "risks": [],
-    "acceptance_criteria_refined": [
-        "The actor returns schema-valid output for the live smoke fixture.",
-    ],
-}
-
+_LIVE_SMOKE_ALLOWED_SHELL_EXECUTABLES = ["cat", "find", "head", "ls", "pwd", "rg", "sed", "stat", "tail", "test", "wc"]
+_LIVE_SMOKE_FORBIDDEN_SHELL_EXECUTABLES = ["python", "python3", "pytest", "ruff", "uv"]
 
 class LiveSmokeRunner:
     def __init__(
@@ -49,13 +41,19 @@ class LiveSmokeRunner:
         self.runtime_factory = runtime_factory or _default_runtime_factory
 
     def run_all(self) -> list[LiveSmokeReport]:
-        return [self.run_actor(actor) for actor in V1_LIVE_SMOKE_ACTORS]
+        return [self.run_actor(actor) for actor in LIVE_SMOKE_ACTORS]
 
     def run_actor(self, actor: LiveSmokeActor) -> LiveSmokeReport:
         report_dir = self.report_root / actor.value
         target_root = report_dir / "target"
         try:
             copied_fixture = copy_fixture_target(target_root, report_root=self.report_root)
+            prior_outputs = canonical_prior_outputs_for(actor)
+            seed = build_live_smoke_seed(
+                actor,
+                fixture_digest=copied_fixture.fixture_digest,
+                prior_outputs=prior_outputs,
+            )
             policy = load_effective_policy(copied_fixture.target_root)
             handle = bind_effective_policy(
                 start_task(_request_draft(actor, copied_fixture.target_root)),
@@ -65,8 +63,11 @@ class LiveSmokeRunner:
                 handle,
                 actor.value,
                 attempt_ref=allocate_run_attempt(handle.artifact_dir),
-                prior_outputs=_prior_outputs_for(actor),
+                prior_outputs=prior_outputs,
             )
+            invocation = _bind_live_smoke_seed(invocation, seed)
+            if actor == LiveSmokeActor.EVALUATOR:
+                invocation = _bind_evaluator_input_digest(invocation, seed)
         except Exception:
             report = _failure_report(
                 actor=actor,
@@ -89,6 +90,7 @@ class LiveSmokeRunner:
                 owning_surface=OwningSurface.PROVIDER,
                 artifact_id=handle.artifact_id,
                 artifact_dir=handle.artifact_dir,
+                seed=seed,
             )
             _write_report(report)
             return report
@@ -103,13 +105,21 @@ class LiveSmokeRunner:
                 owning_surface=OwningSurface.PROVIDER,
                 artifact_id=handle.artifact_id,
                 artifact_dir=handle.artifact_dir,
+                seed=seed,
             )
             _write_report(report)
             return report
 
         behavior_error = None
         if result.status == "succeeded":
-            behavior_error = evaluate_behavior_smoke(actor, result.structured_output)
+            behavior_error = evaluate_behavior_smoke(
+                actor,
+                result.structured_output,
+                seed=seed,
+                target_root=copied_fixture.target_root,
+                artifact_dir=handle.artifact_dir,
+                invocation_input=invocation.input,
+            )
         classification = classify_actor_result(
             actor,
             result,
@@ -124,6 +134,9 @@ class LiveSmokeRunner:
             artifact_dir=handle.artifact_dir,
             report_dir=report_dir,
             fixture_digest=copied_fixture.fixture_digest,
+            seed_schema_version=seed.schema_version,
+            seed_digest=seed.seed_digest,
+            synthetic_seed=seed.synthetic,
             evidence_refs=[
                 result.events_ref.as_posix(),
                 result.runtime_evidence_ref.as_posix(),
@@ -145,16 +158,13 @@ def _request_draft(actor: LiveSmokeActor, target_root: Path) -> dict[str, object
     return {
         "project_root": target_root.resolve(strict=True).as_posix(),
         "task_type": "test_repair",
-        "goal": f"Run the Rail {actor.value} live smoke against the packaged fixture target.",
+        "goal": _goal_for(actor),
         "context": {
             "feature": "actor live smoke",
             "validation_roots": ["tests"],
             "validation_targets": ["tests/test_service.py"],
         },
-        "constraints": [
-            "Do not mutate target files directly.",
-            "Return only schema-valid structured actor output.",
-        ],
+        "constraints": _constraints_for(actor),
         "definition_of_done": [
             "The actor completes with schema-valid output.",
             "The live smoke behavior check accepts the output.",
@@ -163,10 +173,54 @@ def _request_draft(actor: LiveSmokeActor, target_root: Path) -> dict[str, object
     }
 
 
-def _prior_outputs_for(actor: LiveSmokeActor) -> dict[str, dict[str, object]]:
-    if actor == LiveSmokeActor.CONTEXT_BUILDER:
-        return {LiveSmokeActor.PLANNER.value: dict(_PLANNER_PRIOR_OUTPUT)}
-    return {}
+def _goal_for(actor: LiveSmokeActor) -> str:
+    if actor == LiveSmokeActor.GENERATOR:
+        return (
+            "Run the Rail generator live smoke against the packaged fixture target. "
+            "Return a Rail patch bundle that updates app/service.py in a small, fixture-scoped way."
+        )
+    return f"Run the Rail {actor.value} live smoke against the packaged fixture target."
+
+
+def _constraints_for(actor: LiveSmokeActor) -> list[str]:
+    constraints = [
+        "Do not mutate target files directly.",
+        "Return only schema-valid structured actor output.",
+    ]
+    if actor == LiveSmokeActor.EXECUTOR:
+        constraints.append(
+            "If validation tooling cannot be executed inside the Actor Runtime policy, report class=tooling_unavailable."
+        )
+    if actor == LiveSmokeActor.EVALUATOR:
+        constraints.append("Echo evaluator_input_digest exactly as evaluated_input_digest.")
+    return constraints
+
+
+def _bind_live_smoke_seed(invocation: ActorInvocation, seed: LiveSmokeSeed) -> ActorInvocation:
+    actor_input = dict(invocation.input)
+    request = actor_input.get("request")
+    if isinstance(request, dict):
+        actor_input["request"] = dict(request) | {"project_root": "."}
+    actor_input["live_smoke_seed"] = seed.model_dump(mode="json")
+    actor_input["live_smoke_runtime_contract"] = {
+        "filesystem_scope": "sandbox_relative_paths_only",
+        "shell_working_directory": ".",
+        "target_root_reference": "Use `.` for shell commands; do not use request.project_root as a shell path.",
+        "allowed_shell_executables": _LIVE_SMOKE_ALLOWED_SHELL_EXECUTABLES,
+        "forbidden_shell_patterns": ["..", "|", "&&", ";", "$", "`"],
+        "forbidden_shell_executables": _LIVE_SMOKE_FORBIDDEN_SHELL_EXECUTABLES,
+        "tool_availability_probe": "Do not probe unavailable tools; if a needed executable is outside allowed_shell_executables, report the actor-specific unavailable result without running it.",
+    }
+    return invocation.model_copy(update={"input": actor_input})
+
+
+def _bind_evaluator_input_digest(invocation: ActorInvocation, seed: LiveSmokeSeed) -> ActorInvocation:
+    actor_input = dict(invocation.input)
+    actor_input.pop("evaluator_input_digest", None)
+    actor_input["validation_evidence_digest"] = seed.validation_evidence_digest
+    evaluator_input_digest = digest_payload(actor_input)
+    actor_input["evaluator_input_digest"] = evaluator_input_digest
+    return invocation.model_copy(update={"input": actor_input})
 
 
 def _verdict_for(symptom_class: object | None) -> LiveSmokeVerdict:
@@ -210,6 +264,7 @@ def _failure_report(
     owning_surface: OwningSurface,
     artifact_id: str | None = None,
     artifact_dir: Path | None = None,
+    seed: LiveSmokeSeed | None = None,
 ) -> LiveSmokeReport:
     return LiveSmokeReport(
         actor=actor,
@@ -220,6 +275,9 @@ def _failure_report(
         artifact_dir=artifact_dir,
         report_dir=report_dir,
         fixture_digest=fixture_digest,
+        seed_schema_version=seed.schema_version if seed is not None else None,
+        seed_digest=seed.seed_digest if seed is not None else None,
+        synthetic_seed=seed.synthetic if seed is not None else None,
         evidence_refs=[],
         repair_proposal=None,
     )

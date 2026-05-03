@@ -6,11 +6,13 @@ from rail.live_smoke.models import (
     RepairProposal,
     SymptomClass,
 )
+from rail.live_smoke.seeds import LiveSmokeSeed
 
 __all__ = [
     "LiveSmokeActor",
     "LiveSmokeReport",
     "LiveSmokeVerdict",
+    "LiveSmokeSeed",
     "OwningSurface",
     "RepairProposal",
     "SymptomClass",

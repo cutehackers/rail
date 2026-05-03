@@ -23,7 +23,7 @@ def test_smoke_actors_requires_live_flag_without_runner(capsys, monkeypatch) -> 
 
 
 def test_smoke_rejects_unknown_actor(capsys) -> None:
-    result = cli_main.main(["smoke", "actor", "executor", "--live"])
+    result = cli_main.main(["smoke", "actor", "not_an_actor", "--live"])
 
     assert result == 1
-    assert "unsupported v1 live smoke actor" in capsys.readouterr().out
+    assert "unsupported live smoke actor" in capsys.readouterr().out

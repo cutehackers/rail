@@ -71,7 +71,7 @@ def _run_smoke_command(args: argparse.Namespace) -> int:
         try:
             actor = LiveSmokeActor(args.actor_name)
         except ValueError:
-            print(f"unsupported v1 live smoke actor: {args.actor_name}")
+            print(f"unsupported live smoke actor: {args.actor_name}")
             return 1
         runner = LiveSmokeRunner(report_root=args.report_root)
         reports = [runner.run_actor(actor)]
@@ -119,7 +119,7 @@ def _parser() -> argparse.ArgumentParser:
     smoke = subparsers.add_parser("smoke", help="run optional Rail smoke diagnostics")
     smoke_subparsers = smoke.add_subparsers(dest="smoke_command")
 
-    smoke_actor = smoke_subparsers.add_parser("actor", help="run one v1 actor live smoke")
+    smoke_actor = smoke_subparsers.add_parser("actor", help="run one actor live smoke")
     smoke_actor.add_argument("actor_name")
     smoke_actor.add_argument("--live", action="store_true", help="run the live actor smoke")
     smoke_actor.add_argument(
@@ -129,7 +129,7 @@ def _parser() -> argparse.ArgumentParser:
         help="directory for live smoke reports; defaults to .harness/live-smoke",
     )
 
-    smoke_actors = smoke_subparsers.add_parser("actors", help="run all v1 actor live smokes")
+    smoke_actors = smoke_subparsers.add_parser("actors", help="run all actor live smokes")
     smoke_actors.add_argument("--live", action="store_true", help="run the live actor smokes")
     smoke_actors.add_argument(
         "--report-root",

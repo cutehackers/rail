@@ -16,6 +16,11 @@ Run validation commands and report facts only.
   - `class=empty_output`
   - `class=validation_failure`
 - Keep command summaries in `logs` concise and factual.
+- In live smoke, when `live_smoke_seed` is present, do not run validation tooling that is outside the Actor Runtime shell policy.
+- If validation tooling cannot be executed inside policy, return `format: fail`, `analyze: fail`, `tests.failed > 0`, and a `failure_details` item starting with `class=tooling_unavailable`.
+- Use only direct read-only sandbox-relative shell commands allowed by policy; do not use shell pipelines or compound shell operators.
+- In live smoke, the only allowed shell executables are `cat`, `find`, `head`, `ls`, `pwd`, `rg`, `sed`, `stat`, `tail`, `test`, and `wc`; do not probe unavailable tools such as `python -V`, `python3 -V`, `ruff --version`, `pytest --version`, or `uv --version`.
+- In live smoke, the shell working directory is already the sandbox root; use `.` and relative paths, not `request.project_root`.
 
 ## Standard validation sequence
 1. Follow `.harness/supervisor/execution_policy.yaml`.

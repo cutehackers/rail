@@ -4,7 +4,8 @@ from copy import deepcopy
 from typing import Any, Mapping
 
 _COMBINER_KEYS = ("oneOf", "anyOf", "allOf")
-_SCHEMA_KEYS = ("items", "additionalProperties", "not", "if", "then", "else")
+_UNSUPPORTED_CODEX_SCHEMA_KEYS = frozenset({"oneOf", "anyOf", "allOf", "not", "if", "then", "else"})
+_SCHEMA_KEYS = ("items", "additionalProperties")
 
 
 def compile_codex_output_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
@@ -22,12 +23,12 @@ def _compile_node(value: Any) -> Any:
     original_required = _string_set(value.get("required"))
     compiled: dict[str, Any] = {}
     for key, item in value.items():
+        if key in _UNSUPPORTED_CODEX_SCHEMA_KEYS:
+            continue
         if key == "properties" and isinstance(item, dict):
             compiled[key] = {str(property_name): _compile_node(property_schema) for property_name, property_schema in item.items()}
         elif key in _SCHEMA_KEYS:
             compiled[key] = _compile_node(item)
-        elif key in _COMBINER_KEYS and isinstance(item, list):
-            compiled[key] = [_compile_node(branch) for branch in item]
         else:
             compiled[key] = _compile_node(item)
 

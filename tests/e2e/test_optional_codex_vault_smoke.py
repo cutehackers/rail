@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from rail.live_smoke.contracts import V1_LIVE_SMOKE_ACTORS
+from rail.live_smoke.contracts import LIVE_SMOKE_ACTORS
 from rail.live_smoke.models import LiveSmokeActor, LiveSmokeVerdict
 from rail.live_smoke.runner import LiveSmokeRunner
 
@@ -14,7 +14,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.mark.parametrize("actor", V1_LIVE_SMOKE_ACTORS)
+@pytest.mark.parametrize("actor", LIVE_SMOKE_ACTORS)
 def test_optional_codex_vault_live_smoke_runs_v1_actor_without_openai_api_key(
     tmp_path,
     monkeypatch,

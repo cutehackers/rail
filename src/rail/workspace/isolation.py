@@ -10,9 +10,12 @@ _ALLOWED_ENV_KEYS = {"OPENAI_API_KEY", "RAIL_ARTIFACT", "RAIL_RUN_ID"}
 def tree_digest(root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or ".git" in path.parts or ".harness" in path.parts:
+        if not path.is_file():
             continue
-        relative = path.relative_to(root).as_posix()
+        relative_path = path.relative_to(root)
+        if relative_path.parts and relative_path.parts[0] in {".git", ".harness"}:
+            continue
+        relative = relative_path.as_posix()
         stat = path.stat()
         digest.update(relative.encode("utf-8"))
         digest.update(str(stat.st_mode & 0o777).encode("utf-8"))

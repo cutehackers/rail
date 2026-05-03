@@ -1527,7 +1527,7 @@ def test_codex_vault_runtime_rejects_generator_output_with_multiple_patch_source
     assert result.blocked_category == "runtime"
     assert "exactly one patch source" in result.structured_output["error"]
     schema = json.loads((handle.artifact_dir / "actor_runtime" / "schemas" / "generator.schema.json").read_text(encoding="utf-8"))
-    assert "oneOf" in schema
+    assert "oneOf" not in schema
     assert schema["additionalProperties"] is False
     assert schema["required"] == sorted(schema["properties"])
 

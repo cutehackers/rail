@@ -8,6 +8,8 @@ import pytest
 from rail.live_smoke import fixtures as fixtures_module
 from rail.live_smoke.fixtures import copy_fixture_target, live_smoke_fixture_source
 
+_EMPTY_TREE_DIGEST = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
 
 def test_live_smoke_fixture_source_contains_expected_files() -> None:
     source = live_smoke_fixture_source()
@@ -62,6 +64,13 @@ def test_copy_fixture_target_does_not_ignore_report_root_basename(tmp_path: Path
     copied = copy_fixture_target(tmp_path / "target", report_root=tmp_path / "tests")
 
     assert (copied.target_root / "tests" / "test_service.py").is_file()
+
+
+def test_copy_fixture_target_records_non_empty_digest_under_harness_path(tmp_path: Path) -> None:
+    report_root = tmp_path / ".harness" / "live-smoke"
+    copied = copy_fixture_target(report_root / "planner" / "target", report_root=report_root)
+
+    assert copied.fixture_digest != _EMPTY_TREE_DIGEST
 
 
 def test_copy_fixture_target_copies_zip_backed_resource(

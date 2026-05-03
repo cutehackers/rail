@@ -10,6 +10,10 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 class LiveSmokeActor(StrEnum):
     PLANNER = "planner"
     CONTEXT_BUILDER = "context_builder"
+    CRITIC = "critic"
+    GENERATOR = "generator"
+    EXECUTOR = "executor"
+    EVALUATOR = "evaluator"
 
 
 class LiveSmokeVerdict(StrEnum):
@@ -139,6 +143,9 @@ class LiveSmokeReport(BaseModel):
     artifact_dir: Path | None = None
     report_dir: Path
     fixture_digest: str
+    seed_schema_version: str | None = None
+    seed_digest: str | None = None
+    synthetic_seed: bool | None = None
     evidence_refs: list[str]
     repair_proposal: RepairProposal | None
 
@@ -173,5 +180,22 @@ class LiveSmokeReport(BaseModel):
             raise ValueError("artifact_id and artifact_dir must be recorded together")
         if self.evidence_refs and not has_artifact_dir:
             raise ValueError("evidence_refs require artifact metadata")
+        has_seed_metadata = any(
+            value is not None
+            for value in (
+                self.seed_schema_version,
+                self.seed_digest,
+                self.synthetic_seed,
+            )
+        )
+        if has_seed_metadata and not all(
+            value is not None
+            for value in (
+                self.seed_schema_version,
+                self.seed_digest,
+                self.synthetic_seed,
+            )
+        ):
+            raise ValueError("seed metadata must be recorded together")
 
         return self

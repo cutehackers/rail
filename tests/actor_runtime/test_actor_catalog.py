@@ -64,3 +64,12 @@ def test_context_pack_schema_matches_output_model_fields(tmp_path):
 
     assert set(repo_entry.schema_source["properties"]) == set(repo_entry.output_model.model_fields)
     assert set(packaged_entry.schema_source["properties"]) == set(packaged_entry.output_model.model_fields)
+
+
+def test_strict_actor_schemas_match_output_model_fields():
+    catalog = load_actor_catalog(Path("."))
+
+    for actor, entry in catalog.items():
+        if entry.output_model.model_config.get("extra") != "forbid":
+            continue
+        assert set(entry.schema_source["properties"]) == set(entry.output_model.model_fields), actor

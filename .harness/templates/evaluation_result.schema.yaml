@@ -18,22 +18,6 @@ properties:
     type: string
     pattern: '^sha256:'
 
-  scores:
-    type: object
-    properties:
-      requirements:
-        type: number
-        minimum: 0
-        maximum: 1
-      architecture:
-        type: number
-        minimum: 0
-        maximum: 1
-      regression_risk:
-        type: number
-        minimum: 0
-        maximum: 1
-
   findings:
     type: array
     items:

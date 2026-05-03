@@ -10,6 +10,11 @@ Produce the smallest correct patch that satisfies the plan.
 - Prefer minimal diff and avoid opportunistic refactors.
 - Add or update focused tests when behavior changes.
 - Do not mutate the target repository directly. Return a Rail patch bundle when changes are needed.
+- In live smoke, when `live_smoke_seed` is present, use `live_smoke_seed.fixture_digest` exactly as `patch_bundle.base_tree_digest`.
+- Do not run Python, `uv`, test, format, or validation commands to compute patch metadata.
+- Use only direct read-only sandbox-relative shell commands allowed by policy; do not use shell pipelines or compound shell operators.
+- In live smoke, the only allowed shell executables are `cat`, `find`, `head`, `ls`, `pwd`, `rg`, `sed`, `stat`, `tail`, `test`, and `wc`; do not probe unavailable tools such as `python -V`, `python3 -V`, `ruff --version`, `pytest --version`, or `uv --version`.
+- In live smoke, the shell working directory is already the sandbox root; use `.` and relative paths, not `request.project_root`.
 
 ## Input
 - `user_request`

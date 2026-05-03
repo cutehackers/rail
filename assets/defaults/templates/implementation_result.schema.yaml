@@ -50,6 +50,8 @@ properties:
             - op
             - path
             - content
+            - executable
+            - binary
           properties:
             op:
               type: string

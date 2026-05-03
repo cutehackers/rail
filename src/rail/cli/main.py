@@ -18,6 +18,8 @@ from rail.cli.setup_commands import (
     run_codex_login,
 )
 from rail.live_smoke import LiveSmokeActor, LiveSmokeVerdict
+from rail.live_smoke.repair_loop import LiveSmokeRepairLoop
+from rail.live_smoke.repair_models import RepairLoopStatus
 from rail.live_smoke.runner import LiveSmokeRunner
 
 
@@ -63,6 +65,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _run_smoke_command(args: argparse.Namespace) -> int:
+    if args.smoke_command == "repair":
+        return _run_smoke_repair_command(args)
+
     if not getattr(args, "live", False):
         print("--live is required for actor live smoke")
         return 1
@@ -85,6 +90,28 @@ def _run_smoke_command(args: argparse.Namespace) -> int:
         print(json.dumps(report.model_dump(mode="json"), sort_keys=True))
 
     return 0 if all(report.verdict == LiveSmokeVerdict.PASSED for report in reports) else 1
+
+
+def _run_smoke_repair_command(args: argparse.Namespace) -> int:
+    if not getattr(args, "live", False):
+        print("--live is required for actor live smoke")
+        return 1
+
+    repair_loop = LiveSmokeRepairLoop(report_root=args.report_root)
+    if args.repair_command == "actor":
+        try:
+            actor = LiveSmokeActor(args.actor_name)
+        except ValueError:
+            print(f"unsupported live smoke actor: {args.actor_name}")
+            return 1
+        report = repair_loop.run_actor(actor, apply=args.apply, max_iterations=args.max_iterations)
+    elif args.repair_command == "actors":
+        report = repair_loop.run_all(apply=args.apply, max_iterations=args.max_iterations)
+    else:
+        return 1
+
+    print(json.dumps(report.model_dump(mode="json"), sort_keys=True))
+    return 0 if report.status in {RepairLoopStatus.PASSED, RepairLoopStatus.REPAIRED} else 1
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -138,7 +165,34 @@ def _parser() -> argparse.ArgumentParser:
         help="directory for live smoke reports; defaults to .harness/live-smoke",
     )
 
+    smoke_repair = smoke_subparsers.add_parser("repair", help="repair optional actor live smoke diagnostics")
+    repair_subparsers = smoke_repair.add_subparsers(dest="repair_command")
+
+    repair_actor = repair_subparsers.add_parser("actor", help="repair one actor live smoke")
+    repair_actor.add_argument("actor_name")
+    _add_smoke_repair_options(repair_actor)
+
+    repair_actors = repair_subparsers.add_parser("actors", help="repair every actor live smoke")
+    _add_smoke_repair_options(repair_actors)
+
     return parser
+
+
+def _add_smoke_repair_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--live", action="store_true", help="run the live actor smoke")
+    parser.add_argument("--apply", action="store_true", help="apply safe repair candidates and rerun live smoke")
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=2,
+        help="maximum repair iterations per actor; defaults to 2",
+    )
+    parser.add_argument(
+        "--report-root",
+        type=Path,
+        default=Path(".harness/live-smoke"),
+        help="directory for live smoke reports; defaults to .harness/live-smoke",
+    )
 
 
 def _optional_path(value: str | None) -> Path | None:

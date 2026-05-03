@@ -2,6 +2,45 @@
 
 All notable Rail release changes are summarized here by tag.
 
+## v0.6.6 - 2026-05-03
+
+### Changed
+
+- Updated fix(live-smoke): harden repair loop blockers.
+- Updated docs(live-smoke): document repair loop boundary.
+- Updated feat(cli): add live smoke repair commands.
+- Updated feat(live-smoke): orchestrate repair loop.
+- Updated feat(live-smoke): add deterministic repairers.
+- Updated feat(live-smoke): summarize repair evidence.
+- Updated feat(live-smoke): add repair loop contracts.
+- Updated docs(live-smoke): plan auto-repair loop.
+- Updated feat(live-smoke): add canonical seeded actor smoke.
+- Updated fix(actor-runtime): align context pack schema contract.
+- Updated fix(live-smoke): require resolvable actor evidence.
+- Updated test(package): require live smoke fixture assets.
+- Updated test(cli): cover smoke actors live flag.
+- Updated feat(cli): add actor live smoke commands.
+- Updated test(live-smoke): route optional codex vault smoke through runner.
+- Updated fix(live-smoke): persist resolvable runner reports.
+- Updated feat(live-smoke): add shared actor smoke runner.
+- Updated fix(live-smoke): refine actor failure classification.
+- Updated fix(live-smoke): classify unblocked actor failures.
+- Updated test(live-smoke): cover actor classification mappings.
+- Updated feat(live-smoke): classify actor smoke failures.
+- Updated fix(live-smoke): harden fixture resource copying.
+- Updated fix(live-smoke): refresh fixture target copies.
+- Updated feat(live-smoke): add immutable fixture target.
+- Updated fix(live-smoke): tighten repair proposal reports.
+- Updated fix(live-smoke): enforce smoke report invariants.
+- Updated feat(live-smoke): add actor smoke report contracts.
+- Updated docs(plan): add actor live smoke repair plan.
+- Updated docs(spec): narrow actor live smoke repair scope.
+- Updated docs(spec): define actor live smoke self-repair harness.
+
+### Verification
+
+- `scripts/release_gate.sh`
+
 ## v0.6.5 - 2026-05-02
 
 ### Changed

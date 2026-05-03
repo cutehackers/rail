@@ -169,6 +169,20 @@ def test_required_package_assets_include_live_smoke_fixture_target():
     assert "package_assets/live_smoke/fixture_target/tests/test_service.py" in REQUIRED_PACKAGE_ASSETS
 
 
+def test_live_smoke_repair_is_documented_as_developer_diagnostic():
+    architecture = Path("docs/ARCHITECTURE.md").read_text(encoding="utf-8")
+    spec = Path("docs/SPEC.md").read_text(encoding="utf-8")
+    cli = Path("src/rail/cli/main.py").read_text(encoding="utf-8")
+
+    for text in (architecture, spec):
+        assert "Live smoke repair is a developer diagnostic" in text or "Live Smoke Repair Diagnostics" in text
+        assert "does not commit" in text or "must not publish" in text
+        assert "mutate downstream target repositories" in text
+
+    assert 'add_parser("repair"' in cli
+    assert "--apply" in cli
+
+
 def test_package_asset_checker_accepts_required_assets(tmp_path: Path):
     dist = tmp_path / "dist"
     dist.mkdir()

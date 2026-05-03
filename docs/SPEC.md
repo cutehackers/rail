@@ -123,6 +123,15 @@ Rail console script interpreter, and use default `python3` only after verifying
 that it can import `rail`. Failed interpreter probes are setup details, not task
 progress.
 
+### Live Smoke Repair Diagnostics
+
+`rail smoke repair ... --live` is a developer diagnostic for Rail's own actor
+live smoke. It may turn failed live smoke reports into safe Rail-owned repair
+candidates and, when `--apply` is explicit, apply those candidates to the Rail
+repository before rerunning the affected actor smoke. It must not publish,
+commit, tag, bump release metadata, mutate downstream target repositories, edit
+Codex auth material, or loosen runtime policy.
+
 ## Required User Flows
 
 ### Fresh Work

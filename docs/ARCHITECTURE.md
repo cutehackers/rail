@@ -90,6 +90,12 @@ Optional live smokes are skipped by default and are not part of normal CI.
 Rail-owned Codex auth is configured. Normal task execution remains skill-first
 and Python API first; setup diagnostics live under `rail auth`.
 
+Live smoke repair is a developer diagnostic, not a release publisher or
+downstream task runner. `rail smoke repair ... --live` consumes live smoke
+reports, proposes safe Rail-owned repair candidates, and applies them only when
+`--apply` is explicit. It does not commit, tag, publish, change release version
+metadata, mutate downstream target repositories, or edit Codex auth material.
+
 ## Release Publishing
 
 Release publication is tag-driven. A `v*` tag push runs `.github/workflows/publish.yml`, which checks:

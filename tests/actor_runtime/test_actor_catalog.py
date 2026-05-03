@@ -56,3 +56,11 @@ def test_output_contract_paths_map_to_actor_names():
     assert catalog["generator"].schema_path.name == "implementation_result.schema.yaml"
     assert catalog["executor"].schema_path.name == "execution_report.schema.yaml"
     assert catalog["evaluator"].schema_path.name == "evaluation_result.schema.yaml"
+
+
+def test_context_pack_schema_matches_output_model_fields(tmp_path):
+    repo_entry = load_actor_catalog(Path("."))["context_builder"]
+    packaged_entry = load_actor_catalog(tmp_path)["context_builder"]
+
+    assert set(repo_entry.schema_source["properties"]) == set(repo_entry.output_model.model_fields)
+    assert set(packaged_entry.schema_source["properties"]) == set(packaged_entry.output_model.model_fields)
